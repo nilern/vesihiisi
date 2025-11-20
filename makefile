@@ -2,10 +2,9 @@
 all: vesihiisi
 
 vesihiisi: main.c
-	cc -o vesihiisi $^
-
+	cc -std=c2x -Werror -Wall -Wextra -Wpedantic -Wconversion -o vesihiisi $^
 
 .PHONY: clean
 clean:
-	rm vesihiisi
+	rm -f vesihiisi
 

@@ -1,9 +1,13 @@
 #define _POSIX_C_SOURCE 200809L
 
-#include "lib/object.c"
-
+#include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <ctype.h>
+
+#include "lib/object.c"
+#include "lib/read.c"
+#include "lib/print.c"
 
 static const char prompt[] = "vesihiisi> ";
 
@@ -14,14 +18,24 @@ int main(int /*argc*/, char** /*argv*/) {
         char* line = NULL;
         size_t len = 0;
         if (getline(&line, &len, stdin) != -1) {
-            printf("%s", line);
+            ORef expr;
+            if (!read(&expr, line)) {
+                puts("ParseError");
+                
+                free(line);
+                continue;
+            }
+            
+            print(stdout, expr);
+            puts("");
+
+            free(line);
         } else {
             puts("Error reading input");
             
+            free(line);
             return EXIT_FAILURE;
         }
-
-        free(line);
     }
 
     return EXIT_SUCCESS;

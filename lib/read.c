@@ -5,15 +5,29 @@ static bool read(ORef* dest, char const* src) {
     if (c == '#') {
         ++src;
         
-        if (*src != '"') { return false; }
-        ++src;
-        c = *src;
-        if (c == '"') { return false; }
-        ++src;
-        if (*src != '"') { return false; }
+        switch (*src) {
+        case '"':
+            ++src;
+            c = *src;
+            if (c == '"') { return false; }
+            ++src;
+            if (*src != '"') { return false; }
+            
+            *dest = charToORef(c);
+            return true;
         
-        *dest = charToORef(c);
-        return true;
+        case 't':
+            ++src;
+            *dest = boolToORef(true);
+            return true;
+        
+        case 'f':
+            ++src;
+            *dest = boolToORef(false);
+            return true;
+        
+        default: return false;
+        }
     } else if (isdigit(c)) {
         int32_t n = 0;
         const int32_t radix = 10;

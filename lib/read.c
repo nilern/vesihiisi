@@ -2,7 +2,19 @@ static bool read(ORef* dest, char const* src) {
     char c = *src;
     if (c == '\0') { return false; }
     
-    if (isdigit(c)) {
+    if (c == '#') {
+        ++src;
+        
+        if (*src != '"') { return false; }
+        ++src;
+        c = *src;
+        if (c == '"') { return false; }
+        ++src;
+        if (*src != '"') { return false; }
+        
+        *dest = charToORef(c);
+        return true;
+    } else if (isdigit(c)) {
         int32_t n = 0;
         const int32_t radix = 10;
         

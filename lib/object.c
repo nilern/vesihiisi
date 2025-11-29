@@ -82,6 +82,15 @@ inline static TypeRef headerType(Header header) {
     return (TypeRef){(header.bits & ~tag_bits) | heap_tag};
 }
 
+typedef struct FlexHeader {
+    Fixnum length;
+    Header base;
+} FlexHeader;
+
+inline static FlexHeader flexHeader(Fixnum length, Type const* type) {
+    return (FlexHeader){length, fixedHeader(type)};
+}
+
 [[maybe_unused]] // FIXME
 static TypeRef typeOf(ORef oref) {
     void* const ptr = tryORefToPtr(oref);
@@ -91,4 +100,6 @@ static TypeRef typeOf(ORef oref) {
         assert(false); // FIXME
     }
 }
+
+static const size_t objectMinAlign = alignof(Header);
 

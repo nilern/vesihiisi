@@ -63,6 +63,35 @@ static void* tryAlloc(Semispace* semispace, Type const* type) {
     
     char* const ptr = (char*)(void*)address;
     *((Header*)(void*)address - 1) = fixedHeader(type); // Init header
+    // OPTIMIZE: in bulk on GC and `tryCreateSemispace` instead (with `memset_explicit`)?:
+    memset(ptr, 0, size); // Zero-init data
+    
+    return ptr;
+}
+
+[[maybe_unused]] // FIXME
+static void* tryAllocFlex(Semispace* semispace, Type const* type, Fixnum length) {
+    assert(semispaceIsValid(semispace));
+    assert(unwrapBool(type->isFlex));
+
+    uintptr_t address = (uintptr_t)(void*)semispace->free;
+    
+    address += sizeof(FlexHeader); // Reserve header
+    // Align oref:
+    uintptr_t const align = (uintptr_t)fixnumToInt(type->align);
+    address = (address + align - 1) & ~(align - 1);
+    
+    // Check bound and commit reservation:
+    uintptr_t len = (uintptr_t)fixnumToInt(length);
+    uintptr_t const flexSize = unwrapBool(type->isBytes) ? len : len * sizeof(ORef);
+    uintptr_t const size = (uintptr_t)fixnumToInt(type->minSize) + flexSize;
+    char* const free = (char*)(void*)(address + size);
+    if (free >= semispace->limit) { return nullptr; }
+    semispace->free = free;
+    
+    char* const ptr = (char*)(void*)address;
+    *((FlexHeader*)(void*)address - 1) = flexHeader(length, type); // Init header
+    // OPTIMIZE: in bulk on GC and `tryCreateSemispace` instead (with `memset_explicit`)?:
     memset(ptr, 0, size); // Zero-init data
     
     return ptr;
@@ -85,5 +114,21 @@ static Type* tryCreateTypeType(Semispace* semispace) {
     *typeType = bootstrapTypeType; // Init data
     
     return typeType;
+}
+
+[[maybe_unused]] // FIXME
+static Type* tryCreateStringType(Semispace* semispace, Type const* typeType) {
+    void* const maybeStringType = tryAlloc(semispace, typeType);
+    if (!maybeStringType) { return nullptr; }
+    
+    Type* const stringType = (Type*)maybeStringType;
+    *stringType = (Type){
+        .minSize = tagInt(0),
+        .align = tagInt((intptr_t)objectMinAlign),
+        .isBytes = True,
+        .isFlex = True
+    };
+    
+    return stringType;
 }
 

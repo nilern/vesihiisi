@@ -7,6 +7,7 @@
 #include <ctype.h>
 #include <string.h>
 
+#include "lib/util.c"
 #include "lib/object.c"
 #include "lib/heap.c"
 #include "lib/read.c"
@@ -20,6 +21,16 @@ int main(int /*argc*/, char** /*argv*/) {
         puts("Insufficient memory");
         return EXIT_FAILURE;
     }
+    Type const* typeTypePtr = tryCreateTypeType(&heap.tospace);
+    if (!typeTypePtr) {
+        puts("Insufficient memory");
+        return EXIT_FAILURE;
+    }
+    Type const* stringTypePtr = tryCreateStringType(&heap.tospace, typeTypePtr);
+    if (!stringTypePtr) {
+        puts("Insufficient memory");
+        return EXIT_FAILURE;
+    }
 
     for (;/*ever*/;) {
         printf("%s", prompt);
@@ -28,14 +39,14 @@ int main(int /*argc*/, char** /*argv*/) {
         size_t len = 0;
         if (getline(&line, &len, stdin) != -1) {
             ORef expr;
-            if (!read(&expr, line)) {
+            if (!read(&heap, stringTypePtr, &expr, line)) {
                 puts("ParseError");
                 
                 free(line);
                 continue;
             }
             
-            print(stdout, expr);
+            print(stdout, stringTypePtr, expr);
             puts("");
 
             free(line);

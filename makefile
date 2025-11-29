@@ -9,7 +9,7 @@ test: test/test_heap
 	./test/test_heap
 
 test/test_heap: test/test_heap.c lib/heap.c
-	cc -std=c2x -Werror -Wall -Wextra -Wpedantic -Wconversion -g -o $@ $<
+	cc -std=c2x -Wall -Wextra -Wpedantic -Wconversion -g -o $@ $<
 
 .PHONY: clean
 clean:

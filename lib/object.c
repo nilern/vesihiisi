@@ -70,6 +70,8 @@ inline static TypeRef tagType(Type const* type) {
     return (TypeRef){(uintptr_t)(void*)type  | heap_tag};
 }
 
+inline static Type* typeToPtr(TypeRef type) { return (Type*)(void*)(type.bits & ~tag_bits); }
+
 inline static ORef typeToORef(TypeRef type) { return (ORef){type.bits}; }
 
 typedef struct Header { uintptr_t bits; } Header;
@@ -102,4 +104,30 @@ static TypeRef typeOf(ORef oref) {
 }
 
 static const size_t objectMinAlign = alignof(Header);
+
+inline static Fixnum flexLength(ORef v) {
+    assert(unwrapBool(typeToPtr(typeOf(v))->isFlex));
+    
+    void* const ptr = uncheckedORefToPtr(v);
+    return ((FlexHeader*)ptr - 1)->length;
+}
+
+typedef struct StringRef { uintptr_t bits; } StringRef;
+
+inline static bool isString(Type const* stringType, ORef v) {
+    return typeToPtr(typeOf(v)) == stringType;
+}
+
+inline static StringRef tagString(char* s) { return (StringRef){(uintptr_t)(void*)s | heap_tag}; }
+
+inline static ORef stringToORef(StringRef s) { return (ORef){s.bits}; }
+
+inline static StringRef uncheckedORefToString(ORef v) { return (StringRef){v.bits}; }
+
+static Str stringStr(StringRef s) {
+    return (Str){
+        .data = (char*)(void*)(s.bits & ~tag_bits),
+        .len = (size_t)fixnumToInt(flexLength(stringToORef(s)))
+    };
+}
 

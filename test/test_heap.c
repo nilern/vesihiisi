@@ -3,6 +3,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "../lib/util.c"
 #include "../lib/object.c"
 #include "../lib/heap.c"
 

@@ -132,3 +132,12 @@ static Type* tryCreateStringType(Semispace* semispace, Type const* typeType) {
     return stringType;
 }
 
+static StringRef createString(Heap* heap, Type const* stringType, Str str) {
+    char* const stringPtr = tryAllocFlex(&heap->tospace, stringType, tagInt((intptr_t)str.len));
+    if (!stringPtr) { assert(false); } // TODO: Collect garbage here
+    
+    memcpy(stringPtr, str.data, str.len);
+    
+    return tagString(stringPtr);
+}
+

@@ -1,4 +1,4 @@
-static bool read(ORef* dest, char const* src) {
+static bool read(Heap* heap, Type const* stringTypePtr, ORef* dest, char const* src) {
     char c = *src;
     if (c == '\0') { return false; }
     
@@ -39,6 +39,18 @@ static bool read(ORef* dest, char const* src) {
         } while (isdigit(c));
         
         *dest = fixnumToORef(tagInt(n));
+        return true;
+    } else if (c == '"') {
+        ++src;
+        
+        StringBuilder builder = createStringBuilder();
+        
+        for (;(c = *src) != '"'; ++src) {
+            stringBuilderPush(&builder, c);
+        }
+        
+        *dest = stringToORef(createString(heap, stringTypePtr, stringBuilderStr(&builder)));
+        freeStringBuilder(&builder); // OPTIMIZE: Reuse same builder
         return true;
     }
     

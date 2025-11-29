@@ -13,24 +13,24 @@ static bool read(ORef* dest, char const* src) {
             ++src;
             if (*src != '"') { return false; }
             
-            *dest = charToORef(c);
+            *dest = charToORef(tagChar(c));
             return true;
         
         case 't':
             ++src;
-            *dest = boolToORef(true);
+            *dest = boolToORef(tagBool(true));
             return true;
         
         case 'f':
             ++src;
-            *dest = boolToORef(false);
+            *dest = boolToORef(tagBool(false));
             return true;
         
         default: return false;
         }
     } else if (isdigit(c)) {
-        int32_t n = 0;
-        const int32_t radix = 10;
+        intptr_t n = 0;
+        const intptr_t radix = 10;
         
         do {
             n = n * radix + (c - '0');
@@ -38,7 +38,7 @@ static bool read(ORef* dest, char const* src) {
             c = *src;
         } while (isdigit(c));
         
-        *dest = int32ToFixnum(n); // FIXME: Overflow (fixnum is only 30 bits)
+        *dest = fixnumToORef(tagInt(n));
         return true;
     }
     

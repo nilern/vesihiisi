@@ -5,14 +5,22 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <string.h>
 
 #include "lib/object.c"
+#include "lib/heap.c"
 #include "lib/read.c"
 #include "lib/print.c"
 
 static const char prompt[] = "vesihiisi> ";
 
 int main(int /*argc*/, char** /*argv*/) {
+    Heap heap = tryCreateHeap(1024*1024);
+    if (!heapIsValid(&heap)) {
+        puts("Insufficient memory");
+        return EXIT_FAILURE;
+    }
+
     for (;/*ever*/;) {
         printf("%s", prompt);
         
@@ -39,6 +47,7 @@ int main(int /*argc*/, char** /*argv*/) {
         }
     }
 
+    freeHeap(&heap);
     return EXIT_SUCCESS;
 }
 

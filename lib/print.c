@@ -1,6 +1,6 @@
 static void print(FILE* dest, ORef v) {
     if (isFixnum(v)) {
-        fprintf(dest, "%d", uncheckedFixnumToInt32(v));
+        fprintf(dest, "%ld", uncheckedFixnumToInt(v));
     } else if (isChar(v)) {
         fprintf(dest, "#\"%c\"", uncheckedORefToChar(v));
     } else if (isBool(v)) {
@@ -10,5 +10,7 @@ static void print(FILE* dest, ORef v) {
             fprintf(dest, "#f");
         }
     }
+    
+    assert(false); // FIXME
 }
 

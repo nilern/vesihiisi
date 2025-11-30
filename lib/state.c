@@ -93,7 +93,7 @@ static Type* tryCreateArrayType(Semispace* semispace, Type const* typeType) {
 
 static bool tryCreateState(State* state, size_t heapSize) {
     Heap heap = tryCreateHeap(heapSize);
-    if (!heapIsValid(&state->heap)) { return false; }
+    if (!heapIsValid(&heap)) { return false; }
     
     Type const* const typeTypePtr = tryCreateTypeType(&heap.tospace);
     if (!typeTypePtr) { return false; }

@@ -1,5 +1,7 @@
 static void print(State const* state, FILE* dest, ORef v) {
-    if (isFixnum(v)) {
+    if (isEmptyList(state, v)) {
+        fprintf(dest, "()");
+    } else if (isFixnum(v)) {
         fprintf(dest, "%ld", uncheckedFixnumToInt(v));
     } else if (isChar(v)) {
         fprintf(dest, "#\"%c\"", uncheckedORefToChar(v));

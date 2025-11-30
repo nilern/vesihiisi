@@ -21,12 +21,26 @@ typedef struct State {
     TypeRef stringType;
     TypeRef arrayType;
     TypeRef symbolType;
+    TypeRef emptyListType;
     
     SymbolTable symbols;
+    EmptyListRef emptyList;
     
     uint8_t scratchCount;
     ORef regs[REG_COUNT];
 } State;
+
+inline static void pushTmp(State* state, ORef v) {
+    assert(state->scratchCount < REG_COUNT);
+    
+    state->regs[state->scratchCount++] = v;
+}
+
+inline static ORef popTmp(State* state) {
+    assert(state->scratchCount > 0);    
+    
+    return state->regs[--state->scratchCount];
+}
 
 static Type* tryCreateTypeType(Semispace* semispace) {
     Type const bootstrapTypeType = {
@@ -91,7 +105,22 @@ static Type* tryCreateArrayType(Semispace* semispace, Type const* typeType) {
     return type;
 }
 
-static bool tryCreateState(State* state, size_t heapSize) {
+static Type* tryCreateEmptyListType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = tryAlloc(semispace, typeType);
+    if (!maybeType) { return nullptr; }
+    
+    Type* const type = (Type*)maybeType;
+    *type = (Type){
+        .minSize = tagInt(0),
+        .align = tagInt((intptr_t)objectMinAlign),
+        .isBytes = True,
+        .isFlex = False
+    };
+    
+    return type;
+}
+
+static bool tryCreateState(State* dest, size_t heapSize) {
     Heap heap = tryCreateHeap(heapSize);
     if (!heapIsValid(&heap)) { return false; }
     
@@ -103,17 +132,26 @@ static bool tryCreateState(State* state, size_t heapSize) {
     if (!arrayTypePtr) { return false; }
     Type const* const symbolTypePtr = tryCreateSymbolType(&heap.tospace, typeTypePtr);
     if (!symbolTypePtr) { return false; }
+    Type const* const emptyListTypePtr = tryCreateEmptyListType(&heap.tospace, typeTypePtr);
+    if (!emptyListTypePtr) { return false; }
     
     SymbolTable symbols;
     if (!tryCreateSymbolTable(&symbols, &heap, arrayTypePtr)) { return false; }
+    void const* const emptyListPtr = tryAlloc(&heap.tospace, emptyListTypePtr);
     
-    *state = (State){
+    *dest = (State){
         .heap = heap,
+        
         .typeType = tagType(typeTypePtr),
         .stringType = tagType(stringTypePtr),
         .arrayType = tagType(arrayTypePtr),
         .symbolType = tagType(symbolTypePtr),
-        .symbols = symbols
+        .emptyListType = tagType(emptyListTypePtr),
+        
+        .symbols = symbols,
+        .emptyList = tagEmptyList(emptyListPtr),
+        
+        .scratchCount = 0
     };
     return true;
 }
@@ -126,6 +164,10 @@ inline static bool isString(State const* state, ORef v) {
 
 inline static bool isSymbol(State const* state, ORef v) {
     return eq(typeToORef(typeOf(v)), typeToORef(state->symbolType));
+}
+
+inline static bool isEmptyList(State const* state, ORef v) {
+    return eq(typeToORef(typeOf(v)), typeToORef(state->emptyListType));
 }
 
 static StringRef createString(State* state, Str str) {

@@ -163,3 +163,11 @@ inline static Fixnum arrayCount(ArrayRef xs) { return flexLength(arrayToORef(xs)
 
 inline static ORef* arrayToPtr(ArrayRef xs) { return (ORef*)(void*)(xs.bits & ~tag_bits); }
 
+typedef struct EmptyListRef { uintptr_t bits; } EmptyListRef;
+
+inline static EmptyListRef tagEmptyList(void const* ptr) {
+    return (EmptyListRef){(uintptr_t)ptr | heap_tag};
+}
+
+inline static ORef emptyListToORef(EmptyListRef v) { return (ORef){v.bits}; }
+

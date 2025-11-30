@@ -13,7 +13,16 @@ static bool read(State* state, ORef* dest, Parser* parser) {
     char c = *parser->curr;
     if (*parser->curr == '\0') { return false; }
     
-    if (isalpha(c)) {
+    if (c == '(') {
+        ++parser->curr;
+        
+        while (isspace(*parser->curr)) { ++parser->curr; }
+        
+        if (*parser->curr == ')') {
+            *dest = emptyListToORef(state->emptyList);
+            return true;
+        }
+    } else if (isalpha(c)) {
         StringBuilder builder = createStringBuilder();
          do {
             stringBuilderPush(&builder, c);

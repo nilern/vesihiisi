@@ -1,19 +1,28 @@
+typedef struct Parser {
+    char const* curr;
+    char const* end;
+} Parser;
+
+inline static Parser createParser(Str src) {
+    return (Parser){.curr = src.data, .end = src.data + src.len};
+}
+
 static bool read(
     Heap* heap,
     Type const* stringTypePtr, Type const* arrayType, Type const* symbolType,
     SymbolTable* symbols,
-    ORef* dest, char const* src
+    ORef* dest, Parser* parser
 ) {
-    while (isspace(*src)) { ++src; }
+    while (isspace(*parser->curr)) { ++parser->curr; }
     
-    char c = *src;
-    if (*src == '\0') { return false; }
+    char c = *parser->curr;
+    if (*parser->curr == '\0') { return false; }
     
     if (isalpha(c)) {
         StringBuilder builder = createStringBuilder();
          do {
             stringBuilderPush(&builder, c);
-            c = *++src;
+            c = *++parser->curr;
          } while (isalpha(c));
         
         *dest =
@@ -21,26 +30,26 @@ static bool read(
         freeStringBuilder(&builder); // OPTIMIZE: Reuse same builder
         return true;
     } else if (c == '#') {
-        ++src;
+        ++parser->curr;
         
-        switch (*src) {
+        switch (*parser->curr) {
         case '"':
-            ++src;
-            c = *src;
+            ++parser->curr;
+            c = *parser->curr;
             if (c == '"') { return false; }
-            ++src;
-            if (*src != '"') { return false; }
+            ++parser->curr;
+            if (*parser->curr != '"') { return false; }
             
             *dest = charToORef(tagChar(c));
             return true;
         
         case 't':
-            ++src;
+            ++parser->curr;
             *dest = boolToORef(tagBool(true));
             return true;
         
         case 'f':
-            ++src;
+            ++parser->curr;
             *dest = boolToORef(tagBool(false));
             return true;
         
@@ -52,17 +61,17 @@ static bool read(
         
         do {
             n = n * radix + (c - '0');
-            c = *++src;
+            c = *++parser->curr;
         } while (isdigit(c));
         
         *dest = fixnumToORef(tagInt(n));
         return true;
     } else if (c == '"') {
-        ++src;
+        ++parser->curr;
         
         StringBuilder builder = createStringBuilder();
         
-        for (;(c = *src) != '"'; ++src) {
+        for (;(c = *parser->curr) != '"'; ++parser->curr) {
             stringBuilderPush(&builder, c);
         }
         

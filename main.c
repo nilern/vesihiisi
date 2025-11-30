@@ -47,10 +47,12 @@ int main(int /*argc*/, char** /*argv*/) {
         printf("%s", prompt);
         
         char* line = NULL;
-        size_t len = 0;
-        if (getline(&line, &len, stdin) != -1) {
+        size_t maxLen = 0;
+        ssize_t const len = getline(&line, &maxLen, stdin);
+        if (len != -1) {
+            Parser parser = createParser((Str){line, (size_t)len});
             ORef expr;
-            if (!read(&heap, stringTypePtr, arrayType, symbolType, &symbols, &expr, line)) {
+            if (!read(&heap, stringTypePtr, arrayType, symbolType, &symbols, &expr, &parser)) {
                 puts("ParseError");
                 
                 free(line);

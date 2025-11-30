@@ -12,6 +12,8 @@ static bool tryCreateSymbolTable(SymbolTable* dest, Heap* heap, Type const* arra
     return true;
 }
 
+#define REG_COUNT 128
+
 typedef struct State {
     Heap heap;
 
@@ -21,6 +23,9 @@ typedef struct State {
     TypeRef symbolType;
     
     SymbolTable symbols;
+    
+    uint8_t scratchCount;
+    ORef regs[REG_COUNT];
 } State;
 
 static Type* tryCreateTypeType(Semispace* semispace) {

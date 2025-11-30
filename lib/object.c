@@ -25,6 +25,8 @@ inline static bool isBool(ORef oref) { return (oref.bits & tag_bits) == bool_tag
 
 inline static bool isHeaped(ORef oref) { return (oref.bits & tag_bits) == heap_tag; }
 
+static Fixnum const Zero = {0};
+
 static Bool const True = {((uintptr_t)true << tag_width) | bool_tag};
 static Bool const False = {((uintptr_t)false << tag_width) | bool_tag};
 
@@ -130,4 +132,42 @@ static Str stringStr(StringRef s) {
         .len = (size_t)fixnumToInt(flexLength(stringToORef(s)))
     };
 }
+
+typedef struct Symbol {
+    Fixnum hash;
+    char name[];
+} Symbol;
+
+typedef struct SymbolRef { uintptr_t bits; } SymbolRef;
+
+inline static SymbolRef tagSymbol(Symbol* ptr) {
+    return (SymbolRef){(uintptr_t)(void*)ptr | heap_tag};
+}
+
+inline static bool isSymbol(Type const* symbolType, ORef v) {
+    return typeToPtr(typeOf(v)) == symbolType;
+}
+
+inline static ORef symbolToORef(SymbolRef sym) { return (ORef){sym.bits}; }
+
+inline static SymbolRef uncheckedORefToSymbol(ORef v) { return (SymbolRef){v.bits}; }
+
+inline static Symbol* symbolToPtr(SymbolRef sym) { return (Symbol*)(void*)(sym.bits & ~tag_bits); }
+
+inline static Str symbolName(SymbolRef sym) {
+    return (Str){
+        .data = symbolToPtr(sym)->name,
+        .len = (uintptr_t)fixnumToInt(flexLength(symbolToORef(sym)))
+    };
+}
+
+typedef struct ArrayRef { uintptr_t bits; } ArrayRef;
+
+inline static ArrayRef tagArray(ORef* xs) { return (ArrayRef){(uintptr_t)(void*)xs | heap_tag}; }
+
+inline static ORef arrayToORef(ArrayRef xs) { return (ORef){xs.bits}; }
+
+inline static Fixnum arrayCount(ArrayRef xs) { return flexLength(arrayToORef(xs)); }
+
+inline static ORef* arrayToPtr(ArrayRef xs) { return (ORef*)(void*)(xs.bits & ~tag_bits); }
 

@@ -7,8 +7,11 @@
 #include "../lib/object.c"
 #include "../lib/heap.c"
 
-static void testBootstrap(Heap* heap) {
-    Type const* const typeTypePtr = tryCreateTypeType(&heap->tospace);
+static void testBootstrap(void) {
+    Heap heap = tryCreateHeap(1024);
+    assert(heapIsValid(&heap));
+    
+    Type const* const typeTypePtr = tryCreateTypeType(&heap.tospace);
     assert(typeTypePtr != nullptr);
     ORef const typeType = typeToORef(tagType(typeTypePtr));
     
@@ -18,7 +21,7 @@ static void testBootstrap(Heap* heap) {
     assert(!unwrapBool(typeTypePtr->isBytes));
     assert(!unwrapBool(typeTypePtr->isFlex));
     
-    Type const* const stringTypePtr = tryCreateStringType(&heap->tospace, typeTypePtr);
+    Type const* const stringTypePtr = tryCreateStringType(&heap.tospace, typeTypePtr);
     assert(stringTypePtr != nullptr);
     ORef const stringType = typeToORef(tagType(stringTypePtr));
     
@@ -27,15 +30,41 @@ static void testBootstrap(Heap* heap) {
     assert(eq(fixnumToORef(stringTypePtr->align), fixnumToORef(tagInt((intptr_t)objectMinAlign))));
     assert(unwrapBool(stringTypePtr->isBytes));
     assert(unwrapBool(stringTypePtr->isFlex));
+
+    freeHeap(&heap);
+}
+
+static void testIntern(void) {
+    Heap heap = tryCreateHeap(1024);
+    assert(heapIsValid(&heap));
+    Type const* const typeType = tryCreateTypeType(&heap.tospace);
+    assert(typeType != nullptr);
+    Type const* symbolType = tryCreateSymbolType(&heap.tospace, typeType);
+    assert(symbolType != nullptr);
+    Type const* arrayType = tryCreateArrayType(&heap.tospace, typeType);
+    assert(arrayType != nullptr);
+    SymbolTable symbols = createSymbolTable(&heap, arrayType);
+
+    char const nameChars[] = "foo";
+    Str const name = {nameChars, sizeof nameChars - 1};
+    SymbolRef const sym = intern(&heap, arrayType, symbolType, &symbols, name);
+    Symbol const* symPtr = symbolToPtr(sym);
+    
+    assert(eq(typeToORef(typeOf(symbolToORef(sym))), typeToORef(tagType(symbolType))));
+    assert(eq(fixnumToORef(symPtr->hash), fixnumToORef(tagInt((intptr_t)fnv1aHash(name)))));
+    assert(strEq(symbolName(sym), name));
+    
+    SymbolRef const dupSym = intern(&heap, arrayType, symbolType, &symbols, name);
+    
+    assert(eq(symbolToORef(dupSym), symbolToORef(sym)));
+
+    freeHeap(&heap);
 }
 
 int main(int /*argc*/, char** /*argv*/) {
-    Heap heap = tryCreateHeap(1024);
-    assert(heapIsValid(&heap));
-
-    testBootstrap(&heap);
-
-    freeHeap(&heap);
+    testBootstrap();
+    testIntern();
+    
     return EXIT_SUCCESS;
 }
 

@@ -31,6 +31,17 @@ int main(int /*argc*/, char** /*argv*/) {
         puts("Insufficient memory");
         return EXIT_FAILURE;
     }
+    Type const* arrayType = tryCreateArrayType(&heap.tospace, typeTypePtr);
+    if (!arrayType) {
+        puts("Insufficient memory");
+        return EXIT_FAILURE;
+    }
+    Type const* symbolType = tryCreateSymbolType(&heap.tospace, typeTypePtr);
+    if (!symbolType) {
+        puts("Insufficient memory");
+        return EXIT_FAILURE;
+    }
+    SymbolTable symbols = createSymbolTable(&heap, arrayType);
 
     for (;/*ever*/;) {
         printf("%s", prompt);
@@ -39,14 +50,14 @@ int main(int /*argc*/, char** /*argv*/) {
         size_t len = 0;
         if (getline(&line, &len, stdin) != -1) {
             ORef expr;
-            if (!read(&heap, stringTypePtr, &expr, line)) {
+            if (!read(&heap, stringTypePtr, arrayType, symbolType, &symbols, &expr, line)) {
                 puts("ParseError");
                 
                 free(line);
                 continue;
             }
             
-            print(stdout, stringTypePtr, expr);
+            print(stdout, stringTypePtr, symbolType, expr);
             puts("");
 
             free(line);

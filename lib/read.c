@@ -1,8 +1,26 @@
-static bool read(Heap* heap, Type const* stringTypePtr, ORef* dest, char const* src) {
-    char c = *src;
-    if (c == '\0') { return false; }
+static bool read(
+    Heap* heap,
+    Type const* stringTypePtr, Type const* arrayType, Type const* symbolType,
+    SymbolTable* symbols,
+    ORef* dest, char const* src
+) {
+    while (isspace(*src)) { ++src; }
     
-    if (c == '#') {
+    char c = *src;
+    if (*src == '\0') { return false; }
+    
+    if (isalpha(c)) {
+        StringBuilder builder = createStringBuilder();
+         do {
+            stringBuilderPush(&builder, c);
+            c = *++src;
+         } while (isalpha(c));
+        
+        *dest =
+            symbolToORef(intern(heap, arrayType, symbolType, symbols, stringBuilderStr(&builder)));
+        freeStringBuilder(&builder); // OPTIMIZE: Reuse same builder
+        return true;
+    } else if (c == '#') {
         ++src;
         
         switch (*src) {
@@ -34,8 +52,7 @@ static bool read(Heap* heap, Type const* stringTypePtr, ORef* dest, char const* 
         
         do {
             n = n * radix + (c - '0');
-            ++src;
-            c = *src;
+            c = *++src;
         } while (isdigit(c));
         
         *dest = fixnumToORef(tagInt(n));

@@ -1,7 +1,12 @@
 typedef struct Str {
-    char* data;
+    char const* data;
     size_t len;
 } Str;
+
+static bool strEq(Str s1, Str s2) {
+    return s1.len == s2.len
+        && strncmp(s1.data, s2.data, s1.len) == 0;
+}
 
 typedef struct StringBuilder {
     char* data;
@@ -39,4 +44,16 @@ static void stringBuilderPush(StringBuilder* s, char c) {
 }
 
 inline static void freeStringBuilder(StringBuilder* s) { free(s->data); }
+
+// FIXME: Replace with SipHash to prevent DoS attacks:
+static uint64_t fnv1aHash(Str s) {
+    uint64_t hash = 14695981039346656037u;
+    
+    for (size_t i = 0; i < s.len; ++i) {
+        hash ^= (uint8_t)s.data[i];
+        hash *= 1099511628211 ;
+    }
+    
+    return hash;
+}
 

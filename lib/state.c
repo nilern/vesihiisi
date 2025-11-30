@@ -1,3 +1,28 @@
+typedef struct SymbolTable {
+    ArrayRef entries;
+    Fixnum count;
+} SymbolTable;
+
+static bool tryCreateSymbolTable(SymbolTable* dest, Heap* heap, Type const* arrayType) {
+    Fixnum const count = tagInt(2);
+    ORef* const entries = tryAllocFlex(&heap->tospace, arrayType, count);
+    if (!entries) { return false; }
+    
+    *dest = (SymbolTable){tagArray(entries), count};
+    return true;
+}
+
+typedef struct State {
+    Heap heap;
+
+    TypeRef typeType;
+    TypeRef stringType;
+    TypeRef arrayType;
+    TypeRef symbolType;
+    
+    SymbolTable symbols;
+} State;
+
 static Type* tryCreateTypeType(Semispace* semispace) {
     Type const bootstrapTypeType = {
         .minSize = tagInt((intptr_t)sizeof(Type)),
@@ -61,8 +86,46 @@ static Type* tryCreateArrayType(Semispace* semispace, Type const* typeType) {
     return type;
 }
 
-static StringRef createString(Heap* heap, Type const* stringType, Str str) {
-    char* const stringPtr = tryAllocFlex(&heap->tospace, stringType, tagInt((intptr_t)str.len));
+static bool tryCreateState(State* state, size_t heapSize) {
+    Heap heap = tryCreateHeap(heapSize);
+    if (!heapIsValid(&state->heap)) { return false; }
+    
+    Type const* const typeTypePtr = tryCreateTypeType(&heap.tospace);
+    if (!typeTypePtr) { return false; }
+    Type const* const stringTypePtr = tryCreateStringType(&heap.tospace, typeTypePtr);
+    if (!stringTypePtr) { return false; }
+    Type const* const arrayTypePtr = tryCreateArrayType(&heap.tospace, typeTypePtr);
+    if (!arrayTypePtr) { return false; }
+    Type const* const symbolTypePtr = tryCreateSymbolType(&heap.tospace, typeTypePtr);
+    if (!symbolTypePtr) { return false; }
+    
+    SymbolTable symbols;
+    if (!tryCreateSymbolTable(&symbols, &heap, arrayTypePtr)) { return false; }
+    
+    *state = (State){
+        .heap = heap,
+        .typeType = tagType(typeTypePtr),
+        .stringType = tagType(stringTypePtr),
+        .arrayType = tagType(arrayTypePtr),
+        .symbolType = tagType(symbolTypePtr),
+        .symbols = symbols
+    };
+    return true;
+}
+
+inline static void freeState(State* state) { freeHeap(&state->heap); }
+
+inline static bool isString(State const* state, ORef v) {
+    return eq(typeToORef(typeOf(v)), typeToORef(state->stringType));
+}
+
+inline static bool isSymbol(State const* state, ORef v) {
+    return eq(typeToORef(typeOf(v)), typeToORef(state->symbolType));
+}
+
+static StringRef createString(State* state, Str str) {
+    char* const stringPtr =
+        tryAllocFlex(&state->heap.tospace, typeToPtr(state->stringType), tagInt((intptr_t)str.len));
     if (!stringPtr) { assert(false); } // TODO: Collect garbage here
     
     memcpy(stringPtr, str.data, str.len);
@@ -70,33 +133,22 @@ static StringRef createString(Heap* heap, Type const* stringType, Str str) {
     return tagString(stringPtr);
 }
 
-static ArrayRef createArray(Heap* heap, Type const* arrayType, Fixnum count) {
-    ORef* const ptr = tryAllocFlex(&heap->tospace, arrayType, count);
+static ArrayRef createArray(State* state, Fixnum count) {
+    ORef* const ptr = tryAllocFlex(&state->heap.tospace, typeToPtr(state->arrayType), count);
     if (!ptr) { assert(false); } // TODO: Collect garbage here
     
     return tagArray(ptr);
 }
 
-static SymbolRef createUninternedSymbol(Heap* heap, Type const* symbolType, Fixnum hash, Str name) {
-    Symbol* const ptr = tryAllocFlex(&heap->tospace, symbolType, tagInt((intptr_t)name.len));
+static SymbolRef createUninternedSymbol(State* state, Fixnum hash, Str name) {
+    Symbol* const ptr = tryAllocFlex(
+        &state->heap.tospace, typeToPtr(state->symbolType), tagInt((intptr_t)name.len));
     if (!ptr) { assert(false); } // TODO: Collect garbage here
     
     ptr->hash = hash;
     memcpy(ptr->name, name.data, name.len);
     
     return tagSymbol(ptr);
-}
-
-typedef struct SymbolTable {
-    ArrayRef entries;
-    Fixnum count;
-} SymbolTable;
-
-static SymbolTable createSymbolTable(Heap* heap, Type const* arrayType) {
-    Fixnum const count = tagInt(2);
-    ArrayRef const entries = createArray(heap, arrayType, count);
-    
-    return (SymbolTable){entries, count};
 }
 
 inline static Fixnum hashStr(Str s) { return tagInt((intptr_t)fnv1aHash(s)); }
@@ -125,14 +177,14 @@ static IndexOfSymbolRes indexOfSymbol(SymbolTable const* symbols, Fixnum hash, S
     }
 }
 
-static void rehashSymbols(Heap* heap, Type const* arrayType, SymbolTable* symbols) {
-    Fixnum const oldCapRef = arrayCount(symbols->entries);
+static void rehashSymbols(State* state) {
+    Fixnum const oldCapRef = arrayCount(state->symbols.entries);
     size_t const oldCap = (uintptr_t)fixnumToInt(oldCapRef);
     size_t const newCap = oldCap << 1;
-    ArrayRef const newEntries = createArray(heap, arrayType, tagInt((intptr_t)newCap));
+    ArrayRef const newEntries = createArray(state, tagInt((intptr_t)newCap));
 
     for (size_t i = 0; i < oldCap; ++i) {
-        ORef const v = arrayToPtr(symbols->entries)[i];
+        ORef const v = arrayToPtr(state->symbols.entries)[i];
         if (!eq(v, fixnumToORef(Zero))) {
             size_t const h = (uintptr_t)fixnumToInt(symbolToPtr(uncheckedORefToSymbol(v))->hash);
         
@@ -149,28 +201,26 @@ static void rehashSymbols(Heap* heap, Type const* arrayType, SymbolTable* symbol
         }
     }
     
-    symbols->entries = newEntries;
+    state->symbols.entries = newEntries;
 }
 
 // `name` must not point into GC heap:
-static SymbolRef intern(
-    Heap* heap, Type const* arrayType, Type const* symbolType, SymbolTable* symbols, Str name
-) {
+static SymbolRef intern(State* state, Str name) {
     Fixnum const hash = hashStr(name);
     
-    IndexOfSymbolRes ires = indexOfSymbol(symbols, hash, name);
+    IndexOfSymbolRes ires = indexOfSymbol(&state->symbols, hash, name);
     if (ires.exists) {
-        return uncheckedORefToSymbol(arrayToPtr(symbols->entries)[ires.index]);;
+        return uncheckedORefToSymbol(arrayToPtr(state->symbols.entries)[ires.index]);;
     } else {
-        size_t const newCount = (uintptr_t)fixnumToInt(symbols->count) + 1;
-        size_t const capacity = (uintptr_t)fixnumToInt(arrayCount(symbols->entries));
+        size_t const newCount = (uintptr_t)fixnumToInt(state->symbols.count) + 1;
+        size_t const capacity = (uintptr_t)fixnumToInt(arrayCount(state->symbols.entries));
         if (capacity >> 1 < newCount) {
-            rehashSymbols(heap, arrayType, symbols);
-            ires = indexOfSymbol(symbols, hash, name);
+            rehashSymbols(state);
+            ires = indexOfSymbol(&state->symbols, hash, name);
         }
         
-        SymbolRef const symbol = createUninternedSymbol(heap, symbolType, hash, name);
-        arrayToPtr(symbols->entries)[ires.index] = symbolToORef(symbol);
+        SymbolRef const symbol = createUninternedSymbol(state, hash, name);
+        arrayToPtr(state->symbols.entries)[ires.index] = symbolToORef(symbol);
         return symbol;
     }
 }

@@ -116,10 +116,6 @@ inline static Fixnum flexLength(ORef v) {
 
 typedef struct StringRef { uintptr_t bits; } StringRef;
 
-inline static bool isString(Type const* stringType, ORef v) {
-    return typeToPtr(typeOf(v)) == stringType;
-}
-
 inline static StringRef tagString(char* s) { return (StringRef){(uintptr_t)(void*)s | heap_tag}; }
 
 inline static ORef stringToORef(StringRef s) { return (ORef){s.bits}; }
@@ -142,10 +138,6 @@ typedef struct SymbolRef { uintptr_t bits; } SymbolRef;
 
 inline static SymbolRef tagSymbol(Symbol* ptr) {
     return (SymbolRef){(uintptr_t)(void*)ptr | heap_tag};
-}
-
-inline static bool isSymbol(Type const* symbolType, ORef v) {
-    return typeToPtr(typeOf(v)) == symbolType;
 }
 
 inline static ORef symbolToORef(SymbolRef sym) { return (ORef){sym.bits}; }

@@ -7,12 +7,7 @@ inline static Parser createParser(Str src) {
     return (Parser){.curr = src.data, .end = src.data + src.len};
 }
 
-static bool read(
-    Heap* heap,
-    Type const* stringTypePtr, Type const* arrayType, Type const* symbolType,
-    SymbolTable* symbols,
-    ORef* dest, Parser* parser
-) {
+static bool read(State* state, ORef* dest, Parser* parser) {
     while (isspace(*parser->curr)) { ++parser->curr; }
     
     char c = *parser->curr;
@@ -25,8 +20,7 @@ static bool read(
             c = *++parser->curr;
          } while (isalpha(c));
         
-        *dest =
-            symbolToORef(intern(heap, arrayType, symbolType, symbols, stringBuilderStr(&builder)));
+        *dest = symbolToORef(intern(state, stringBuilderStr(&builder)));
         freeStringBuilder(&builder); // OPTIMIZE: Reuse same builder
         return true;
     } else if (c == '#') {
@@ -75,7 +69,7 @@ static bool read(
             stringBuilderPush(&builder, c);
         }
         
-        *dest = stringToORef(createString(heap, stringTypePtr, stringBuilderStr(&builder)));
+        *dest = stringToORef(createString(state, stringBuilderStr(&builder)));
         freeStringBuilder(&builder); // OPTIMIZE: Reuse same builder
         return true;
     }

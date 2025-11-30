@@ -17,32 +17,11 @@
 static const char prompt[] = "vesihiisi> ";
 
 int main(int /*argc*/, char** /*argv*/) {
-    Heap heap = tryCreateHeap(1024*1024);
-    if (!heapIsValid(&heap)) {
+    State state;
+    if (!tryCreateState(&state, 1024*1024)) {
         puts("Insufficient memory");
         return EXIT_FAILURE;
     }
-    Type const* typeTypePtr = tryCreateTypeType(&heap.tospace);
-    if (!typeTypePtr) {
-        puts("Insufficient memory");
-        return EXIT_FAILURE;
-    }
-    Type const* stringTypePtr = tryCreateStringType(&heap.tospace, typeTypePtr);
-    if (!stringTypePtr) {
-        puts("Insufficient memory");
-        return EXIT_FAILURE;
-    }
-    Type const* arrayType = tryCreateArrayType(&heap.tospace, typeTypePtr);
-    if (!arrayType) {
-        puts("Insufficient memory");
-        return EXIT_FAILURE;
-    }
-    Type const* symbolType = tryCreateSymbolType(&heap.tospace, typeTypePtr);
-    if (!symbolType) {
-        puts("Insufficient memory");
-        return EXIT_FAILURE;
-    }
-    SymbolTable symbols = createSymbolTable(&heap, arrayType);
 
     for (;/*ever*/;) {
         printf("%s", prompt);
@@ -53,14 +32,14 @@ int main(int /*argc*/, char** /*argv*/) {
         if (len != -1) {
             Parser parser = createParser((Str){line, (size_t)len});
             ORef expr;
-            if (!read(&heap, stringTypePtr, arrayType, symbolType, &symbols, &expr, &parser)) {
+            if (!read(&state, &expr, &parser)) {
                 puts("ParseError");
                 
                 free(line);
                 continue;
             }
             
-            print(stdout, stringTypePtr, symbolType, expr);
+            print(&state, stdout, expr);
             puts("");
 
             free(line);
@@ -72,7 +51,7 @@ int main(int /*argc*/, char** /*argv*/) {
         }
     }
 
-    freeHeap(&heap);
+    freeState(&state);
     return EXIT_SUCCESS;
 }
 

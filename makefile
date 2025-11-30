@@ -1,14 +1,14 @@
 .PHONY: all
 all: vesihiisi
 
-vesihiisi: main.c lib/object.c lib/heap.c lib/read.c lib/print.c
+vesihiisi: main.c lib/util.c lib/object.c lib/heap.c lib/state.c lib/read.c lib/print.c
 	cc -std=c2x -Werror -Wall -Wextra -Wpedantic -Wconversion -o $@ $<
 
 .PHONY: test
 test: test/test_heap
 	./test/test_heap
 
-test/test_heap: test/test_heap.c lib/heap.c
+test/test_heap: test/test_heap.c lib/util.c lib/object.c lib/heap.c lib/state.c
 	cc -std=c2x -Wall -Wextra -Wpedantic -Wconversion -g -o $@ $<
 
 .PHONY: clean

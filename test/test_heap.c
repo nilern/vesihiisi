@@ -6,6 +6,7 @@
 #include "../lib/util.c"
 #include "../lib/object.c"
 #include "../lib/heap.c"
+#include "../lib/state.c"
 
 static void testBootstrap(void) {
     Heap heap = tryCreateHeap(1024);

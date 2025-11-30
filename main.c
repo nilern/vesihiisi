@@ -10,6 +10,7 @@
 #include "lib/util.c"
 #include "lib/object.c"
 #include "lib/heap.c"
+#include "lib/state.c"
 #include "lib/read.c"
 #include "lib/print.c"
 

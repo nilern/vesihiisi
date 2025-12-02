@@ -22,6 +22,12 @@ static bool read(State* state, ORef* dest, Parser* parser) {
             *dest = emptyListToORef(state->emptyList);
             return true;
         }
+        
+        ORef const car;
+        if (!read(state, car, parser)) { return false;}
+        pairToPtr(*pairHandle)->car = car;
+        
+        ...
     } else if (isalpha(c)) {
         StringBuilder builder = createStringBuilder();
          do {

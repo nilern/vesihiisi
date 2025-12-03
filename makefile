@@ -1,7 +1,7 @@
 TEST_FLAGS := -std=c2x -Wall -Wextra -Wpedantic -Wconversion
 BASE_FLAGS := $(TEST_FLAGS) -Werror
 DEBUG_FLAGS := -g
-OPT_FLAGS := -O2
+OPT_FLAGS := -O2 -DNDEBUG
 
 LIB_SRCS := $(shell find lib -name '*.c')
 

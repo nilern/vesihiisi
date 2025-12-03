@@ -14,7 +14,7 @@ static void testBootstrap(void) {
     
     TypeRef const typeType = state.typeType;
     Type const* typeTypePtr = typeToPtr(typeType);
-    assert(eq(typeToORef(typeOf(typeToORef(typeType))), typeToORef(typeType)));
+    assert(eq(typeToORef(typeOf(&state, typeToORef(typeType))), typeToORef(typeType)));
     assert(eq(fixnumToORef(typeTypePtr->minSize), fixnumToORef(tagInt(sizeof(Type)))));
     assert(eq(fixnumToORef(typeTypePtr->align), fixnumToORef(tagInt(alignof(Type)))));
     assert(!unwrapBool(typeTypePtr->isBytes));
@@ -22,7 +22,7 @@ static void testBootstrap(void) {
     
     TypeRef const stringType = state.stringType;
     Type const* stringTypePtr = typeToPtr(stringType);
-    assert(eq(typeToORef(typeOf(typeToORef(stringType))), typeToORef(typeType)));
+    assert(eq(typeToORef(typeOf(&state, typeToORef(stringType))), typeToORef(typeType)));
     assert(eq(fixnumToORef(stringTypePtr->minSize), fixnumToORef(tagInt(0))));
     assert(eq(fixnumToORef(stringTypePtr->align), fixnumToORef(tagInt((intptr_t)objectMinAlign))));
     assert(unwrapBool(stringTypePtr->isBytes));
@@ -40,7 +40,7 @@ static void testIntern(void) {
     SymbolRef const sym = intern(&state, name);
     Symbol const* symPtr = symbolToPtr(sym);
     
-    assert(eq(typeToORef(typeOf(symbolToORef(sym))), typeToORef(state.symbolType)));
+    assert(eq(typeToORef(typeOf(&state, symbolToORef(sym))), typeToORef(state.symbolType)));
     assert(eq(fixnumToORef(symPtr->hash), fixnumToORef(tagInt((intptr_t)fnv1aHash(name)))));
     assert(strEq(symbolName(sym), name));
     

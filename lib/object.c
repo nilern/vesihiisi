@@ -1,5 +1,13 @@
 static_assert(sizeof(void*) == sizeof(uint64_t)); // Only 64-bit supported (for now)
 
+typedef enum Tag {
+    TAG_FIXNUM = 0b000,
+    TAG_FLONUM = 0b100,
+    TAG_CHAR = 0b010,
+    TAG_BOOL = 0b110,
+    TAG_HEAPED = 0b001
+} Tag;
+
 typedef struct ORef { uintptr_t bits; } ORef;
 
 typedef struct Fixnum { uintptr_t bits; } Fixnum;
@@ -11,24 +19,22 @@ typedef struct Bool { uintptr_t bits; } Bool;
 static uintptr_t const tag_width = 3;
 static uintptr_t const tag_bits = (1 << tag_width) - 1; // `tag_width` ones
 
-static uintptr_t const char_tag = 0b010;
-static uintptr_t const bool_tag = 0b110;
-static uintptr_t const heap_tag = 0b001;
+inline static Tag getTag(ORef v) { return (Tag)(v.bits & tag_bits); }
 
 inline static bool eq(ORef x, ORef y) { return x.bits == y.bits; }
 
-inline static bool isFixnum(ORef oref) { return !(oref.bits & tag_bits); }
+inline static bool isFixnum(ORef v) { return getTag(v) == TAG_FIXNUM; }
 
-inline static bool isChar(ORef oref) { return (oref.bits & tag_bits) == char_tag; }
+inline static bool isChar(ORef v) { return getTag(v) == TAG_CHAR; }
 
-inline static bool isBool(ORef oref) { return (oref.bits & tag_bits) == bool_tag; }
+inline static bool isBool(ORef v) { return getTag(v) == TAG_BOOL; }
 
-inline static bool isHeaped(ORef oref) { return (oref.bits & tag_bits) == heap_tag; }
+inline static bool isHeaped(ORef v) { return getTag(v) == TAG_HEAPED; }
 
 static Fixnum const Zero = {0};
 
-static Bool const True = {((uintptr_t)true << tag_width) | bool_tag};
-static Bool const False = {((uintptr_t)false << tag_width) | bool_tag};
+static Bool const True = {((uintptr_t)true << tag_width) | (uintptr_t)TAG_BOOL};
+static Bool const False = {((uintptr_t)false << tag_width) | (uintptr_t)TAG_BOOL};
 
 inline static ORef boolToORef(Bool b) { return (ORef){b.bits}; }
 
@@ -45,11 +51,15 @@ inline static intptr_t uncheckedFixnumToInt(ORef v) { return (intptr_t)v.bits >>
 
 inline static ORef charToORef(Char c) { return (ORef){c.bits}; }
 
-inline static Char tagChar(char c) { return (Char){((uintptr_t)c << tag_width) | char_tag}; }
+inline static Char tagChar(char c) {
+    return (Char){((uintptr_t)c << tag_width) | (uintptr_t)TAG_CHAR};
+}
 
 inline static char uncheckedORefToChar(ORef v) { return (char)(v.bits >> tag_width); }
 
-inline static Bool tagBool(bool b) { return (Bool){((uintptr_t)b << tag_width) | bool_tag}; }
+inline static Bool tagBool(bool b) {
+    return (Bool){((uintptr_t)b << tag_width) | (uintptr_t)TAG_BOOL};
+}
 
 inline static bool unwrapBool(Bool b) { return (bool)(b.bits >> tag_width); }
 
@@ -69,21 +79,23 @@ typedef struct Type {
 typedef struct TypeRef { uintptr_t bits; } TypeRef;
 
 inline static TypeRef tagType(Type const* type) {
-    return (TypeRef){(uintptr_t)(void*)type  | heap_tag};
+    return (TypeRef){(uintptr_t)(void*)type  | (uintptr_t)TAG_HEAPED};
 }
 
 inline static Type* typeToPtr(TypeRef type) { return (Type*)(void*)(type.bits & ~tag_bits); }
 
 inline static ORef typeToORef(TypeRef type) { return (ORef){type.bits}; }
 
+inline static TypeRef uncheckedORefToTypeRef(ORef v) { return (TypeRef){v.bits}; }
+
 typedef struct Header { uintptr_t bits; } Header;
 
 inline static Header fixedHeader(Type const* type) {
-    return (Header){(uintptr_t)(void*)type | heap_tag};
+    return (Header){(uintptr_t)(void*)type | (uintptr_t)TAG_HEAPED};
 }
 
 inline static TypeRef headerType(Header header) {
-    return (TypeRef){(header.bits & ~tag_bits) | heap_tag};
+    return (TypeRef){(header.bits & ~tag_bits) | (uintptr_t)TAG_HEAPED};
 }
 
 typedef struct FlexHeader {
@@ -95,27 +107,18 @@ inline static FlexHeader flexHeader(Fixnum length, Type const* type) {
     return (FlexHeader){length, fixedHeader(type)};
 }
 
-static TypeRef typeOf(ORef oref) {
-    void* const ptr = tryORefToPtr(oref);
-    if (ptr) {
-        return headerType(*((Header*)ptr - 1));
-    } else {
-        assert(false); // FIXME
-    }
-}
-
 static const size_t objectMinAlign = alignof(Header);
 
 inline static Fixnum flexLength(ORef v) {
-    assert(unwrapBool(typeToPtr(typeOf(v))->isFlex));
-    
     void* const ptr = uncheckedORefToPtr(v);
     return ((FlexHeader*)ptr - 1)->length;
 }
 
 typedef struct StringRef { uintptr_t bits; } StringRef;
 
-inline static StringRef tagString(char* s) { return (StringRef){(uintptr_t)(void*)s | heap_tag}; }
+inline static StringRef tagString(char* s) {
+    return (StringRef){(uintptr_t)(void*)s | (uintptr_t)TAG_HEAPED};
+}
 
 inline static ORef stringToORef(StringRef s) { return (ORef){s.bits}; }
 
@@ -136,7 +139,7 @@ typedef struct Symbol {
 typedef struct SymbolRef { uintptr_t bits; } SymbolRef;
 
 inline static SymbolRef tagSymbol(Symbol* ptr) {
-    return (SymbolRef){(uintptr_t)(void*)ptr | heap_tag};
+    return (SymbolRef){(uintptr_t)(void*)ptr | (uintptr_t)TAG_HEAPED};
 }
 
 inline static ORef symbolToORef(SymbolRef sym) { return (ORef){sym.bits}; }
@@ -154,7 +157,9 @@ inline static Str symbolName(SymbolRef sym) {
 
 typedef struct ArrayRef { uintptr_t bits; } ArrayRef;
 
-inline static ArrayRef tagArray(ORef* xs) { return (ArrayRef){(uintptr_t)(void*)xs | heap_tag}; }
+inline static ArrayRef tagArray(ORef* xs) {
+    return (ArrayRef){(uintptr_t)(void*)xs | (uintptr_t)TAG_HEAPED};
+}
 
 inline static ORef arrayToORef(ArrayRef xs) { return (ORef){xs.bits}; }
 
@@ -173,14 +178,16 @@ inline static PairRef uncheckedORefToPair(ORef v) { return (PairRef){v.bits}; }
 
 inline static Pair* pairToPtr(PairRef pair) { return (Pair*)(void*)(pair.bits & ~tag_bits); }
 
-inline static PairRef tagPair(Pair* ptr) { return (PairRef){(uintptr_t)(void*)ptr | heap_tag}; }
+inline static PairRef tagPair(Pair* ptr) {
+    return (PairRef){(uintptr_t)(void*)ptr | (uintptr_t)TAG_HEAPED};
+}
 
 inline static ORef pairToORef(PairRef pair) { return (ORef){pair.bits}; }
 
 typedef struct EmptyListRef { uintptr_t bits; } EmptyListRef;
 
 inline static EmptyListRef tagEmptyList(void const* ptr) {
-    return (EmptyListRef){(uintptr_t)ptr | heap_tag};
+    return (EmptyListRef){(uintptr_t)ptr | (uintptr_t)TAG_HEAPED};
 }
 
 inline static ORef emptyListToORef(EmptyListRef v) { return (ORef){v.bits}; }

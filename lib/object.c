@@ -163,6 +163,21 @@ inline static Fixnum arrayCount(ArrayRef xs) { return flexLength(arrayToORef(xs)
 
 inline static ORef* arrayToPtr(ArrayRef xs) { return (ORef*)(void*)(xs.bits & ~tag_bits); }
 
+typedef struct Pair {
+    ORef car;
+    ORef cdr;
+} Pair;
+
+typedef struct PairRef { uintptr_t bits; } PairRef;
+
+inline static PairRef uncheckedORefToPair(ORef v) { return (PairRef){v.bits}; }
+
+inline static Pair* pairToPtr(PairRef pair) { return (Pair*)(void*)(pair.bits & ~tag_bits); }
+
+inline static PairRef tagPair(Pair* ptr) { return (PairRef){(uintptr_t)(void*)ptr | heap_tag}; }
+
+inline static ORef pairToORef(PairRef pair) { return (ORef){pair.bits}; }
+
 typedef struct EmptyListRef { uintptr_t bits; } EmptyListRef;
 
 inline static EmptyListRef tagEmptyList(void const* ptr) {

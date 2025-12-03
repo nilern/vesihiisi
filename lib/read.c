@@ -14,20 +14,61 @@ static bool read(State* state, ORef* dest, Parser* parser) {
     if (*parser->curr == '\0') { return false; }
     
     if (c == '(') {
-        ++parser->curr;
+        ++parser->curr; // Discard '('
         
-        while (isspace(*parser->curr)) { ++parser->curr; }
+        while (isspace(*parser->curr)) { ++parser->curr; } // Skip whitespace
         
-        if (*parser->curr == ')') {
+        if (*parser->curr == ')') { // Empty list
+            ++parser->curr; // Discard ')'
             *dest = emptyListToORef(state->emptyList);
             return true;
         }
         
-        ORef const car;
-        if (!read(state, car, parser)) { return false;}
+        PairRef const firstPair = allocPair(state);
+        PairRef* const pairHandle = (PairRef*)pushTmp(state, pairToORef(firstPair));
+        pushTmp(state, pairToORef(firstPair));
+        
+        // <expr>
+        ORef car;
+        if (!read(state, &car, parser)) { return false;}
         pairToPtr(*pairHandle)->car = car;
         
-        ...
+        while (isspace(*parser->curr)) { ++parser->curr; } // Skip whitespace
+        
+        while (*parser->curr != ')') {
+            if (*parser->curr != '.') {
+                PairRef const newPair = allocPair(state);
+                pairToPtr(*pairHandle)->cdr = pairToORef(newPair);
+                *pairHandle = newPair;
+                
+                // <expr>
+                ORef car;
+                if (!read(state, &car, parser)) { return false;}
+                pairToPtr(*pairHandle)->car = car;
+            } else { // '.' <expr>
+                ++parser->curr; // Discard '.'
+                
+                ORef cdr;
+                if (!read(state, &cdr, parser)) { return false;}
+                pairToPtr(*pairHandle)->cdr = cdr;
+        
+                while (isspace(*parser->curr)) { ++parser->curr; } // Skip whitespace
+                
+                if (*parser->curr != ')') { return false; }
+                ++parser->curr; // Discard ')'
+                *dest = popTmp(state);
+                return true;
+            }
+            
+            while (isspace(*parser->curr)) { ++parser->curr; } // Skip whitespace
+        }
+        
+        ++parser->curr; // Discard ')'
+        
+        pairToPtr(*pairHandle)->cdr = emptyListToORef(state->emptyList);
+        *dest = popTmp(state);
+        popTmp(state);
+        return true;
     } else if (isalpha(c)) {
         StringBuilder builder = createStringBuilder();
          do {

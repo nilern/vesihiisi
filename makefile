@@ -1,8 +1,13 @@
 .PHONY: all
-all: vesihiisi
+all: prod
 
-vesihiisi: main.c lib/util.c lib/object.c lib/heap.c lib/state.c lib/read.c lib/print.c
-	cc -std=c2x -Werror -Wall -Wextra -Wpedantic -Wconversion -o $@ $<
+.PHONY: prod
+prod: main.c lib/util.c lib/object.c lib/heap.c lib/state.c lib/read.c lib/print.c
+	cc -std=c2x -Werror -Wall -Wextra -Wpedantic -Wconversion -O2 -o vesihiisi $<
+
+.PHONY: dev
+dev: main.c lib/util.c lib/object.c lib/heap.c lib/state.c lib/read.c lib/print.c
+	cc -std=c2x -Werror -Wall -Wextra -Wpedantic -Wconversion -g -o vesihiisi $<
 
 .PHONY: test
 test: test/test_heap

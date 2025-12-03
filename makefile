@@ -1,23 +1,35 @@
+TEST_FLAGS := -std=c2x -Wall -Wextra -Wpedantic -Wconversion
+BASE_FLAGS := $(TEST_FLAGS) -Werror
+DEBUG_FLAGS := -g
+OPT_FLAGS := -O2
+
+LIB_SRCS := $(shell find lib -name '*.c')
+
 .PHONY: all
-all: prod
+all: vesihiisi
 
 .PHONY: prod
-prod: main.c lib/util.c lib/object.c lib/heap.c lib/state.c lib/read.c lib/print.c
-	cc -std=c2x -Werror -Wall -Wextra -Wpedantic -Wconversion -O2 -o vesihiisi $<
+prod: vesihiisi
 
 .PHONY: dev
-dev: main.c lib/util.c lib/object.c lib/heap.c lib/state.c lib/read.c lib/print.c
-	cc -std=c2x -Werror -Wall -Wextra -Wpedantic -Wconversion -g -o vesihiisi $<
+dev: vesihiisi-dev
 
 .PHONY: test
 test: test/test_heap
 	./test/test_heap
 
-test/test_heap: test/test_heap.c lib/util.c lib/object.c lib/heap.c lib/state.c
-	cc -std=c2x -Wall -Wextra -Wpedantic -Wconversion -g -o $@ $<
+vesihiisi: main.c $(LIB_SRCS)
+	cc $(BASE_FLAGS) $(OPT_FLAGS) -o $@ $<
+
+vesihiisi-dev: main.c $(LIB_SRCS)
+	cc $(BASE_FLAGS) $(DEBUG_FLAGS) -o $@ $<
+
+test/test_heap: test/test_heap.c $(LIB_SRCS)
+	cc $(TEST_FLAGS) $(DEBUG_FLAGS) -o $@ $<
 
 .PHONY: clean
 clean:
 	rm -f vesihiisi
+	rm -f vesihiisi-dev
 	rm -f test/test_heap
 

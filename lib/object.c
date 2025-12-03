@@ -95,7 +95,6 @@ inline static FlexHeader flexHeader(Fixnum length, Type const* type) {
     return (FlexHeader){length, fixedHeader(type)};
 }
 
-[[maybe_unused]] // FIXME
 static TypeRef typeOf(ORef oref) {
     void* const ptr = tryORefToPtr(oref);
     if (ptr) {

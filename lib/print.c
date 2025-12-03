@@ -57,6 +57,7 @@ static void print(State const* state, FILE* dest, ORef v) {
         } else  {
             assert(false); // FIXME
         }
+        break;
     }
 }
 

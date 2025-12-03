@@ -13,6 +13,7 @@
 #include "lib/state.c"
 #include "lib/read.c"
 #include "lib/print.c"
+#include "lib/compiler.c"
 
 static const char prompt[] = "vesihiisi> ";
 
@@ -40,7 +41,14 @@ int main(int /*argc*/, char** /*argv*/) {
             }
             
             print(&state, stdout, expr);
+            puts("\n");
+            
+            Compiler compiler = createCompiler();
+            IRFn irFn = topLevelExprToIR(&state, &compiler, expr);
+            printIRFn(&state, stdout, &compiler, &irFn);
             puts("");
+            freeIRFn(&irFn);
+            freeCompiler(&compiler);
 
             free(line);
         } else {

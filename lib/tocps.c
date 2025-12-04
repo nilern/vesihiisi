@@ -1,3 +1,10 @@
+static IRName constToCPS(Compiler* compiler, IRFn* fn, IRBlock* block, ORef expr) {
+    IRName const name = freshName(compiler);
+    IRConst const c = fnConst(fn, expr);
+    pushIRStmt(block, constDefToStmt((ConstDef){name, c}));
+    return name;
+}
+
 static IRFn topLevelExprToIR(State const* state, Compiler* compiler, ORef expr) {
     IRFn fn = createIRFn();
 
@@ -17,9 +24,9 @@ static IRFn topLevelExprToIR(State const* state, Compiler* compiler, ORef expr) 
     }
 
     // Else a constant:
-    IRContinue* continueTransfer = createIRContinue(entryBlock, ret, 1);
-    IRAtom const c = fnConst(&fn, expr);
-    irContinuePushArg(continueTransfer, c);
+    IRReturn* retTransfer = createIRReturn(entryBlock, ret, 1);
+    IRName const cName = constToCPS(compiler, &fn, entryBlock, expr);
+    irReturnPushArg(retTransfer, cName);
 
     return fn;
 }

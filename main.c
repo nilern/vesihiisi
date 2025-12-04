@@ -14,6 +14,7 @@
 #include "lib/read.c"
 #include "lib/print.c"
 #include "lib/compiler.c"
+#include "lib/tocps.c"
 
 static const char prompt[] = "vesihiisi> ";
 

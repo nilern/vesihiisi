@@ -57,7 +57,9 @@ static void freeStmt(IRStmt* stmt) {
     }
 }
 
-inline static IRStmt constDefToStmt(ConstDef cdef) { return (IRStmt){STMT_CONST_DEF, {cdef}}; }
+inline static IRStmt constDefToStmt(ConstDef cdef) {
+    return (IRStmt){STMT_CONST_DEF, {.constDef = cdef}};
+}
 
 typedef enum IRTransferType {
     TRANSFER_RETURN

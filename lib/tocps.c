@@ -18,8 +18,7 @@ static IRName constToCPS(Compiler* compiler, IRFn* fn, IRBlock* block, ORef expr
 
     switch (k.type) {
     case TO_CPS_CONT_RETURN:
-        IRReturn* retTransfer = createIRReturn(block, k.ret.cont, 1);
-        irReturnPushArg(retTransfer, name);
+        createIRReturn(block, k.ret.cont, name);
         break;
     }
 

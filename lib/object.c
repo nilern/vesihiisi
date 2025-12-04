@@ -167,6 +167,20 @@ inline static Fixnum arrayCount(ArrayRef xs) { return flexLength(arrayToORef(xs)
 
 inline static ORef* arrayToPtr(ArrayRef xs) { return (ORef*)(void*)(xs.bits & ~tag_bits); }
 
+typedef struct ByteArrayRef { uintptr_t bits; } ByteArrayRef;
+
+inline static ByteArrayRef tagByteArray(uint8_t* bs) {
+    return (ByteArrayRef){(uintptr_t)(void*)bs | (uintptr_t)TAG_HEAPED};
+}
+
+inline static ORef byteArrayToORef(ByteArrayRef bs) { return (ORef){bs.bits}; }
+
+inline static Fixnum byteArrayCount(ByteArrayRef bs) { return flexLength(byteArrayToORef(bs)); }
+
+inline static uint8_t* byteArrayToPtr(ByteArrayRef bs) {
+    return (uint8_t*)(void*)(bs.bits & ~tag_bits);
+}
+
 typedef struct Pair {
     ORef car;
     ORef cdr;
@@ -192,3 +206,15 @@ inline static EmptyListRef tagEmptyList(void const* ptr) {
 
 inline static ORef emptyListToORef(EmptyListRef v) { return (ORef){v.bits}; }
 
+typedef struct Method {
+    ByteArrayRef code;
+    ArrayRef consts;
+} Method;
+
+typedef struct MethodRef { uintptr_t bits; } MethodRef;
+
+inline static MethodRef tagMethod(Method* ptr) {
+    return (MethodRef){(uintptr_t)(void*)ptr | (uintptr_t)TAG_HEAPED};
+}
+
+inline static Method* methodToPtr(MethodRef v) { return (Method*)(void*)(v.bits & ~tag_bits); }

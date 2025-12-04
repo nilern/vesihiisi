@@ -20,9 +20,11 @@ typedef struct State {
     TypeRef typeType;
     TypeRef stringType;
     TypeRef arrayType;
+    TypeRef byteArrayType;
     TypeRef symbolType;
     TypeRef pairType;
     TypeRef emptyListType;
+    TypeRef methodType;
     union {
         struct {
             TypeRef fixnumType; // TAG_FIXNUM = 0b000 = 0
@@ -123,6 +125,21 @@ static Type* tryCreateArrayType(Semispace* semispace, Type const* typeType) {
     return type;
 }
 
+static Type* tryCreateByteArrayType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = tryAlloc(semispace, typeType);
+    if (!maybeType) { return nullptr; }
+
+    Type* const type = (Type*)maybeType;
+    *type = (Type){
+        .minSize = tagInt(0),
+        .align = tagInt((intptr_t)objectMinAlign),
+        .isBytes = True,
+        .isFlex = True
+    };
+
+    return type;
+}
+
 static Type* tryCreatePairType(Semispace* semispace, Type const* typeType) {
     void* const maybeType = tryAlloc(semispace, typeType);
     if (!maybeType) { return nullptr; }
@@ -150,6 +167,21 @@ static Type* tryCreateEmptyListType(Semispace* semispace, Type const* typeType) 
         .isFlex = False
     };
     
+    return type;
+}
+
+static Type* tryCreateMethodType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = tryAlloc(semispace, typeType);
+    if (!maybeType) { return nullptr; }
+
+    Type* const type = (Type*)maybeType;
+    *type = (Type){
+        .minSize = tagInt(sizeof(Method)),
+        .align = tagInt(alignof(Method)),
+        .isBytes = False,
+        .isFlex = False
+    };
+
     return type;
 }
 
@@ -194,12 +226,16 @@ static bool tryCreateState(State* dest, size_t heapSize) {
     if (!stringTypePtr) { return false; }
     Type const* const arrayTypePtr = tryCreateArrayType(&heap.tospace, typeTypePtr);
     if (!arrayTypePtr) { return false; }
+    Type const* const byteArrayType = tryCreateByteArrayType(&heap.tospace, typeTypePtr);
+    if (!byteArrayType) { return false; }
     Type const* const symbolTypePtr = tryCreateSymbolType(&heap.tospace, typeTypePtr);
     if (!symbolTypePtr) { return false; }
     Type const* const pairTypePtr = tryCreatePairType(&heap.tospace, typeTypePtr);
     if (!pairTypePtr) { return false; }
     Type const* const emptyListTypePtr = tryCreateEmptyListType(&heap.tospace, typeTypePtr);
     if (!emptyListTypePtr) { return false; }
+    Type const* const methodType = tryCreateMethodType(&heap.tospace, typeTypePtr);
+    if (!methodType) { return false; }
     
     Type const* const fixnumType = tryCreateFixnumType(&heap.tospace, typeTypePtr);
     if (!fixnumType) { return false; }
@@ -221,9 +257,11 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         .typeType = tagType(typeTypePtr),
         .stringType = tagType(stringTypePtr),
         .arrayType = tagType(arrayTypePtr),
+        .byteArrayType = tagType(byteArrayType),
         .symbolType = tagType(symbolTypePtr),
         .pairType = tagType(pairTypePtr),
         .emptyListType = tagType(emptyListTypePtr),
+        .methodType = tagType(methodType),
         
         .fixnumType = tagType(fixnumType),
         .charType = tagType(charType),
@@ -282,6 +320,13 @@ static ArrayRef createArray(State* state, Fixnum count) {
     if (!ptr) { assert(false); } // TODO: Collect garbage here
     
     return tagArray(ptr);
+}
+
+static ByteArrayRef createByteArray(State* state, Fixnum count) {
+    uint8_t* const ptr = tryAllocFlex(&state->heap.tospace, typeToPtr(state->byteArrayType), count);
+    if (!ptr) { assert(false); } // TODO: Collect garbage here
+
+    return tagByteArray(ptr);
 }
 
 static SymbolRef createUninternedSymbol(State* state, Fixnum hash, Str name) {
@@ -376,3 +421,11 @@ static PairRef allocPair(State* state) {
     return tagPair(ptr);
 }
 
+static MethodRef createMethod(State* state, ByteArrayRef code, ArrayRef consts) {
+    Method* const ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->methodType));
+    if (!ptr) { assert(false); } // TODO: Collect garbage here
+
+    *ptr = (Method){.code = code, .consts = consts};
+
+    return tagMethod(ptr);
+}

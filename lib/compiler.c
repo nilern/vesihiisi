@@ -67,14 +67,8 @@ typedef enum IRTransferType {
 
 typedef struct IRReturn {
     IRName callee;
-    IRName* args;
-    size_t argCount;
-    size_t argCap;
+    IRName arg;
 } IRReturn;
-
-inline static void freeReturn(IRReturn* contTransfer) {
-    free(contTransfer->args);
-}
 
 typedef struct IRTransfer {
     IRTransferType type;
@@ -85,9 +79,7 @@ typedef struct IRTransfer {
 
 static void freeTransfer(IRTransfer* transfer) {
     switch (transfer->type) {
-    case TRANSFER_RETURN:
-        freeReturn(&transfer->ret);
-        break;
+    case TRANSFER_RETURN: break;
     }
 }
 
@@ -127,20 +119,20 @@ static void pushIRStmt(IRBlock* block, IRStmt stmt) {
 }
 
 typedef struct IRFn {
-    IRBlock** blocks;
+    IRBlock** blocks; // OPTIMIZE: `IRBlock* blocks`
     size_t blockCount;
     size_t blockCap;
     
     ORef* consts;
-    size_t constCount;
-    size_t constCap;
+    uint8_t constCount;
+    uint8_t constCap;
 } IRFn;
 
 static IRFn createIRFn() {
     size_t const blockCap = 2;
     IRBlock** const blocks = malloc(blockCap * sizeof *blocks);
 
-    size_t const constCap = 2;
+    uint8_t const constCap = 2;
     ORef* const consts = malloc(constCap * sizeof *consts);
 
     return (IRFn){
@@ -173,14 +165,14 @@ static IRConst fnConst(IRFn* fn, ORef c) {
     }
 
     if (fn->constCount == fn->constCap) {
-        size_t const newCap = fn->constCap + (fn->constCap >> 1);
+        uint8_t const newCap = fn->constCap + (fn->constCap >> 1);
         fn->consts = realloc(fn->consts, newCap * sizeof *fn->consts);
-         fn->constCap = newCap;
+        fn->constCap = newCap;
     }
     
-    size_t const index = fn->constCount;
+    uint8_t const index = fn->constCount;
     fn->consts[fn->constCount++] = c;
-    return (IRConst){(uint8_t)index};
+    return (IRConst){index};
 }
 
 static IRBlock* createIRBlock(IRFn* fn, IRName label, size_t paramCap) {
@@ -219,24 +211,10 @@ static void pushIRParam(IRBlock* block, IRName param) {
     block->params[block->paramCount++] = param;
 }
 
-static IRReturn* createIRReturn(IRBlock* block, IRName callee, size_t argCap) {
-    if (argCap < 2) { argCap = 2; }
-    IRName* const args = malloc(argCap * sizeof *args);
-    
+static IRReturn* createIRReturn(IRBlock* block, IRName callee, IRName arg) {
     IRReturn* const contTransfer = &block->transfer.ret;
-    *contTransfer = (IRReturn){
-        .callee = callee,
-        .args = args,
-        .argCount = 0,
-        .argCap = argCap
-    };
-    
+    *contTransfer = (IRReturn){.callee = callee, .arg = arg };
     return contTransfer;
-}
-
-static void irReturnPushArg(IRReturn* retTransfer, IRName arg) {
-    assert(retTransfer->argCount < retTransfer->argCap);
-    retTransfer->args[retTransfer->argCount++] = arg;
 }
 
 static void printIRName(State const* state, FILE* dest, Compiler const* compiler, IRName name) {
@@ -275,15 +253,9 @@ static void printReturn(
     State const* state, FILE* dest, Compiler const* compiler, IRReturn const* cont
 ) {
     fprintf(dest, "(return ");
-
     printIRName(state, dest, compiler, cont->callee);
-
-    size_t const argCount = cont->argCount;
-    for (size_t i = 0; i < argCount; ++i) {
-        fputc(' ', dest);
-        printIRName(state, dest, compiler, cont->args[i]);
-    }
-
+    fputc(' ', dest);
+    printIRName(state, dest, compiler, cont->arg);
     fputc(')', dest);
 }
 

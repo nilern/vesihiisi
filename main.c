@@ -15,6 +15,8 @@
 #include "lib/print.c"
 #include "lib/compiler.c"
 #include "lib/tocps.c"
+#include "lib/bytecode.c"
+#include "lib/bytecodegen.c"
 
 static const char prompt[] = "vesihiisi> ";
 
@@ -47,7 +49,9 @@ int main(int /*argc*/, char** /*argv*/) {
             Compiler compiler = createCompiler();
             IRFn irFn = topLevelExprToIR(&state, &compiler, expr);
             printIRFn(&state, stdout, &compiler, &irFn);
-            puts("");
+            puts("\n");
+            MethodRef const method = emitMethod(&state, &irFn);
+            disassemble(&state, stdout, method);
             freeIRFn(&irFn);
             freeCompiler(&compiler);
 

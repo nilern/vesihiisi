@@ -240,7 +240,7 @@ static void irContinuePushArg(IRContinue* contTransfer, IRAtom arg) {
     contTransfer->args[contTransfer->argCount++] = arg;
 }
 
-static IRFn topLevelExprToIR(State const* /*state*/, Compiler* compiler, ORef expr) {
+static IRFn topLevelExprToIR(State const* state, Compiler* compiler, ORef expr) {
     IRFn fn = createIRFn();
     
     IRName const entry = freshName(compiler);
@@ -251,12 +251,17 @@ static IRFn topLevelExprToIR(State const* /*state*/, Compiler* compiler, ORef ex
     pushIRParam(entryBlock, ret);
 
     if (isHeaped(expr)) {
-        assert(false); // TODO
-    } else {
-        IRContinue* continueTransfer = createIRContinue(entryBlock, ret, 1);
-        IRAtom const c = fnConst(&fn, expr);
-        irContinuePushArg(continueTransfer, c);
+        if (isPair(state, expr)) {
+            assert(false); // TODO
+        } else if (isSymbol(state, expr)) {
+            assert(false); // TODO
+        }
     }
+
+    // Else a constant:
+    IRContinue* continueTransfer = createIRContinue(entryBlock, ret, 1);
+    IRAtom const c = fnConst(&fn, expr);
+    irContinuePushArg(continueTransfer, c);
     
     return fn;
 }

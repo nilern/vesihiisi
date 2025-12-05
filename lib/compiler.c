@@ -35,9 +35,15 @@ static IRName freshName(Compiler* compiler) {
     return (IRName){index};
 }
 
-typedef enum IRStmtType {
-    STMT_CONST_DEF
-} IRStmtType;
+typedef struct GlobalDef {
+    IRConst name;
+    IRName val;
+} GlobalDef;
+
+typedef struct IRGlobal {
+    IRName tmpName;
+    IRConst name;
+} IRGlobal;
 
 typedef struct ConstDef {
     IRName name;
@@ -45,20 +51,36 @@ typedef struct ConstDef {
 } ConstDef;
 
 typedef struct IRStmt {
-    IRStmtType type;
     union {
+        GlobalDef globalDef;
+        IRGlobal global;
         ConstDef constDef;
     };
+    enum IRStmtType {
+        STMT_GLOBAL_DEF,
+        STMT_GLOBAL,
+        STMT_CONST_DEF
+    } type;
 } IRStmt;
 
 static void freeStmt(IRStmt* stmt) {
     switch (stmt->type) {
+    case STMT_GLOBAL_DEF: // fallthrough
+    case STMT_GLOBAL: // fallthrough
     case STMT_CONST_DEF: break;
     }
 }
 
+inline static IRStmt globalDefToStmt(GlobalDef globalDef) {
+    return (IRStmt){{.globalDef = globalDef}, STMT_GLOBAL_DEF};
+}
+
+inline static IRStmt globalToStmt(IRGlobal global) {
+    return (IRStmt){{.global = global}, STMT_GLOBAL};
+}
+
 inline static IRStmt constDefToStmt(ConstDef cdef) {
-    return (IRStmt){STMT_CONST_DEF, {.constDef = cdef}};
+    return (IRStmt){{.constDef = cdef}, STMT_CONST_DEF};
 }
 
 typedef enum IRTransferType {
@@ -238,7 +260,27 @@ static void printStmt(
     for (size_t i = 0; i < nesting + 2; ++i) { fprintf(dest, "  "); }
 
     switch (stmt->type) {
-    case STMT_CONST_DEF:
+    case STMT_GLOBAL_DEF: {
+        GlobalDef const globalDef = stmt->globalDef;
+        fprintf(dest, "(def ");
+        printIRConst(state, dest, fn, globalDef.name);
+        fputc(' ', dest);
+        printIRName(state, dest, compiler, globalDef.val);
+        fputc(')', dest);
+        break;
+    }
+
+    case STMT_GLOBAL: {
+        IRGlobal const global = stmt->global;
+        fprintf(dest, "(let ");
+        printIRName(state, dest, compiler, global.tmpName);
+        fputc(' ', dest);
+        printIRConst(state, dest, fn, global.name);
+        fputc(')', dest);
+        break;
+    }
+
+    case STMT_CONST_DEF: {
         ConstDef const cdef = stmt->constDef;
         fprintf(dest, "(let ");
         printIRName(state, dest, compiler, cdef.name);
@@ -246,6 +288,7 @@ static void printStmt(
         printIRConst(state, dest, fn, cdef.v);
         fputc(')', dest);
         break;
+    }
     }
 }
 

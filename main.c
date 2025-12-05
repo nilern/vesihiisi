@@ -17,6 +17,7 @@
 #include "lib/tocps.c"
 #include "lib/bytecode.c"
 #include "lib/bytecodegen.c"
+#include "lib/namespace.c"
 #include "lib/vm.c"
 
 static const char prompt[] = "vesihiisi> ";

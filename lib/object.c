@@ -239,3 +239,45 @@ inline static Closure* closureToPtr(ClosureRef v) { return (Closure*)(void*)(v.b
 inline static ClosureRef tagClosure(Closure* ptr) {
     return (ClosureRef){(uintptr_t)(void*)ptr | (uintptr_t)TAG_HEAPED};
 }
+
+typedef struct UnboundRef { uintptr_t bits; } UnboundRef;
+
+inline static UnboundRef tagUnbound(void const* ptr) {
+    return (UnboundRef){(uintptr_t)ptr | (uintptr_t)TAG_HEAPED};
+}
+
+inline static ORef unboundToORef(UnboundRef v) { return (ORef){v.bits}; }
+
+typedef struct Var {
+    ORef val;
+} Var;
+
+typedef struct VarRef { uintptr_t bits; } VarRef;
+
+inline static ORef varToORef(VarRef v) { return (ORef){v.bits}; }
+
+inline static VarRef uncheckedORefToVar(ORef v) { return (VarRef){v.bits}; }
+
+inline static VarRef tagVar(Var* ptr) {
+    return (VarRef){(uintptr_t)(void*)ptr | (uintptr_t)TAG_HEAPED};
+}
+
+inline static Var* varToPtr(VarRef v) { return (Var*)(void*)(v.bits & ~tag_bits); }
+
+typedef struct Namespace {
+    ArrayRef keys;
+    ArrayRef vals;
+    Fixnum count;
+} Namespace;
+
+typedef struct NamespaceRef { uintptr_t bits; } NamespaceRef;
+
+inline static NamespaceRef tagNamespace(Namespace* ptr) {
+    return (NamespaceRef){(uintptr_t)(void*)ptr | (uintptr_t)TAG_HEAPED};
+}
+
+inline static ORef namespaceToORef(NamespaceRef v) { return (ORef){v.bits}; }
+
+inline static Namespace* namespaceToPtr(NamespaceRef v) {
+    return (Namespace*)(void*)(v.bits & ~tag_bits);
+}

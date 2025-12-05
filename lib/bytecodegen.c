@@ -47,11 +47,26 @@ inline static void pushArg(MethodBuilder* builder, IRName name) {
 
 static void emitStmt(MethodBuilder* builder, IRStmt const* stmt) {
     switch (stmt->type) {
-    case STMT_CONST_DEF:
+    case STMT_GLOBAL_DEF: {
+        pushOp(builder, OP_DEF);
+        pushCodeByte(builder, stmt->globalDef.name.index);
+        pushArg(builder, stmt->globalDef.val);
+        break;
+    }
+
+    case STMT_GLOBAL: {
+        pushOp(builder, OP_GLOBAL);
+        pushArg(builder, stmt->global.tmpName);
+        pushCodeByte(builder, stmt->global.name.index);
+        break;
+    }
+
+    case STMT_CONST_DEF: {
         pushOp(builder, OP_CONST);
         pushArg(builder, stmt->constDef.name);
         pushCodeByte(builder, stmt->constDef.v.index);
         break;
+    }
     }
 }
 

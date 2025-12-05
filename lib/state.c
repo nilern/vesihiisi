@@ -12,13 +12,35 @@ static bool tryCreateSymbolTable(SymbolTable* dest, Heap* heap, Type const* arra
     return true;
 }
 
+static bool tryCreateNamespace(
+    Semispace* semispace, NamespaceRef* dest, Type const* nsType, Type const* arrayType
+) {
+    Fixnum const count = tagInt(2);
+    ORef* const keys = tryAllocFlex(semispace, arrayType, count);
+    if (!keys) { return false; }
+    ORef* const vals = tryAllocFlex(semispace, arrayType, count);
+    if (!vals) { return false; }
+    Namespace* const ptr = tryAlloc(semispace, nsType);
+    if (!ptr) { return false; }
+
+    *ptr = (Namespace){
+        .keys = tagArray(keys),
+        .vals = tagArray(vals),
+        .count = count
+    };
+
+    *dest = tagNamespace(ptr);
+    return true;
+}
+
 #define REG_COUNT 256
 
 typedef struct State {
     uint8_t const* code;
     size_t pc;
-    ORef const* consts;
     ORef regs[REG_COUNT];
+    ORef const* consts;
+    NamespaceRef ns;
     uint8_t scratchCount;
 
     Heap heap;
@@ -30,8 +52,11 @@ typedef struct State {
     TypeRef symbolType;
     TypeRef pairType;
     TypeRef emptyListType;
+    TypeRef unboundType;
     TypeRef methodType;
     TypeRef closureType;
+    TypeRef varType;
+    TypeRef nsType;
     union {
         struct {
             TypeRef fixnumType; // TAG_FIXNUM = 0b000 = 0
@@ -48,6 +73,7 @@ typedef struct State {
     
     SymbolTable symbols;
     EmptyListRef emptyList;
+    UnboundRef unbound;
     ClosureRef exit;
 } State;
 
@@ -61,9 +87,15 @@ inline static ORef* pushTmp(State* state, ORef v) {
     return handle;
 }
 
+inline static void popTmps(State* state, uint8_t count) {
+    assert(state->scratchCount >= count);
+
+    state->scratchCount -= count;
+}
+
 inline static ORef popTmp(State* state) {
-    assert(state->scratchCount > 0);    
-    
+    assert(state->scratchCount > 0);
+
     return state->regs[--state->scratchCount];
 }
 
@@ -175,6 +207,21 @@ static Type* tryCreateEmptyListType(Semispace* semispace, Type const* typeType) 
     return type;
 }
 
+static Type* tryCreateUnboundType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = tryAlloc(semispace, typeType);
+    if (!maybeType) { return nullptr; }
+
+    Type* const type = (Type*)maybeType;
+    *type = (Type){
+        .minSize = tagInt(0),
+        .align = tagInt((intptr_t)objectMinAlign),
+        .isBytes = True,
+        .isFlex = False
+    };
+
+    return type;
+}
+
 static Type* tryCreateMethodType(Semispace* semispace, Type const* typeType) {
     void* const maybeType = tryAlloc(semispace, typeType);
     if (!maybeType) { return nullptr; }
@@ -200,6 +247,36 @@ static Type* tryCreateClosureType(Semispace* semispace, Type const* typeType) {
         .align = tagInt(alignof(Closure)),
         .isBytes = False,
         .isFlex = True
+    };
+
+    return type;
+}
+
+static Type* tryCreateVarType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = tryAlloc(semispace, typeType);
+    if (!maybeType) { return nullptr; }
+
+    Type* const type = (Type*)maybeType;
+    *type = (Type){
+        .minSize = tagInt(sizeof(Var)),
+        .align = tagInt(alignof(Var)),
+        .isBytes = False,
+        .isFlex = False
+    };
+
+    return type;
+}
+
+static Type* tryCreateNamespaceType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = tryAlloc(semispace, typeType);
+    if (!maybeType) { return nullptr; }
+
+    Type* const type = (Type*)maybeType;
+    *type = (Type){
+        .minSize = tagInt(sizeof(Namespace)),
+        .align = tagInt(alignof(Namespace)),
+        .isBytes = False,
+        .isFlex = False
     };
 
     return type;
@@ -258,6 +335,12 @@ static bool tryCreateState(State* dest, size_t heapSize) {
     if (!methodType) { return false; }
     Type const* const closureType = tryCreateClosureType(&heap.tospace, typeTypePtr);
     if (!closureType) { return false; }
+    Type const* const unboundType = tryCreateUnboundType(&heap.tospace, typeTypePtr);
+    if (!unboundType) { return false; }
+    Type const* const varType = tryCreateVarType(&heap.tospace, typeTypePtr);
+    if (!varType) { return false; }
+    Type const* const nsType = tryCreateNamespaceType(&heap.tospace, typeTypePtr);
+    if (!nsType) { return false; }
     
     Type const* const fixnumType = tryCreateFixnumType(&heap.tospace, typeTypePtr);
     if (!fixnumType) { return false; }
@@ -272,14 +355,20 @@ static bool tryCreateState(State* dest, size_t heapSize) {
     if (!tryCreateSymbolTable(&symbols, &heap, arrayTypePtr)) { return false; }
     void const* const emptyListPtr = tryAlloc(&heap.tospace, emptyListTypePtr);
     if (!emptyListPtr) { return false; }
+    void const* const unbound = tryAlloc(&heap.tospace, unboundType);
+    if (!unbound) { return false; }
     void* const exitPtr = tryAllocFlex(&heap.tospace, closureType, Zero);
     if (!exitPtr) { return false; }
+
+    NamespaceRef ns;
+    if (!tryCreateNamespace(&heap.tospace, &ns, nsType, arrayTypePtr)) { return false; }
     
     *dest = (State){
         .code = nullptr,
         .pc = 0,
         .consts = nullptr,
-        .scratchCount = 0,
+        .ns = ns,
+        .scratchCount = 3, // FIXME: Reserves 3 regs for VM, should use register windows instead
 
         .heap = heap,
         
@@ -292,6 +381,9 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         .emptyListType = tagType(emptyListTypePtr),
         .methodType = tagType(methodType),
         .closureType = tagType(closureType),
+        .unboundType = tagType(unboundType),
+        .varType = tagType(varType),
+        .nsType = tagType(nsType),
         
         .fixnumType = tagType(fixnumType),
         .charType = tagType(charType),
@@ -300,6 +392,7 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         
         .symbols = symbols,
         .emptyList = tagEmptyList(emptyListPtr),
+        .unbound = tagUnbound(unbound),
         .exit = tagClosure(exitPtr)
     };
     return true;
@@ -439,6 +532,7 @@ static SymbolRef intern(State* state, Str name) {
         
         SymbolRef const symbol = createUninternedSymbol(state, hash, name);
         arrayToPtr(state->symbols.entries)[ires.index] = symbolToORef(symbol);
+        state->symbols.count = tagInt((intptr_t)newCount);
         return symbol;
     }
 }

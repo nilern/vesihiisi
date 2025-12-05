@@ -17,6 +17,7 @@
 #include "lib/tocps.c"
 #include "lib/bytecode.c"
 #include "lib/bytecodegen.c"
+#include "lib/vm.c"
 
 static const char prompt[] = "vesihiisi> ";
 
@@ -43,17 +44,26 @@ int main(int /*argc*/, char** /*argv*/) {
                 continue;
             }
             
+            puts(";; # S-Expression:");
             print(&state, stdout, expr);
             puts("\n");
             
             Compiler compiler = createCompiler();
             IRFn irFn = topLevelExprToIR(&state, &compiler, expr);
+            puts(";; # IR:");
             printIRFn(&state, stdout, &compiler, &irFn);
             puts("\n");
             MethodRef const method = emitMethod(&state, &irFn);
+            puts(";; # Bytecode:");
             disassemble(&state, stdout, method);
+            puts("");
             freeIRFn(&irFn);
             freeCompiler(&compiler);
+
+            ClosureRef const closure = allocClosure(&state, method, Zero);
+            ORef const res = run(&state, closure);
+            print(&state, stdout, res);
+            puts("");
 
             free(line);
         } else {

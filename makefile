@@ -14,6 +14,10 @@ prod: vesihiisi
 .PHONY: dev
 dev: vesihiisi-dev
 
+.PHONY: run-dev
+run-dev: vesihiisi-dev
+	./vesihiisi-dev
+
 .PHONY: test
 test: test/test_heap
 	./test/test_heap
@@ -32,4 +36,3 @@ clean:
 	rm -f vesihiisi
 	rm -f vesihiisi-dev
 	rm -f test/test_heap
-

@@ -217,4 +217,25 @@ inline static MethodRef tagMethod(Method* ptr) {
     return (MethodRef){(uintptr_t)(void*)ptr | (uintptr_t)TAG_HEAPED};
 }
 
+inline static ORef methodToORef(MethodRef v) { return (ORef){v.bits}; }
+
+inline static MethodRef uncheckedORefToMethod(ORef v) { return (MethodRef){v.bits}; }
+
 inline static Method* methodToPtr(MethodRef v) { return (Method*)(void*)(v.bits & ~tag_bits); }
+
+typedef struct Closure {
+    ORef method;
+    ORef const clovers[];
+} Closure;
+
+typedef struct ClosureRef { uintptr_t bits; } ClosureRef;
+
+inline static ORef closureToORef(ClosureRef v) { return (ORef){v.bits}; }
+
+inline static ClosureRef uncheckedORefToClosure(ORef v) { return (ClosureRef){v.bits}; }
+
+inline static Closure* closureToPtr(ClosureRef v) { return (Closure*)(void*)(v.bits & ~tag_bits); }
+
+inline static ClosureRef tagClosure(Closure* ptr) {
+    return (ClosureRef){(uintptr_t)(void*)ptr | (uintptr_t)TAG_HEAPED};
+}

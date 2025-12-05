@@ -12,9 +12,15 @@ static bool tryCreateSymbolTable(SymbolTable* dest, Heap* heap, Type const* arra
     return true;
 }
 
-#define REG_COUNT 128
+#define REG_COUNT 256
 
 typedef struct State {
+    uint8_t const* code;
+    size_t pc;
+    ORef const* consts;
+    ORef regs[REG_COUNT];
+    uint8_t scratchCount;
+
     Heap heap;
 
     TypeRef typeType;
@@ -25,6 +31,7 @@ typedef struct State {
     TypeRef pairType;
     TypeRef emptyListType;
     TypeRef methodType;
+    TypeRef closureType;
     union {
         struct {
             TypeRef fixnumType; // TAG_FIXNUM = 0b000 = 0
@@ -41,9 +48,7 @@ typedef struct State {
     
     SymbolTable symbols;
     EmptyListRef emptyList;
-    
-    uint8_t scratchCount;
-    ORef regs[REG_COUNT];
+    ClosureRef exit;
 } State;
 
 // Returns handle
@@ -185,6 +190,21 @@ static Type* tryCreateMethodType(Semispace* semispace, Type const* typeType) {
     return type;
 }
 
+static Type* tryCreateClosureType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = tryAlloc(semispace, typeType);
+    if (!maybeType) { return nullptr; }
+
+    Type* const type = (Type*)maybeType;
+    *type = (Type){
+        .minSize = tagInt(sizeof(Closure)),
+        .align = tagInt(alignof(Closure)),
+        .isBytes = False,
+        .isFlex = True
+    };
+
+    return type;
+}
+
 static Type* tryCreateImmType(Semispace* semispace, Type const* typeType) {
     void* const maybeType = tryAlloc(semispace, typeType);
     if (!maybeType) { return nullptr; }
@@ -236,6 +256,8 @@ static bool tryCreateState(State* dest, size_t heapSize) {
     if (!emptyListTypePtr) { return false; }
     Type const* const methodType = tryCreateMethodType(&heap.tospace, typeTypePtr);
     if (!methodType) { return false; }
+    Type const* const closureType = tryCreateClosureType(&heap.tospace, typeTypePtr);
+    if (!closureType) { return false; }
     
     Type const* const fixnumType = tryCreateFixnumType(&heap.tospace, typeTypePtr);
     if (!fixnumType) { return false; }
@@ -250,8 +272,15 @@ static bool tryCreateState(State* dest, size_t heapSize) {
     if (!tryCreateSymbolTable(&symbols, &heap, arrayTypePtr)) { return false; }
     void const* const emptyListPtr = tryAlloc(&heap.tospace, emptyListTypePtr);
     if (!emptyListPtr) { return false; }
+    void* const exitPtr = tryAllocFlex(&heap.tospace, closureType, Zero);
+    if (!exitPtr) { return false; }
     
     *dest = (State){
+        .code = nullptr,
+        .pc = 0,
+        .consts = nullptr,
+        .scratchCount = 0,
+
         .heap = heap,
         
         .typeType = tagType(typeTypePtr),
@@ -262,6 +291,7 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         .pairType = tagType(pairTypePtr),
         .emptyListType = tagType(emptyListTypePtr),
         .methodType = tagType(methodType),
+        .closureType = tagType(closureType),
         
         .fixnumType = tagType(fixnumType),
         .charType = tagType(charType),
@@ -270,8 +300,7 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         
         .symbols = symbols,
         .emptyList = tagEmptyList(emptyListPtr),
-        
-        .scratchCount = 0
+        .exit = tagClosure(exitPtr)
     };
     return true;
 }
@@ -428,4 +457,14 @@ static MethodRef createMethod(State* state, ByteArrayRef code, ArrayRef consts) 
     *ptr = (Method){.code = code, .consts = consts};
 
     return tagMethod(ptr);
+}
+
+static ClosureRef allocClosure(State* state, MethodRef method, Fixnum cloverCount) {
+    Closure* const ptr =
+        tryAllocFlex(&state->heap.tospace, typeToPtr(state->closureType), cloverCount);
+    if (!ptr) { assert(false); } // TODO: Collect garbage here
+
+    ptr->method = methodToORef(method);
+
+    return tagClosure(ptr);
 }

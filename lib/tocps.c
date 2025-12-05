@@ -39,6 +39,26 @@ static IRFn topLevelExprToIR(State const* state, Compiler* compiler, ORef expr) 
 
     if (isHeaped(expr)) {
         if (isPair(state, expr)) {
+            Pair const* pair = pairToPtr(uncheckedORefToPair(expr));
+            ORef const callee = pair->car;
+            if (isSymbol(state, callee)) {
+                SymbolRef const calleeSym = uncheckedORefToSymbol(callee);
+                if (strEq(symbolName(calleeSym), (Str){"quote", /*HACK:*/5})) {
+                    ORef const args = pair->cdr;
+                    if (!isPair(state, args)) {
+                        assert(false); // TODO
+                    }
+
+                    Pair const* const argsPair = pairToPtr(uncheckedORefToPair(args));
+                    if (!isEmptyList(state, argsPair->cdr)) {
+                        assert(false); // TODO
+                    }
+
+                    constToCPS(compiler, &fn, entryBlock, argsPair->car, k);
+                    return fn;
+                }
+            }
+
             assert(false); // TODO
             return fn;
         } else if (isSymbol(state, expr)) {
@@ -49,6 +69,5 @@ static IRFn topLevelExprToIR(State const* state, Compiler* compiler, ORef expr) 
 
     // Else a constant:
     constToCPS(compiler, &fn, entryBlock, expr, k);
-
     return fn;
 }

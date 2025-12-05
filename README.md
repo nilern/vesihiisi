@@ -11,8 +11,9 @@ Yet another Lisp.
 ## Current State
 
 * Rudimentary REPL
-    - Constants work, including `(quote ...)`
-    - Also debug printing from compilation (can't even be turne off)
+    - Constants, including `(quote ...)`
+    - Defining (`(def ...`) and referencing global variables
+    - Also debug printing from compilation (can't even be turned off)
 
 ## Immediate Goals
 

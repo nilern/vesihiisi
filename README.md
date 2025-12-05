@@ -10,18 +10,21 @@ Yet another Lisp.
 
 ## Current State
 
-* Rudimentary REPL parsing and printing S-expressions.
+* Rudimentary REPL
+    - Constants work, including `(quote ...)`
+    - Also debug printing from compilation (can't even be turne off)
 
 ## Immediate Goals
 
-* Bytecode compiler
+* Complete bytecode compiler
     - TCO
     - Safe for space
-* Bytecode VM
-* GC
+* Complete bytecode VM
+* Add GC
 
 ## And Then
 
+* Primitive procedures e.g. `fx+`, `new`/`make`
 * Standard library
 * Macroexpansion
 

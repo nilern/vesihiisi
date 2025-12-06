@@ -1,5 +1,10 @@
 typedef struct IRName { size_t index; } IRName;
 
+inline static bool irNameEq(IRName name1, IRName name2) { return name1.index == name2.index; }
+
+// OPTIMIZE: As fast as possible but actually a terrible hash:
+inline static size_t irNameHash(IRName name) { return name.index; }
+
 typedef struct IRConst { uint8_t index; } IRConst;
 
 typedef struct Compiler {
@@ -11,10 +16,14 @@ typedef struct Compiler {
 static Compiler createCompiler(void) {
     size_t const nameCap = 2;
     ORef* const nameSyms = malloc(nameCap * sizeof *nameSyms);
+
+    // Reserve (IRName){0} as invalid:
+    size_t const nameCount = 1;
+    nameSyms[0] = fixnumToORef(Zero);
     
     return (Compiler){
         .nameSyms = nameSyms,
-        .nameCount = 0,
+        .nameCount = nameCount,
         .nameCap = nameCap
     };
 }
@@ -83,9 +92,16 @@ inline static IRStmt constDefToStmt(ConstDef cdef) {
     return (IRStmt){{.constDef = cdef}, STMT_CONST_DEF};
 }
 
-typedef enum IRTransferType {
-    TRANSFER_RETURN
-} IRTransferType;
+typedef struct IRIf {
+    IRName cond;
+    IRName conseq;
+    IRName alt;
+} IRIf;
+
+typedef struct IRGoto {
+    IRName dest;
+    IRName arg;
+} IRGoto;
 
 typedef struct IRReturn {
     IRName callee;
@@ -93,14 +109,22 @@ typedef struct IRReturn {
 } IRReturn;
 
 typedef struct IRTransfer {
-    IRTransferType type;
     union {
+        IRIf iff;
+        IRGoto gotoo;
         IRReturn ret;
     };
+    enum {
+        TRANSFER_IF,
+        TRANSFER_GOTO,
+        TRANSFER_RETURN
+    } type;
 } IRTransfer;
 
 static void freeTransfer(IRTransfer* transfer) {
     switch (transfer->type) {
+    case TRANSFER_IF: // fallthrough
+    case TRANSFER_GOTO: // fallthrough
     case TRANSFER_RETURN: break;
     }
 }
@@ -233,9 +257,24 @@ static void pushIRParam(IRBlock* block, IRName param) {
     block->params[block->paramCount++] = param;
 }
 
+static IRIf* createIRIf(IRBlock* block, IRName cond, IRName conseqLabel, IRName altLabel) {
+    block->transfer.type = TRANSFER_IF;
+    IRIf* const contTransfer = &block->transfer.iff;
+    *contTransfer = (IRIf){.cond = cond, .conseq = conseqLabel, .alt = altLabel};
+    return contTransfer;
+}
+
+static IRGoto* createIRGoto(IRBlock* block, IRName destLabel, IRName arg) {
+    block->transfer.type = TRANSFER_GOTO;
+    IRGoto* const contTransfer = &block->transfer.gotoo;
+    *contTransfer = (IRGoto){.dest = destLabel, .arg = arg};
+    return contTransfer;
+}
+
 static IRReturn* createIRReturn(IRBlock* block, IRName callee, IRName arg) {
+    block->transfer.type = TRANSFER_RETURN;
     IRReturn* const contTransfer = &block->transfer.ret;
-    *contTransfer = (IRReturn){.callee = callee, .arg = arg };
+    *contTransfer = (IRReturn){.callee = callee, .arg = arg};
     return contTransfer;
 }
 
@@ -292,16 +331,6 @@ static void printStmt(
     }
 }
 
-static void printReturn(
-    State const* state, FILE* dest, Compiler const* compiler, IRReturn const* cont
-) {
-    fprintf(dest, "(return ");
-    printIRName(state, dest, compiler, cont->callee);
-    fputc(' ', dest);
-    printIRName(state, dest, compiler, cont->arg);
-    fputc(')', dest);
-}
-
 static void printTransfer(
     State const* state, FILE* dest, Compiler const* compiler, size_t nesting,
     IRTransfer const* transfer
@@ -309,9 +338,34 @@ static void printTransfer(
     for (size_t i = 0; i < nesting + 2; ++i) { fprintf(dest, "  "); }
 
     switch (transfer->type) {
-    case TRANSFER_RETURN:
-        printReturn(state, dest, compiler, &transfer->ret);
+    case TRANSFER_IF: {
+        fprintf(dest, "(if ");
+        printIRName(state, dest, compiler, transfer->iff.cond);
+        fputc(' ', dest);
+        printIRName(state, dest, compiler, transfer->iff.conseq);
+        fputc(' ', dest);
+        printIRName(state, dest, compiler, transfer->iff.alt);
+        fputc(')', dest);
         break;
+    }
+
+    case TRANSFER_GOTO: {
+        fprintf(dest, "(goto ");
+        printIRName(state, dest, compiler, transfer->gotoo.dest);
+        fputc(' ', dest);
+        printIRName(state, dest, compiler, transfer->gotoo.arg);
+        fputc(')', dest);
+        break;
+    }
+
+    case TRANSFER_RETURN: {
+        fprintf(dest, "(return ");
+        printIRName(state, dest, compiler, transfer->ret.callee);
+        fputc(' ', dest);
+        printIRName(state, dest, compiler, transfer->ret.arg);
+        fputc(')', dest);
+        break;
+    }
     }
 }
 

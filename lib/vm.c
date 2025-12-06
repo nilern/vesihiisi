@@ -63,6 +63,23 @@ static ORef run(State* state, ClosureRef selfRef) {
             break;
         }
 
+        case OP_BR: {
+            uint8_t const displacement = state->code[state->pc++];
+
+            state->pc += displacement;
+            break;
+        }
+
+        case OP_BRF: {
+            uint8_t const condReg = state->code[state->pc++];
+            uint8_t const displacement = state->code[state->pc++];
+
+            if (eq(state->regs[condReg], boolToORef(False))) {
+                state->pc += displacement;
+            }
+            break;
+        }
+
         case OP_RET: {
             uint8_t const retReg = state->code[state->pc++];
             uint8_t const vReg = state->code[state->pc++];

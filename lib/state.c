@@ -368,7 +368,7 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         .pc = 0,
         .consts = nullptr,
         .ns = ns,
-        .scratchCount = 3, // FIXME: Reserves 3 regs for VM, should use register windows instead
+        .scratchCount = 128, // FIXME: Reserves 128 regs for VM, should use register windows instead
 
         .heap = heap,
         

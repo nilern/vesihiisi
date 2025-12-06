@@ -13,6 +13,7 @@ Yet another Lisp.
 * Rudimentary REPL
     - Simple literals (fixnums `23`, characters `#"c"`, booleans `#t` & `#f`, strings "foo")
     - Special forms `(def foo 23)`, `(if #t then what)` and `(quote (quoth he))`
+    - Global variable references `foo`
     - Also debug printing from compilation (can't even be turned off)
 
 ## Immediate Goals

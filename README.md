@@ -32,6 +32,9 @@ Yet another Lisp.
 
 ## Lofty ambitions
 
+* Delimited continuations (with winders)
 * Multimethods
+* Non-blocking IO etc. (Concurrent ML)
 * Get to a JIT, even if it is just a simple method JIT.
 * FFI
+* Native threads

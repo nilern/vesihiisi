@@ -74,6 +74,7 @@ of object would always be 0b000. Instead of wasting those precious bits so we us
 TODO: Avoid clover recording by splitting `IRLabel` from `IRName`
 TODO: Is lambda lifting useful (since register allocation goes backwards)?
 OPTIMIZE: Avoid redundant loads for consts (as we do for clovers)
+OPTIMIZE: Constant and copy propagation if convenient
 
 Four passes:
 

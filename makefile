@@ -19,8 +19,9 @@ run-dev: vesihiisi-dev
 	./vesihiisi-dev
 
 .PHONY: test
-test: test/test_heap
+test: test/test_heap test/test_bitset
 	./test/test_heap
+	./test/test_bitset
 
 vesihiisi: main.c $(LIB_SRCS)
 	cc $(BASE_FLAGS) $(OPT_FLAGS) -o $@ $<
@@ -28,7 +29,7 @@ vesihiisi: main.c $(LIB_SRCS)
 vesihiisi-dev: main.c $(LIB_SRCS)
 	cc $(BASE_FLAGS) $(DEBUG_FLAGS) -o $@ $<
 
-test/test_heap: test/test_heap.c $(LIB_SRCS)
+test/%: test/%.c $(LIB_SRCS)
 	cc $(TEST_FLAGS) $(DEBUG_FLAGS) -o $@ $<
 
 .PHONY: clean

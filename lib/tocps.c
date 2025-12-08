@@ -208,7 +208,74 @@ static IRName exprToIR(
             if (isSymbol(state, callee)) {
                 SymbolRef const calleeSym = uncheckedORefToSymbol(callee);
                 // OPTIMIZE: Symbol comparisons instead of `strEq`:
-                if (strEq(symbolName(calleeSym), (Str){"if", /*HACK:*/2})) {
+                if (strEq(symbolName(calleeSym), (Str){"fn", /*HACK:*/2})) {
+                    IRFn innerFn = createIRFn();
+
+                    IRName const entry = freshName(compiler);
+                    IRBlock* entryBlock = createIRBlock(&innerFn, entry);
+
+                    ToCpsEnv fnEnv = createToCpsEnv(env);
+                    IRName const self = freshName(compiler);
+                    pushIRParam(entryBlock, self);
+                    IRName const ret = freshName(compiler);
+                    pushIRParam(entryBlock, ret);
+
+                    ORef args = pair->cdr;
+                    if (!isPair(state, args)) {
+                        assert(false); // TODO: Proper args error (`(fn)`)
+                    }
+                    Pair const* argsPair = pairToPtr(uncheckedORefToPair(args));
+
+                    for (ORef params = argsPair->car;;) {
+                        if (isPair(state, params)) {
+                            Pair const* const paramsPair = pairToPtr(uncheckedORefToPair(params));
+
+                            ORef const param = paramsPair->car;
+                            if (!isSymbol(state, param)) {
+                                assert(false); // TODO: Proper param error
+                            }
+                            SymbolRef const paramSym = uncheckedORefToSymbol(param);
+
+                            IRName const paramName = renameSymbol(compiler, paramSym);
+                            pushIRParam(entryBlock, paramName);
+                            defSymbolIRName(&fnEnv, paramSym, paramName, BINDINGS_PAR);
+
+                            params = paramsPair->cdr;
+                        } else if (isEmptyList(state, params)) {
+                            break;
+                        } else {
+                            assert(false); // TODO: Varargs (or error)
+                        }
+                    }
+
+                    args = argsPair->cdr;
+                    if (!isPair(state, args)) {
+                        assert(false); // TODO: Proper args error (missing body)
+                    }
+                    argsPair = pairToPtr(uncheckedORefToPair(args));
+
+                    ORef const body = argsPair->car;
+
+                    if (!isEmptyList(state, argsPair->cdr)) {
+                        assert(false); // TODO: Proper args error or implement body stmts
+                    }
+
+                    ToCpsCont const retK = {{.ret = {.cont = ret}}, TO_CPS_CONT_RETURN};
+                    exprToIR(state, compiler, &innerFn, &fnEnv, &entryBlock, body, retK);
+                    freeToCpsEnv(&fnEnv);
+
+
+                    IRName const name = toCpsContDestName(compiler, k);
+                    // Placeholder, will be replaced with `Method` in codegen:
+                    IRConst const constIdx = fnConst(fn, fixnumToORef(Zero));
+                    pushIRStmt(*block, fnDefToStmt((FnDef){name, innerFn, constIdx}));
+
+                    if (k.type == TO_CPS_CONT_RETURN) {
+                        createIRReturn(*block, k.ret.cont, name);
+                    }
+
+                    return name;
+                } else if (strEq(symbolName(calleeSym), (Str){"if", /*HACK:*/2})) {
                     // OPTIMIZE: Avoid creating `goto`s to `goto`s:
 
                     ORef args = pair->cdr;
@@ -242,10 +309,10 @@ static IRName exprToIR(
                     IRName const altLabel = freshName(compiler);
                     createIRIf(*block, condName, conseqLabel, altLabel);
 
-                    IRBlock* conseqBlock = createIRBlock(fn, conseqLabel, 0);
+                    IRBlock* conseqBlock = createIRBlock(fn, conseqLabel);
                     IRName const conseqName =
                         exprToIR(state, compiler, fn, env, &conseqBlock, conseq, k);
-                    IRBlock* altBlock = createIRBlock(fn, altLabel, 0);
+                    IRBlock* altBlock = createIRBlock(fn, altLabel);
                     IRName const altName = exprToIR(state, compiler, fn, env, &altBlock, alt, k);
 
                     if (k.type != TO_CPS_CONT_RETURN) {
@@ -254,7 +321,7 @@ static IRName exprToIR(
                         createIRGoto(conseqBlock, joinLabel, conseqName);
                         createIRGoto(altBlock, joinLabel, altName);
 
-                        IRBlock* const joinBlock = createIRBlock(fn, joinLabel, 1);
+                        IRBlock* const joinBlock = createIRBlock(fn, joinLabel);
                         IRName const phi = freshName(compiler);
                         pushIRParam(joinBlock, phi);
 
@@ -412,7 +479,7 @@ static IRFn topLevelExprToIR(State const* state, Compiler* compiler, ORef expr) 
     IRFn fn = createIRFn();
 
     IRName const entry = freshName(compiler);
-    IRBlock* entryBlock = createIRBlock(&fn, entry, 1);
+    IRBlock* entryBlock = createIRBlock(&fn, entry);
 
     ToCpsEnv env = createToCpsEnv(nullptr);
     IRName const self = freshName(compiler);

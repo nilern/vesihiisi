@@ -56,6 +56,16 @@ inline static IRName freshName(Compiler* compiler) {
     return renameSymbolImpl(compiler, fixnumToORef(Zero));
 }
 
+typedef struct IRFn {
+    struct IRBlock** blocks; // OPTIMIZE: `IRBlock* blocks`
+    size_t blockCount;
+    size_t blockCap;
+
+    ORef* consts;
+    uint8_t constCount;
+    uint8_t constCap;
+} IRFn;
+
 typedef struct GlobalDef {
     IRConst name;
     IRName val;
@@ -71,24 +81,38 @@ typedef struct ConstDef {
     IRConst v;
 } ConstDef;
 
+typedef struct FnDef {
+    IRName name;
+    IRFn fn;
+    IRConst v;
+} FnDef;
+
 typedef struct IRStmt {
     union {
         GlobalDef globalDef;
         IRGlobal global;
         ConstDef constDef;
+        FnDef fnDef;
     };
     enum IRStmtType {
         STMT_GLOBAL_DEF,
         STMT_GLOBAL,
-        STMT_CONST_DEF
+        STMT_CONST_DEF,
+        STMT_FN_DEF
     } type;
 } IRStmt;
+
+static void freeIRFn(IRFn* fn);
 
 static void freeStmt(IRStmt* stmt) {
     switch (stmt->type) {
     case STMT_GLOBAL_DEF: // fallthrough
     case STMT_GLOBAL: // fallthrough
     case STMT_CONST_DEF: break;
+
+    case STMT_FN_DEF: {
+        freeIRFn(&stmt->fnDef.fn);
+    }; break;
     }
 }
 
@@ -103,6 +127,8 @@ inline static IRStmt globalToStmt(IRGlobal global) {
 inline static IRStmt constDefToStmt(ConstDef cdef) {
     return (IRStmt){{.constDef = cdef}, STMT_CONST_DEF};
 }
+
+inline static IRStmt fnDefToStmt(FnDef fnDef) { return (IRStmt){{.fnDef = fnDef}, STMT_FN_DEF}; }
 
 typedef struct IRIf {
     IRName cond;
@@ -176,16 +202,6 @@ static void pushIRStmt(IRBlock* block, IRStmt stmt) {
     block->stmts[block->stmtCount++] = stmt;
 }
 
-typedef struct IRFn {
-    IRBlock** blocks; // OPTIMIZE: `IRBlock* blocks`
-    size_t blockCount;
-    size_t blockCap;
-    
-    ORef* consts;
-    uint8_t constCount;
-    uint8_t constCap;
-} IRFn;
-
 static IRFn createIRFn() {
     size_t const blockCap = 2;
     IRBlock** const blocks = malloc(blockCap * sizeof *blocks);
@@ -233,8 +249,8 @@ static IRConst fnConst(IRFn* fn, ORef c) {
     return (IRConst){index};
 }
 
-static IRBlock* createIRBlock(IRFn* fn, IRName label, size_t paramCap) {
-    if (paramCap < 2) { paramCap = 2; }
+static IRBlock* createIRBlock(IRFn* fn, IRName label) {
+    size_t const paramCap = 2;
     IRName* const params = malloc(paramCap * sizeof *params);
     
     size_t const stmtCap = 2;
@@ -265,7 +281,12 @@ static IRBlock* createIRBlock(IRFn* fn, IRName label, size_t paramCap) {
 }
 
 static void pushIRParam(IRBlock* block, IRName param) {
-    assert(block->paramCount < block->paramCap);
+    if (block->paramCount == block->paramCap) {
+        size_t const newCap = block->paramCap + (block->paramCap >> 1);
+        block->params = realloc(block->params, newCap * sizeof *block->params);
+        block->paramCap = newCap;
+    }
+
     block->params[block->paramCount++] = param;
 }
 
@@ -303,11 +324,15 @@ inline static void printIRConst(State const* state, FILE* dest, IRFn const* fn, 
     print(state, dest, fn->consts[c.index]);
 }
 
+static void printNestedIRFn(
+    State const* state, FILE* dest, Compiler const* compiler, IRFn const* fn, size_t nesting
+);
+
 static void printStmt(
     State const* state, FILE* dest, Compiler const* compiler, IRFn const* fn,
     size_t nesting, IRStmt const* stmt
 ) {
-    for (size_t i = 0; i < nesting + 2; ++i) { fprintf(dest, "  "); }
+    for (size_t i = 0; i < nesting + 1; ++i) { fprintf(dest, "  "); }
 
     switch (stmt->type) {
     case STMT_GLOBAL_DEF: {
@@ -317,8 +342,7 @@ static void printStmt(
         fputc(' ', dest);
         printIRName(state, dest, compiler, globalDef.val);
         fputc(')', dest);
-        break;
-    }
+    }; break;
 
     case STMT_GLOBAL: {
         IRGlobal const global = stmt->global;
@@ -327,8 +351,7 @@ static void printStmt(
         fputc(' ', dest);
         printIRConst(state, dest, fn, global.name);
         fputc(')', dest);
-        break;
-    }
+    }; break;
 
     case STMT_CONST_DEF: {
         ConstDef const cdef = stmt->constDef;
@@ -337,8 +360,16 @@ static void printStmt(
         fputc(' ', dest);
         printIRConst(state, dest, fn, cdef.v);
         fputc(')', dest);
-        break;
-    }
+    }; break;
+
+    case STMT_FN_DEF: {
+        FnDef const* const fnDef = &stmt->fnDef;
+        fprintf(dest, "(let ");
+        printIRName(state, dest, compiler, fnDef->name);
+        fputc('\n', dest);
+        printNestedIRFn(state, dest, compiler, &fnDef->fn, nesting + 2);
+        fprintf(dest, ")\n");
+    }; break;
     }
 }
 
@@ -346,7 +377,7 @@ static void printTransfer(
     State const* state, FILE* dest, Compiler const* compiler, size_t nesting,
     IRTransfer const* transfer
 ) {
-    for (size_t i = 0; i < nesting + 2; ++i) { fprintf(dest, "  "); }
+    for (size_t i = 0; i < nesting + 1; ++i) { fprintf(dest, "  "); }
 
     switch (transfer->type) {
     case TRANSFER_IF: {
@@ -384,7 +415,7 @@ static void printBlock(
     State const* state, FILE* dest, Compiler const* compiler, IRFn const* fn, size_t nesting,
     IRBlock* block
 ) {
-    for (size_t i = 0; i < nesting + 1; ++i) { fprintf(dest, "  "); }
+    for (size_t i = 0; i < nesting; ++i) { fprintf(dest, "  "); }
     fprintf(dest, "(label (");
     printIRName(state, dest, compiler, block->label);
     size_t const paramCount = block->paramCount;
@@ -408,12 +439,13 @@ static void printBlock(
 static void printNestedIRFn(
     State const* state, FILE* dest, Compiler const* compiler, IRFn const* fn, size_t nesting
 ) {
+    for (size_t i = 0; i < nesting; ++i) { fprintf(dest, "  "); }
     fprintf(dest, "(fn\n");
     
     size_t const blockCount = fn->blockCount;
     for (size_t i = 0; i < blockCount; ++i) {
         if (i > 0) { fprintf(dest, "\n\n"); }
-        printBlock(state, dest, compiler, fn, nesting, fn->blocks[i]);
+        printBlock(state, dest, compiler, fn, nesting + 1, fn->blocks[i]);
     }
     
     fprintf(dest, ")");

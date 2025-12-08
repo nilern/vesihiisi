@@ -184,22 +184,23 @@ static void emitStmt(MethodBuilder* builder, IRStmt const* stmt) {
         pushArg(builder, stmt->globalDef.val);
         pushCodeByte(builder, stmt->globalDef.name.index);
         pushOp(builder, OP_DEF);
-        break;
-    }
+    }; break;
 
     case STMT_GLOBAL: {
         pushCodeByte(builder, stmt->global.name.index);
         pushArg(builder, stmt->global.tmpName);
         pushOp(builder, OP_GLOBAL);
-        break;
-    }
+    }; break;
 
     case STMT_CONST_DEF: {
         pushCodeByte(builder, stmt->constDef.v.index);
         pushArg(builder, stmt->constDef.name);
         pushOp(builder, OP_CONST);
-        break;
-    }
+    }; break;
+
+    case STMT_FN_DEF: {
+        assert(false); // TODO
+    }; break;
     }
 }
 

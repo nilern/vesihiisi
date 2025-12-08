@@ -354,8 +354,12 @@ static IRName exprToIR(
                                 .name = binderName,
                                 .type = TO_CPS_CONT_BIND
                             };
-                            exprToIR(state, compiler, fn, &letEnv, block, val, valK);
-                            defSymbolIRName(&letEnv, binder, binderName, BINDINGS_SEQ);
+                            IRName const finalName =
+                                exprToIR(state, compiler, fn, &letEnv, block, val, valK);
+                            // If `finalName != binderName` we have a local copy e.g.
+                            // `(let ((x 5) (y x)) ...)` and `exprToIR` emitted nothing. Putting
+                            // `finalName` to env implements the rest of copy propagation:
+                            defSymbolIRName(&letEnv, binder, finalName, BINDINGS_SEQ);
 
                             bindings = bindingsPair->cdr;
                         } else if (isEmptyList(state, bindings)) {

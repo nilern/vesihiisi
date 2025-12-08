@@ -423,8 +423,7 @@ inline static bool isPair(State const* state, ORef v) {
 }
 
 inline static bool isEmptyList(State const* state, ORef v) {
-    return isHeaped(v)
-        && eq(typeToORef(typeOf(state, v)), typeToORef(state->emptyListType));
+    return eq(v, emptyListToORef(state->emptyList));
 }
 
 static StringRef createString(State* state, Str str) {

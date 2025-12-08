@@ -295,9 +295,8 @@ static void printIRName(State const* state, FILE* dest, Compiler const* compiler
     ORef const maybeSym = compiler->nameSyms[name.index];
     if (isSymbol(state, maybeSym)) {
         print(state, dest, maybeSym);
-    } else {
-        fprintf(dest, "$%ld", name.index);
     }
+    fprintf(dest, "$%ld", name.index);
 }
 
 inline static void printIRConst(State const* state, FILE* dest, IRFn const* fn, IRConst c) {

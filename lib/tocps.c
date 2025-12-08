@@ -1,3 +1,8 @@
+typedef enum BindingsType {
+    BINDINGS_PAR,
+    BINDINGS_SEQ
+} BindingsType;
+
 typedef struct ToCpsFrame {
     ORef* keys;
     IRName* vals;
@@ -128,12 +133,12 @@ static IRName useSymbolIRName(ToCpsEnv const* env, SymbolRef sym) {
     return invalidIRName;
 }
 
-[[maybe_unused]] // FIXME
-static IRName defSymbolIRName(Compiler* compiler, ToCpsEnv* env, SymbolRef sym) {
+static IRName defSymbolIRName(ToCpsEnv* env, SymbolRef sym, IRName name, BindingsType type) {
      // FIXME: Proper error (duplicate defs):
-    assert(!irNameIsValid(toCpsFrameFind(&env->frame, sym)));
+    if (type == BINDINGS_PAR) {
+        assert(!irNameIsValid(toCpsFrameFind(&env->frame, sym)));
+    }
 
-    IRName const name = renameSymbol(compiler, sym);
     toCpsFrameSet(&env->frame, sym, name);
 
     return name;
@@ -146,45 +151,50 @@ typedef struct ToCpsContReturn {
 typedef struct ToCpsCont {
     union {
         ToCpsContReturn ret;
+        IRName name;
     };
     enum {
         TO_CPS_CONT_VAL,
+        TO_CPS_CONT_BIND,
         TO_CPS_CONT_RETURN
     } type;
 } ToCpsCont;
 
+static IRName toCpsContDestName(Compiler* compiler, ToCpsCont k) {
+    switch (k.type) {
+    case TO_CPS_CONT_BIND: return k.name;
+
+    case TO_CPS_CONT_VAL: // fallthrough
+    case TO_CPS_CONT_RETURN: return freshName(compiler);
+    }
+
+    return invalidIRName; // Unreachable
+}
+
 static IRName constToCPS(Compiler* compiler, IRFn* fn, IRBlock* block, ORef expr, ToCpsCont k) {
-    IRName const name = freshName(compiler);
+    IRName const name = toCpsContDestName(compiler, k);
     IRConst const c = fnConst(fn, expr);
     pushIRStmt(block, constDefToStmt((ConstDef){name, c}));
 
-    switch (k.type) {
-    case TO_CPS_CONT_VAL: break;
-
-    case TO_CPS_CONT_RETURN:
+    if (k.type == TO_CPS_CONT_RETURN) {
         createIRReturn(block, k.ret.cont, name);
-        break;
     }
 
     return name;
 }
 
 static IRName globalToCPS(
-    Compiler* compiler, IRFn* fn, IRBlock* block, SymbolRef name, ToCpsCont k
+    Compiler* compiler, IRFn* fn, IRBlock* block, SymbolRef sym, ToCpsCont k
 ) {
-    IRName const tmpName = freshName(compiler);
-    IRConst const nameIdx = fnConst(fn, symbolToORef(name));
-    pushIRStmt(block, globalToStmt((IRGlobal){tmpName, nameIdx}));
+    IRName const name = toCpsContDestName(compiler, k);
+    IRConst const symIdx = fnConst(fn, symbolToORef(sym));
+    pushIRStmt(block, globalToStmt((IRGlobal){name, symIdx}));
 
-    switch (k.type) {
-    case TO_CPS_CONT_VAL: break;
-
-    case TO_CPS_CONT_RETURN:
-        createIRReturn(block, k.ret.cont, tmpName);
-        break;
+    if (k.type == TO_CPS_CONT_RETURN) {
+        createIRReturn(block, k.ret.cont, name);
     }
 
-    return tmpName;
+    return name;
 }
 
 static IRName exprToIR(
@@ -294,26 +304,96 @@ static IRName exprToIR(
                     pushIRStmt(*block, globalDefToStmt((GlobalDef){nameIdx, valName}));
                     // FIXME: Return e.g. nil/undefined/unspecified instead of new val:
                     IRName const resName = valName;
-                    switch (k.type) {
-                    case TO_CPS_CONT_VAL: break;
-
-                    case TO_CPS_CONT_RETURN: {
+                    if (k.type == TO_CPS_CONT_RETURN) {
                         createIRReturn(*block, k.ret.cont, resName);
-                        break;
-                    }
                     }
 
                     return resName;
+                } else if (strEq(symbolName(calleeSym), (Str){"let", /*HACK:*/3})) {
+                    ToCpsEnv letEnv = createToCpsEnv(env);
+
+                    ORef args = pair->cdr;
+                    if (!isPair(state, args)) {
+                        assert(false); // TODO: Proper invalid args error
+                    }
+                    Pair const* argsPair = pairToPtr(uncheckedORefToPair(args));
+
+                    for (ORef bindings = argsPair->car;;) {
+                        if (isPair(state, bindings)) {
+                            Pair const* const bindingsPair =
+                                pairToPtr(uncheckedORefToPair(bindings));
+
+                            ORef const binding = bindingsPair->car;
+                            if (!isPair(state, binding)) {
+                                assert(false); // TODO: Proper invalid binding error
+                            }
+                            Pair const* const bindingPair =
+                                pairToPtr(uncheckedORefToPair(binding));
+
+                            ORef const pat = bindingPair->car;
+                            if (!isSymbol(state, pat)) {
+                                assert(false); // TODO: Proper invalid binder error
+                            }
+                            SymbolRef const binder = uncheckedORefToSymbol(pat);
+
+                            ORef const bindingArgs = bindingPair->cdr;
+                            if (!isPair(state, bindingArgs)) {
+                                assert(false); // TODO: Proper invalid binding error
+                            }
+                            Pair const* const bindingArgsPair =
+                                pairToPtr(uncheckedORefToPair(bindingArgs));
+
+                            ORef const val = bindingArgsPair->car;
+
+                            if (!isEmptyList(state, bindingArgsPair->cdr)) {
+                                assert(false); // TODO: Proper invali [[maybe_unused]]d binding error
+                            }
+
+                            IRName const binderName = renameSymbol(compiler, binder);
+                            ToCpsCont const valK = (ToCpsCont){
+                                .name = binderName,
+                                .type = TO_CPS_CONT_BIND
+                            };
+                            exprToIR(state, compiler, fn, &letEnv, block, val, valK);
+                            defSymbolIRName(&letEnv, binder, binderName, BINDINGS_SEQ);
+
+                            bindings = bindingsPair->cdr;
+                        } else if (isEmptyList(state, bindings)) {
+                            break;
+                        } else {
+                            assert(false); // TODO: Proper invalid bindings error
+                        }
+                    }
+
+                    args = argsPair->cdr;
+                    if (!isPair(state, args)) {
+                        assert(false); // TODO: Proper invalid args error
+                    }
+                    argsPair = pairToPtr(uncheckedORefToPair(args));
+
+                    ORef const body = argsPair->car;
+
+                    if (!isEmptyList(state, argsPair->cdr)) {
+                        assert(false); // TODO: Proper invalid args error
+                    }
+
+                    IRName const bodyName = exprToIR(state, compiler, fn, &letEnv, block, body, k);
+                    freeToCpsEnv(&letEnv);
+                    return bodyName;
                 }
             }
 
-            assert(false); // TODO
+            assert(false); // TODO: Function call
         } else if (isSymbol(state, expr)) {
             SymbolRef const sym = uncheckedORefToSymbol(expr);
 
             IRName const name = useSymbolIRName(env, sym);
             if (irNameIsValid(name)) {
-                // TODO: Local variable
+                if (k.type == TO_CPS_CONT_RETURN) {
+                    createIRReturn(*block, k.ret.cont, name);
+                }
+
+                return name;
             } else {
                 return globalToCPS(compiler, fn, *block, uncheckedORefToSymbol(expr), k);
             }

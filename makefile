@@ -16,7 +16,7 @@ dev: vesihiisi-dev
 
 .PHONY: run-dev
 run-dev: vesihiisi-dev
-	./vesihiisi-dev
+	rlwrap ./vesihiisi-dev
 
 .PHONY: test
 test: test/test_heap test/test_bitset

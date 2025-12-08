@@ -1,8 +1,12 @@
 typedef struct IRName { size_t index; } IRName;
 
+static const IRName invalidIRName = {0};
+
+inline static bool irNameIsValid(IRName name) { return name.index != invalidIRName.index; }
+
 inline static bool irNameEq(IRName name1, IRName name2) { return name1.index == name2.index; }
 
-// OPTIMIZE: As fast as possible but actually a terrible hash:
+// OPTIMIZE: As simple and fast as possible but actually a terrible hash:
 inline static size_t irNameHash(IRName name) { return name.index; }
 
 typedef struct IRConst { uint8_t index; } IRConst;
@@ -32,7 +36,7 @@ static void freeCompiler(Compiler* compiler) {
     free(compiler->nameSyms);
 }
 
-static IRName freshName(Compiler* compiler) {
+static IRName renameSymbolImpl(Compiler* compiler, ORef maybeSym) {
     if (compiler->nameCount < compiler->nameCap) {
         size_t const newCap = compiler->nameCap + (compiler->nameCap >> 1);
         compiler->nameSyms = realloc(compiler->nameSyms, newCap * sizeof *compiler->nameSyms);
@@ -40,8 +44,16 @@ static IRName freshName(Compiler* compiler) {
     }
 
     size_t const index = compiler->nameCount;
-    compiler->nameSyms[compiler->nameCount++] = fixnumToORef(Zero);
+    compiler->nameSyms[compiler->nameCount++] = maybeSym;
     return (IRName){index};
+}
+
+inline static IRName renameSymbol(Compiler* compiler, SymbolRef sym) {
+    return renameSymbolImpl(compiler, symbolToORef(sym));
+}
+
+inline static IRName freshName(Compiler* compiler) {
+    return renameSymbolImpl(compiler, fixnumToORef(Zero));
 }
 
 typedef struct GlobalDef {

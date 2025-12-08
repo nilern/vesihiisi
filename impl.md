@@ -71,6 +71,8 @@ of object would always be 0b000. Instead of wasting those precious bits so we us
 
 ## Bytecode Compiler
 
+FIXME: `call`s should never have a join point as continuation => make `call`
+a stmt instead of a transfer?
 TODO: Avoid clover recording by splitting `IRLabel` from `IRName`
 TODO: Is lambda lifting useful (since register allocation goes backwards)?
 OPTIMIZE: Avoid redundant loads for consts (as we do for clovers)

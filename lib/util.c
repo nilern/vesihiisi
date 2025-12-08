@@ -1,3 +1,8 @@
+typedef struct BucketIdx {
+    size_t idx;
+    bool occupied;
+} BucketIdx;
+
 typedef struct Str {
     char const* data;
     size_t len;

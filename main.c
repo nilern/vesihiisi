@@ -16,6 +16,7 @@
 #include "lib/print.c"
 #include "lib/compiler.c"
 #include "lib/tocps.c"
+#include "lib/liveness.c"
 #include "lib/bytecode.c"
 #include "lib/bytecodegen.c"
 #include "lib/namespace.c"
@@ -45,22 +46,35 @@ int main(int /*argc*/, char** /*argv*/) {
                 free(line);
                 continue;
             }
-            
+
             puts(";; # S-Expression:");
             print(&state, stdout, expr);
             puts("\n");
-            
-            Compiler compiler = createCompiler();
-            IRFn irFn = topLevelExprToIR(&state, &compiler, expr);
-            puts(";; # IR:");
-            printIRFn(&state, stdout, &compiler, &irFn);
-            puts("\n");
-            MethodRef const method = emitMethod(&state, &irFn);
-            puts(";; # Bytecode:");
-            disassemble(&state, stdout, method);
-            puts("");
-            freeIRFn(&irFn);
-            freeCompiler(&compiler);
+
+            MethodRef method;
+            {
+                Compiler compiler = createCompiler();
+
+                IRFn irFn = topLevelExprToIR(&state, &compiler, expr);
+                puts(";; # IR:");
+                printIRFn(&state, stdout, &compiler, &irFn);
+
+                puts("\n");
+
+                enlivenFn(&irFn);
+                puts(";; # Enlivened IR:");
+                printIRFn(&state, stdout, &compiler, &irFn);
+
+                puts("\n");
+
+                method = emitMethod(&state, &irFn);
+                puts(";; # Bytecode:");
+                disassemble(&state, stdout, method);
+                puts("");
+
+                freeIRFn(&irFn);
+                freeCompiler(&compiler);
+            }
 
             ClosureRef const closure = allocClosure(&state, method, Zero);
             ORef const res = run(&state, closure);

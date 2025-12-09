@@ -6,7 +6,6 @@ typedef struct BitSet {
 
 inline static void freeBitSet(BitSet* bits) { free(bits->words); }
 
-[[maybe_unused]] // FIXME
 static BitSet createBitSet(size_t cap) {
     size_t wordCap = cap / (8 * sizeof(uintptr_t)); // OPTIMIZE
     if (wordCap < 2) { wordCap = 2; }
@@ -19,10 +18,14 @@ static BitSet createBitSet(size_t cap) {
     };
 }
 
-[[maybe_unused]] // FIXME
+inline static size_t bitSetLimit(BitSet const* bits) {
+    return bits->wordCount * (8 * sizeof *bits->words); // OPTIMIZE
+}
+
 static bool bitSetContains(BitSet const* bits, size_t n) {
     size_t const wordIdx = n / (8 * sizeof *bits->words); // OPTIMIZE
-    if (wordIdx >= bits->wordCount) { return false; }
+
+    if (wordIdx >= bits->wordCount) { return false; } // Cannot have been set
 
     uintptr_t const word = bits->words[wordIdx];
     size_t const subIdx = n % (8 * sizeof *bits->words); // OPTIMIZE
@@ -30,7 +33,6 @@ static bool bitSetContains(BitSet const* bits, size_t n) {
     return (word & mask) != 0;
 }
 
-[[maybe_unused]] // FIXME
 static void bitSetSet(BitSet* bits, size_t n) {
     size_t const wordIdx = n / (8 * sizeof *bits->words); // OPTIMIZE
 
@@ -59,7 +61,15 @@ static void bitSetSet(BitSet* bits, size_t n) {
     bits->words[wordIdx] |= 1lu << (8 * sizeof *bits->words - 1 - subIdx); // OPTIMIZE
 }
 
-[[maybe_unused]] // FIXME
+static void bitSetRemove(BitSet* bits, size_t n) {
+    size_t const wordIdx = n / (8 * sizeof *bits->words); // OPTIMIZE
+
+    if (wordIdx >= bits->wordCount) { return; } // Was never set to begin with
+
+    size_t const subIdx = n % (8 * sizeof *bits->words); // OPTIMIZE
+    bits->words[wordIdx] &= ~(1lu << (8 * sizeof *bits->words - 1 - subIdx)); // OPTIMIZE
+}
+
 static void bitSetUnionInto(BitSet* dest, BitSet const* src) {
     bool const extend = dest->wordCount < src->wordCount;
 

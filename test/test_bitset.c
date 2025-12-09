@@ -30,6 +30,8 @@ static void test_one_word(void) {
         assert(!bitSetContains(&bits, i));
         bitSetSet(&bits, i);
         assert(bitSetContains(&bits, i));
+        bitSetRemove(&bits, i);
+        assert(!bitSetContains(&bits, i));
     }
 
     freeBitSet(&bits);
@@ -42,6 +44,8 @@ static void test_geometric(void) {
         assert(!bitSetContains(&bits, b));
         bitSetSet(&bits, b);
         assert(bitSetContains(&bits, b));
+        bitSetRemove(&bits, b);
+        assert(!bitSetContains(&bits, b));
     }
 
     freeBitSet(&bits);

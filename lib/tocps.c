@@ -322,6 +322,8 @@ static IRName exprToIR(
                         createIRGoto(altBlock, joinLabel, altName);
 
                         IRBlock* const joinBlock = createIRBlock(fn, joinLabel);
+                        // FIXME: If `k` provides a target name it should be used for `phi`. Now it
+                        // gets pushed into the branches and possibly multiply defined:
                         IRName const phi = freshName(compiler);
                         pushIRParam(joinBlock, phi);
 

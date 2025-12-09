@@ -243,7 +243,7 @@ static void emitTransfer(MethodBuilder* builder, IRTransfer const* transfer) {
 static void emitBlock(MethodBuilder* builder, IRBlock const* block) {
     emitTransfer(builder, &block->transfer);
 
-    for (size_t i = block->stmtCount; i -- > 0;) {
+    for (size_t i = block->stmtCount; i-- > 0;) {
         emitStmt(builder, &block->stmts[i]);
     }
 

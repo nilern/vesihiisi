@@ -214,6 +214,9 @@ static void freeTransfer(IRTransfer* transfer) {
 
 typedef struct IRBlock {
     IRName label;
+
+    BitSet liveIns;
+
     IRName* params;
     size_t paramCount;
     size_t paramCap;
@@ -226,6 +229,8 @@ typedef struct IRBlock {
 } IRBlock;
 
 static void freeBlock(IRBlock* block) {
+    freeBitSet(&block->liveIns);
+
     free(block->params);
     
     size_t const stmtCount = block->stmtCount;
@@ -275,6 +280,8 @@ static void freeIRFn(IRFn* fn) {
     free(fn->consts);
 }
 
+inline static BitSet const* fnFreeVars(IRFn const* fn) { return &fn->blocks[0]->liveIns; }
+
 static IRConst fnConst(IRFn* fn, ORef c) {
     // Linear search is actually good since there usually aren't that many constants per fn:
     size_t const constCount = fn->constCount;
@@ -294,7 +301,23 @@ static IRConst fnConst(IRFn* fn, ORef c) {
     return (IRConst){index};
 }
 
+// OPTIMIZE: Separate `IRLabel` containing block index to make this constant time:
+static IRBlock const* irLabelBlock(IRFn const* fn, IRName label) {
+    size_t const count = fn->blockCount;
+    for (size_t i = 0; i < count; ++i) {
+        IRBlock* const block = fn->blocks[i];
+        if (irNameEq(block->label, label)) {
+            return block;
+        }
+    }
+
+    assert(false); // Block not found is a bug
+    return nullptr;
+}
+
 static IRBlock* createIRBlock(IRFn* fn, IRName label) {
+    BitSet const liveIns = createBitSet(0);
+
     size_t const paramCap = 2;
     IRName* const params = malloc(paramCap * sizeof *params);
     
@@ -304,6 +327,9 @@ static IRBlock* createIRBlock(IRFn* fn, IRName label) {
     IRBlock* const block = malloc(sizeof *block);
     *block = (IRBlock){
         .label = label,
+
+        .liveIns = liveIns,
+
         .params = params,
         .paramCount = 0,
         .paramCap = paramCap,
@@ -499,6 +525,17 @@ static void printBlock(
 ) {
     for (size_t i = 0; i < nesting; ++i) { fprintf(dest, "  "); }
     fprintf(dest, "(label (");
+
+    size_t const liveInLimit = bitSetLimit(&block->liveIns);
+    for (size_t i = 0, printed = 0; i < liveInLimit; ++i) {
+        if (bitSetContains(&block->liveIns, i)) {
+            if (printed > 0) { fputc(' ', dest); }
+            printIRName(state, dest, compiler, (IRName){i});
+            ++printed;
+        }
+    }
+
+    fprintf(dest, ") (");
     printIRName(state, dest, compiler, block->label);
     size_t const paramCount = block->paramCount;
     for (size_t i = 0; i < paramCount; ++i) {

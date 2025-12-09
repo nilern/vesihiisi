@@ -123,7 +123,7 @@ Four passes:
         * Then add condition to it (targets do not escape)
 	- `call`:
 	    * Create initial set of live variables from args
-	    * Add clovers of target to the set (as for `fn`)
+	    * Add clovers of target t(8 * sizeof *bits->words);o the set (as for `fn`)
 	    * Record clovers
     - `tailcall`: just create initial set of live variables from args
     - `return`: just create initial set of live variables from args
@@ -170,7 +170,16 @@ Four passes:
 ### Bytecode generation with register allocation
 
 * Post-order CFG DAG traversal (= go backwards through blocks and their
-  contents)
+  contents).
+  	- The calling convention is the only register constraint we have, so
+  	  allocating a variable's register at last use instead of def allows those
+  	  constraints to maximally influence the allocation. This also means we do
+  	  not need a separate liveness analysis to determine ends of live ranges
+  	  (although we did one anyway for closures...).
+  	- Since all branches are forwards going backwards also avoids a separate
+  	  pass to patch branch targets and even allows variable-length branch
+  	  instructions (if a backpatcher was to emit those it would need to be
+  	  iterative).
 * Keep a mapping from variables to registers
 * At transfer
 	- `goto`

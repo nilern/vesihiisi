@@ -454,7 +454,46 @@ static IRName exprToIR(
                 }
             }
 
-            assert(false); // TODO: Function call
+            IRName const calleeName =
+                exprToIR(state, compiler, fn, env, block, callee,
+                         (ToCpsCont){.type = TO_CPS_CONT_VAL});
+            Args cpsArgs = createArgs();
+            for (ORef args = pair->cdr;;) {
+                if (isPair(state, args)) {
+                    Pair const* const argsPair = pairToPtr(uncheckedORefToPair(args));
+
+                    ORef const arg = argsPair->car;
+                    IRName const argName =
+                        exprToIR(state, compiler, fn, env, block, arg,
+                                 (ToCpsCont){.type = TO_CPS_CONT_VAL});
+                    pushArg(&cpsArgs, argName);
+
+                    args = argsPair->cdr;
+                } else if (isEmptyList(state, args)) {
+                    break;
+                } else {
+                    assert(false); // TODO: proper improper args error
+                }
+            }
+
+            IRName const retValName = toCpsContDestName(compiler, k);
+
+            if (k.type != TO_CPS_CONT_RETURN) {
+                IRName const retLabel = freshName(compiler);
+
+                createCall(*block, calleeName, retLabel, cpsArgs);
+
+                IRBlock* const retBlock = createIRBlock(fn, retLabel);
+                IRName const frame = freshName(compiler);
+                pushIRParam(retBlock, frame);
+                pushIRParam(retBlock, retValName);
+
+                *block = retBlock;
+            } else {
+                createTailcall(*block, calleeName, k.ret.cont, cpsArgs);
+            }
+
+            return retValName;
         } else if (isSymbol(state, expr)) {
             SymbolRef const sym = uncheckedORefToSymbol(expr);
 

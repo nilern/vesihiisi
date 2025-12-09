@@ -170,7 +170,7 @@ static void pushCodeByte(MethodBuilder* builder, uint8_t byte) {
 
 inline static void pushOp(MethodBuilder* builder, Opcode op) { pushCodeByte(builder, (uint8_t)op); }
 
-inline static void pushArg(MethodBuilder* builder, IRName name) {
+inline static void pushReg(MethodBuilder* builder, IRName name) {
     pushCodeByte(builder, (uint8_t)(name.index - 2)); // HACK; FIXME
 }
 
@@ -181,20 +181,20 @@ inline static void pushDisplacement(MethodBuilder* builder, size_t displacement)
 static void emitStmt(MethodBuilder* builder, IRStmt const* stmt) {
     switch (stmt->type) {
     case STMT_GLOBAL_DEF: {
-        pushArg(builder, stmt->globalDef.val);
+        pushReg(builder, stmt->globalDef.val);
         pushCodeByte(builder, stmt->globalDef.name.index);
         pushOp(builder, OP_DEF);
     }; break;
 
     case STMT_GLOBAL: {
         pushCodeByte(builder, stmt->global.name.index);
-        pushArg(builder, stmt->global.tmpName);
+        pushReg(builder, stmt->global.tmpName);
         pushOp(builder, OP_GLOBAL);
     }; break;
 
     case STMT_CONST_DEF: {
         pushCodeByte(builder, stmt->constDef.v.index);
-        pushArg(builder, stmt->constDef.name);
+        pushReg(builder, stmt->constDef.name);
         pushOp(builder, OP_CONST);
     }; break;
 
@@ -206,6 +206,9 @@ static void emitStmt(MethodBuilder* builder, IRStmt const* stmt) {
 
 static void emitTransfer(MethodBuilder* builder, IRTransfer const* transfer) {
     switch (transfer->type) {
+    case TRANSFER_CALL: // fallthrough
+    case TRANSFER_TAILCALL: assert(false); break; // TODO
+
     case TRANSFER_IF: {
         size_t const postIndex = builder->codeCount - 1;
         GetLabelIndexRes const getRes = getLabelIndex(&builder->labelIdxs, transfer->iff.alt);
@@ -213,10 +216,9 @@ static void emitTransfer(MethodBuilder* builder, IRTransfer const* transfer) {
         size_t const destIndex = getRes.index;
         size_t const displacement = postIndex - destIndex;
         pushDisplacement(builder, displacement);
-        pushArg(builder, transfer->iff.cond);
+        pushReg(builder, transfer->iff.cond);
         pushOp(builder, OP_BRF);
-        break;
-    }
+    }; break;
 
     case TRANSFER_GOTO: {
         size_t const postIndex = builder->codeCount - 1;
@@ -228,15 +230,13 @@ static void emitTransfer(MethodBuilder* builder, IRTransfer const* transfer) {
             pushDisplacement(builder, displacement);
             pushOp(builder, OP_BR);
         }
-        break;
-    }
+    }; break;
 
     case TRANSFER_RETURN: {
-        pushArg(builder, transfer->ret.arg);
-        pushArg(builder, transfer->ret.callee);
+        pushReg(builder, transfer->ret.arg);
+        pushReg(builder, transfer->ret.callee);
         pushOp(builder, OP_RET);
-        break;
-    }
+    }; break;
     }
 }
 

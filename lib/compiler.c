@@ -213,8 +213,23 @@ static void freeTransfer(IRTransfer* transfer) {
     }
 }
 
+typedef struct Callers {
+    IRLabel* vals;
+    size_t count;
+    size_t cap;
+} Callers;
+
+inline static void freeCallers(Callers* callers) { free(callers->vals); }
+
+static Callers createCallers(size_t cap) {
+    IRLabel* const vals = malloc(cap * sizeof *vals);
+    return (Callers){.vals = vals, .count = 0, .cap = cap};
+}
+
 typedef struct IRBlock {
     IRLabel label;
+
+    Callers callers;
 
     BitSet liveIns;
 
@@ -230,6 +245,8 @@ typedef struct IRBlock {
 } IRBlock;
 
 static void freeBlock(IRBlock* block) {
+    freeCallers(&block->callers);
+
     freeBitSet(&block->liveIns);
 
     free(block->params);
@@ -241,6 +258,10 @@ static void freeBlock(IRBlock* block) {
     free(block->stmts);
     
     freeTransfer(&block->transfer);
+}
+
+inline static void pushCaller(IRBlock* block, IRLabel caller) {
+    block->callers.vals[block->callers.count++] = caller;
 }
 
 static void pushIRStmt(IRBlock* block, IRStmt stmt) {
@@ -311,7 +332,9 @@ static IRBlock const* irLabelBlock(IRFn const* fn, IRLabel label) {
     return fn->blocks[label.blockIndex];
 }
 
-static IRBlock* createIRBlock(IRFn* fn) {
+static IRBlock* createIRBlock(IRFn* fn, size_t callerCap) {
+    Callers const callers = createCallers(callerCap);
+
     BitSet const liveIns = createBitSet(0);
 
     size_t const paramCap = 2;
@@ -323,6 +346,8 @@ static IRBlock* createIRBlock(IRFn* fn) {
     IRBlock* const block = malloc(sizeof *block);
     *block = (IRBlock){
         .label = (IRLabel){fn->blockCount},
+
+        .callers = callers,
 
         .liveIns = liveIns,
 
@@ -371,11 +396,13 @@ static void createTailcall(IRBlock* block, IRName callee, IRName retFrame, Args 
     };
 }
 
-static void createIRIf(IRBlock* block, IRName cond, IRLabel conseqLabel, IRLabel altLabel) {
+static IRIf* createIRIf(IRBlock* block, IRName cond, IRLabel conseqLabel, IRLabel altLabel) {
     block->transfer = (IRTransfer){
         .type = TRANSFER_IF,
         .iff = (IRIf){.cond = cond, .conseq = conseqLabel, .alt = altLabel}
     };
+
+    return &block->transfer.iff;
 }
 
 static void createIRGoto(IRBlock* block, IRLabel destLabel, IRName arg) {
@@ -524,8 +551,11 @@ static void printBlock(
     IRBlock* block
 ) {
     for (size_t i = 0; i < nesting; ++i) { fprintf(dest, "  "); }
-    fprintf(dest, "(label (");
+    fprintf(dest, "(label ");
 
+    printIRLabel(dest, block->label);
+
+    fprintf(dest, " (");
     size_t const liveInLimit = bitSetLimit(&block->liveIns);
     for (size_t i = 0, printed = 0; i < liveInLimit; ++i) {
         if (bitSetContains(&block->liveIns, i)) {
@@ -536,13 +566,26 @@ static void printBlock(
     }
 
     fprintf(dest, ") (");
-    printIRLabel(dest, block->label);
     size_t const paramCount = block->paramCount;
     for (size_t i = 0; i < paramCount; ++i) {
-        fputc(' ', dest);
+        if (i > 0) { fputc(' ', dest); }
         printIRName(state, dest, compiler, block->params[i]);
     }
-    fprintf(dest, ")\n");
+    fputc(')', dest);
+
+    size_t const callerCount = block->callers.count;
+    if (callerCount > 0) {
+        fprintf(dest, " callers (");
+
+        for (size_t i = 0; i < callerCount; ++i) {
+            if (i > 0) { fputc(' ', dest); }
+            printIRLabel(dest, block->callers.vals[i]);
+        }
+
+        fputc(')', dest);
+    }
+
+    fputc('\n', dest);
     
     size_t const stmtCount = block->stmtCount;
     for (size_t i = 0; i < stmtCount; ++i) {

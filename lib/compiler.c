@@ -1,4 +1,3 @@
-// TODO: Separate `IRLabel` containing block index:
 typedef struct IRName { size_t index; } IRName;
 
 static const IRName invalidIRName = {0};
@@ -9,6 +8,8 @@ inline static bool irNameEq(IRName name1, IRName name2) { return name1.index == 
 
 // OPTIMIZE: As simple and fast as possible but actually a terrible hash:
 inline static size_t irNameHash(IRName name) { return name.index; }
+
+typedef struct IRLabel { size_t blockIndex; } IRLabel;
 
 typedef struct IRConst { uint8_t index; } IRConst;
 
@@ -157,7 +158,7 @@ inline static IRStmt fnDefToStmt(FnDef fnDef) { return (IRStmt){{.fnDef = fnDef}
 
 typedef struct Call {
     IRName callee;
-    IRName retLabel;
+    IRLabel retLabel;
     Args args;
 } Call;
 
@@ -169,12 +170,12 @@ typedef struct Tailcall {
 
 typedef struct IRIf {
     IRName cond;
-    IRName conseq;
-    IRName alt;
+    IRLabel conseq;
+    IRLabel alt;
 } IRIf;
 
 typedef struct IRGoto {
-    IRName dest;
+    IRLabel dest;
     IRName arg;
 } IRGoto;
 
@@ -213,7 +214,7 @@ static void freeTransfer(IRTransfer* transfer) {
 }
 
 typedef struct IRBlock {
-    IRName label;
+    IRLabel label;
 
     BitSet liveIns;
 
@@ -252,12 +253,9 @@ static void pushIRStmt(IRBlock* block, IRStmt stmt) {
     block->stmts[block->stmtCount++] = stmt;
 }
 
-static IRFn createIRFn() {
+static IRFn createIRFnWithConsts(ORef* const consts, uint8_t constCount, uint8_t constCap) {
     size_t const blockCap = 2;
     IRBlock** const blocks = malloc(blockCap * sizeof *blocks);
-
-    uint8_t const constCap = 2;
-    ORef* const consts = malloc(constCap * sizeof *consts);
 
     return (IRFn){
         .blocks = blocks,
@@ -265,9 +263,15 @@ static IRFn createIRFn() {
         .blockCap = blockCap,
 
         .consts = consts,
-        .constCount = 0,
+        .constCount = constCount,
         .constCap = constCap
     };
+}
+
+static IRFn createIRFn(void) {
+    uint8_t const constCap = 2;
+    ORef* const consts = malloc(constCap * sizeof *consts);
+    return createIRFnWithConsts(consts, 0, constCap);
 }
 
 static void freeIRFn(IRFn* fn) {
@@ -276,7 +280,7 @@ static void freeIRFn(IRFn* fn) {
         freeBlock(fn->blocks[i]);
     }
     free(fn->blocks);
-    
+
     free(fn->consts);
 }
 
@@ -301,21 +305,13 @@ static IRConst fnConst(IRFn* fn, ORef c) {
     return (IRConst){index};
 }
 
-// OPTIMIZE: Separate `IRLabel` containing block index to make this constant time:
-static IRBlock const* irLabelBlock(IRFn const* fn, IRName label) {
-    size_t const count = fn->blockCount;
-    for (size_t i = 0; i < count; ++i) {
-        IRBlock* const block = fn->blocks[i];
-        if (irNameEq(block->label, label)) {
-            return block;
-        }
-    }
+static IRBlock const* irLabelBlock(IRFn const* fn, IRLabel label) {
+    assert(label.blockIndex < fn->blockCount);
 
-    assert(false); // Block not found is a bug
-    return nullptr;
+    return fn->blocks[label.blockIndex];
 }
 
-static IRBlock* createIRBlock(IRFn* fn, IRName label) {
+static IRBlock* createIRBlock(IRFn* fn) {
     BitSet const liveIns = createBitSet(0);
 
     size_t const paramCap = 2;
@@ -326,7 +322,7 @@ static IRBlock* createIRBlock(IRFn* fn, IRName label) {
     
     IRBlock* const block = malloc(sizeof *block);
     *block = (IRBlock){
-        .label = label,
+        .label = (IRLabel){fn->blockCount},
 
         .liveIns = liveIns,
 
@@ -361,7 +357,7 @@ static void pushIRParam(IRBlock* block, IRName param) {
     block->params[block->paramCount++] = param;
 }
 
-static void createCall(IRBlock* block, IRName callee, IRName retLabel, Args args) {
+static void createCall(IRBlock* block, IRName callee, IRLabel retLabel, Args args) {
     block->transfer = (IRTransfer){
         .type = TRANSFER_CALL,
         .call = (Call){.callee = callee, .retLabel = retLabel, .args = args}
@@ -375,14 +371,14 @@ static void createTailcall(IRBlock* block, IRName callee, IRName retFrame, Args 
     };
 }
 
-static void createIRIf(IRBlock* block, IRName cond, IRName conseqLabel, IRName altLabel) {
+static void createIRIf(IRBlock* block, IRName cond, IRLabel conseqLabel, IRLabel altLabel) {
     block->transfer = (IRTransfer){
         .type = TRANSFER_IF,
         .iff = (IRIf){.cond = cond, .conseq = conseqLabel, .alt = altLabel}
     };
 }
 
-static void createIRGoto(IRBlock* block, IRName destLabel, IRName arg) {
+static void createIRGoto(IRBlock* block, IRLabel destLabel, IRName arg) {
     block->transfer = (IRTransfer){
         .type = TRANSFER_GOTO,
         .gotoo = (IRGoto){.dest = destLabel, .arg = arg}
@@ -403,6 +399,10 @@ static void printIRName(State const* state, FILE* dest, Compiler const* compiler
         print(state, dest, maybeSym);
     }
     fprintf(dest, "$%ld", name.index);
+}
+
+static void printIRLabel(FILE* dest, IRLabel label) {
+    fprintf(dest, ":%ld", label.blockIndex);
 }
 
 inline static void printIRConst(State const* state, FILE* dest, IRFn const* fn, IRConst c) {
@@ -477,7 +477,7 @@ static void printTransfer(
         fprintf(dest, "(call ");
         printIRName(state, dest, compiler, transfer->call.callee);
         fputc(' ', dest);
-        printIRName(state, dest, compiler, transfer->call.retLabel);
+        printIRLabel(dest, transfer->call.retLabel);
         printArgs(state, dest, compiler, &transfer->call.args);
         fputc(')', dest);
     }; break;
@@ -495,15 +495,15 @@ static void printTransfer(
         fprintf(dest, "(if ");
         printIRName(state, dest, compiler, transfer->iff.cond);
         fputc(' ', dest);
-        printIRName(state, dest, compiler, transfer->iff.conseq);
+        printIRLabel(dest, transfer->iff.conseq);
         fputc(' ', dest);
-        printIRName(state, dest, compiler, transfer->iff.alt);
+        printIRLabel(dest, transfer->iff.alt);
         fputc(')', dest);
     }; break;
 
     case TRANSFER_GOTO: {
         fprintf(dest, "(goto ");
-        printIRName(state, dest, compiler, transfer->gotoo.dest);
+        printIRLabel(dest, transfer->gotoo.dest);
         fputc(' ', dest);
         printIRName(state, dest, compiler, transfer->gotoo.arg);
         fputc(')', dest);
@@ -536,7 +536,7 @@ static void printBlock(
     }
 
     fprintf(dest, ") (");
-    printIRName(state, dest, compiler, block->label);
+    printIRLabel(dest, block->label);
     size_t const paramCount = block->paramCount;
     for (size_t i = 0; i < paramCount; ++i) {
         fputc(' ', dest);

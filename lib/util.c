@@ -1,3 +1,8 @@
+typedef struct MaybeUInt8 {
+    uint8_t val;
+    bool hasVal;
+} MaybeUInt8;
+
 typedef struct BucketIdx {
     size_t idx;
     bool occupied;

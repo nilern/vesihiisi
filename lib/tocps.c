@@ -211,8 +211,7 @@ static IRName exprToIR(
                 if (strEq(symbolName(calleeSym), (Str){"fn", /*HACK:*/2})) {
                     IRFn innerFn = createIRFn();
 
-                    IRName const entry = freshName(compiler);
-                    IRBlock* entryBlock = createIRBlock(&innerFn, entry);
+                    IRBlock* entryBlock = createIRBlock(&innerFn);
 
                     ToCpsEnv fnEnv = createToCpsEnv(env);
                     IRName const self = freshName(compiler);
@@ -303,29 +302,26 @@ static IRName exprToIR(
                         assert(false); // TODO
                     }
 
+                    IRBlock* conseqBlock = createIRBlock(fn);
+                    IRBlock* altBlock = createIRBlock(fn);
+
                     ToCpsCont const splitK = (ToCpsCont){{}, TO_CPS_CONT_VAL};
                     IRName const condName = exprToIR(state, compiler, fn, env, block, cond, splitK);
-                    IRName const conseqLabel = freshName(compiler);
-                    IRName const altLabel = freshName(compiler);
-                    createIRIf(*block, condName, conseqLabel, altLabel);
+                    createIRIf(*block, condName, conseqBlock->label, altBlock->label);
 
-                    IRBlock* conseqBlock = createIRBlock(fn, conseqLabel);
                     IRName const conseqName =
                         exprToIR(state, compiler, fn, env, &conseqBlock, conseq, k);
-                    IRBlock* altBlock = createIRBlock(fn, altLabel);
                     IRName const altName = exprToIR(state, compiler, fn, env, &altBlock, alt, k);
 
                     if (k.type != TO_CPS_CONT_RETURN) {
-                        IRName const joinLabel = freshName(compiler);
-
-                        createIRGoto(conseqBlock, joinLabel, conseqName);
-                        createIRGoto(altBlock, joinLabel, altName);
-
-                        IRBlock* const joinBlock = createIRBlock(fn, joinLabel);
+                        IRBlock* const joinBlock = createIRBlock(fn);
                         // FIXME: If `k` provides a target name it should be used for `phi`. Now it
                         // gets pushed into the branches and possibly multiply defined:
                         IRName const phi = freshName(compiler);
                         pushIRParam(joinBlock, phi);
+
+                        createIRGoto(conseqBlock, joinBlock->label, conseqName);
+                        createIRGoto(altBlock, joinBlock->label, altName);
 
                         *block = joinBlock;
                         return phi;
@@ -481,14 +477,12 @@ static IRName exprToIR(
             IRName const retValName = toCpsContDestName(compiler, k);
 
             if (k.type != TO_CPS_CONT_RETURN) {
-                IRName const retLabel = freshName(compiler);
-
-                createCall(*block, calleeName, retLabel, cpsArgs);
-
-                IRBlock* const retBlock = createIRBlock(fn, retLabel);
+                IRBlock* const retBlock = createIRBlock(fn);
                 IRName const frame = freshName(compiler);
                 pushIRParam(retBlock, frame);
                 pushIRParam(retBlock, retValName);
+
+                createCall(*block, calleeName, retBlock->label, cpsArgs);
 
                 *block = retBlock;
             } else {
@@ -519,8 +513,7 @@ static IRName exprToIR(
 static IRFn topLevelExprToIR(State const* state, Compiler* compiler, ORef expr) {
     IRFn fn = createIRFn();
 
-    IRName const entry = freshName(compiler);
-    IRBlock* entryBlock = createIRBlock(&fn, entry);
+    IRBlock* entryBlock = createIRBlock(&fn);
 
     ToCpsEnv env = createToCpsEnv(nullptr);
     IRName const self = freshName(compiler);

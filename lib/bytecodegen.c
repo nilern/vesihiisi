@@ -1,124 +1,20 @@
-// OPTIMIZE: keys and vals into same allocation
 typedef struct LabelIdxs {
-    IRName* keys;
-    size_t* vals;
-    size_t count;
-    size_t cap;
+    size_t* idxs;
 } LabelIdxs;
 
-static void freeLabelIdxs(LabelIdxs* labelIdxs) {
-    free(labelIdxs->keys);
-    free(labelIdxs->vals);
+inline static void freeLabelIdxs(LabelIdxs* labelIdxs) { free(labelIdxs->idxs); }
+
+static LabelIdxs createLabelIdxs(size_t blockCount) {
+    size_t* const idxs = malloc(blockCount * sizeof *idxs);
+    return (LabelIdxs){.idxs = idxs};
 }
 
-static LabelIdxs createLabelIdxs(void) {
-    size_t const cap = 2;
-    IRName* const keys = malloc(cap * sizeof *keys);
-    memset(keys, 0, cap * sizeof *keys);
-    size_t* const vals = malloc(cap * sizeof *vals);
-
-    return (LabelIdxs){
-        .keys = keys,
-        .vals = vals,
-        .count = 0,
-        .cap = cap
-    };
+inline static size_t getLabelIndex(LabelIdxs const* labelIdxs, IRLabel label) {
+    return labelIdxs->idxs[label.blockIndex];
 }
 
-typedef struct FindLabelIndexIndexRes {
-    size_t indexIndex;
-    bool hasValue;
-} FindLabelIndexIndexRes;
-
-static FindLabelIndexIndexRes findLabelIndexIndex(LabelIdxs const* labelIdxs, IRName label) {
-    size_t const h = irNameHash(label);
-
-    size_t const maxIdx = labelIdxs->cap - 1;
-    for (size_t collisions = 0, i = h & maxIdx;; ++collisions, i = (i + collisions) & maxIdx) {
-        IRName const k = labelIdxs->keys[i];
-
-        if (irNameEq(k, label)) {
-            return (FindLabelIndexIndexRes){.indexIndex = i, true};
-        } else if (k.index == 0) {
-            return (FindLabelIndexIndexRes){.indexIndex = i, false};
-        }
-    }
-}
-
-static void rehashLabelIdxs(LabelIdxs* labelIdxs) {
-    size_t const oldCap = labelIdxs->cap;
-    IRName* const oldKeys = labelIdxs->keys;
-    size_t* const oldVals = labelIdxs->vals;
-
-    size_t const newCap = oldCap << 1;
-    IRName* const newKeys = malloc(newCap * sizeof *newKeys);
-    memset(newKeys, 0, newCap * sizeof *newKeys);
-    size_t* const newVals = malloc(newCap * sizeof *newVals);
-
-    for (size_t i = 0; i < oldCap; ++i) {
-        IRName const k = oldKeys[i];
-
-        if (k.index != 0) {
-            size_t const h = irNameHash(k);
-
-            size_t const maxIndex = newCap - 1;
-            for (size_t collisions = 0, j = h & maxIndex;;
-                ++collisions, j = (j + collisions) & maxIndex
-            ) {
-                IRName* const maybeK = newKeys + j;
-
-                if (maybeK->index == 0) {
-                    *maybeK = k;
-                    newVals[j] = oldVals[i];
-                    break;
-                }
-            }
-        }
-    }
-
-    labelIdxs->keys = newKeys;
-    labelIdxs->vals = newVals;
-    labelIdxs->cap = newCap;
-
-    free(oldKeys);
-    free(oldVals);
-}
-
-typedef struct GetLabelIndexRes {
-    size_t index;
-    bool found;
-
-} GetLabelIndexRes;
-
-static GetLabelIndexRes getLabelIndex(LabelIdxs const* labelIdxs, IRName label) {
-    FindLabelIndexIndexRes const findRes = findLabelIndexIndex(labelIdxs, label);
-    if (!findRes.hasValue) { return (GetLabelIndexRes){.found = false}; }
-
-    return (GetLabelIndexRes){
-        .index = labelIdxs->vals[findRes.indexIndex],
-        .found = true
-    };
-}
-
-static void setLabelIndex(LabelIdxs* labelIdxs, IRName label, size_t index) {
-    FindLabelIndexIndexRes findRes = findLabelIndexIndex(labelIdxs, label);
-    if (findRes.hasValue) {
-        labelIdxs->vals[findRes.indexIndex] = index;
-    } else {
-        size_t indexIndex = findRes.indexIndex;
-
-        size_t const newCount = labelIdxs->count + 1;
-        if (newCount > (labelIdxs->cap >> 1)) {
-            rehashLabelIdxs(labelIdxs);
-            findRes = findLabelIndexIndex(labelIdxs, label);
-            assert(!findRes.hasValue);
-            indexIndex = findRes.indexIndex;
-        }
-
-        labelIdxs->keys[indexIndex] = label;
-        labelIdxs->vals[indexIndex] = index;
-        labelIdxs->count = newCount;
-    }
+inline static void setLabelIndex(LabelIdxs* labelIdxs, IRLabel label, size_t index) {
+    labelIdxs->idxs[label.blockIndex] = index;
 }
 
 typedef struct MethodBuilder {
@@ -146,7 +42,7 @@ static MethodRef buildMethod(State* state, MethodBuilder builder, IRFn const* fn
     return method;
 }
 
-static MethodBuilder createMethodBuilder(void) {
+static MethodBuilder createMethodBuilder(size_t blockCount) {
     size_t const codeCap = 2;
     uint8_t* const code = malloc(codeCap * sizeof *code);
 
@@ -154,7 +50,7 @@ static MethodBuilder createMethodBuilder(void) {
         .code = code,
         .codeCount = 0,
         .codeCap = codeCap,
-        .labelIdxs = createLabelIdxs()
+        .labelIdxs = createLabelIdxs(blockCount)
     };
 }
 
@@ -211,9 +107,7 @@ static void emitTransfer(MethodBuilder* builder, IRTransfer const* transfer) {
 
     case TRANSFER_IF: {
         size_t const postIndex = builder->codeCount - 1;
-        GetLabelIndexRes const getRes = getLabelIndex(&builder->labelIdxs, transfer->iff.alt);
-        assert(getRes.found);
-        size_t const destIndex = getRes.index;
+        size_t const destIndex = getLabelIndex(&builder->labelIdxs, transfer->iff.alt);
         size_t const displacement = postIndex - destIndex;
         pushDisplacement(builder, displacement);
         pushReg(builder, transfer->iff.cond);
@@ -222,9 +116,7 @@ static void emitTransfer(MethodBuilder* builder, IRTransfer const* transfer) {
 
     case TRANSFER_GOTO: {
         size_t const postIndex = builder->codeCount - 1;
-        GetLabelIndexRes const getRes = getLabelIndex(&builder->labelIdxs, transfer->gotoo.dest);
-        assert(getRes.found);
-        size_t const destIndex = getRes.index;
+        size_t const destIndex = getLabelIndex(&builder->labelIdxs, transfer->gotoo.dest);
         size_t const displacement = postIndex - destIndex;
         if (displacement > 0) {
             pushDisplacement(builder, displacement);
@@ -253,7 +145,7 @@ static void emitBlock(MethodBuilder* builder, IRBlock const* block) {
 }
 
 static MethodRef emitMethod(State* state, IRFn const* fn) {
-    MethodBuilder builder = createMethodBuilder();
+    MethodBuilder builder = createMethodBuilder(fn->blockCount);
 
     // Thanks to previous passes, CFG DAG blocks are conveniently in reverse post-order:
     for (size_t i = fn->blockCount; i-- > 0;) {

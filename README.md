@@ -22,6 +22,7 @@ Yet another Lisp.
 * Complete bytecode compiler
     - TCO
     - Safe for space
+    - Use Arena for compiler data
 * Complete bytecode VM
 * Add GC
 

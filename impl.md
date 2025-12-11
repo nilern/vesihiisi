@@ -11,6 +11,8 @@ preceded by the object length (in slots or bytes).
 
 ## Object References
 
+OPTIMIZE: Move to NaN-tagging
+
 Object references are 64 bits. Thus objects are at least 64-bit aligned (because even if the
 object's fields could be less aligned, at least its type is an object reference). So the three LSB:s
 of object would always be 0b000. Instead of wasting those precious bits so we use tagged pointers:

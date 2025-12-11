@@ -49,7 +49,9 @@ static void enlivenTransfer(BitSet* liveOuts, IRTransfer const* transfer) {
     }; break;
 
     case TRANSFER_GOTO: {
-        requireLive(liveOuts, transfer->gotoo.arg);
+        for (size_t i = transfer->gotoo.args.count; i-- > 0;) {
+            requireLive(liveOuts, transfer->gotoo.args.names[i]);
+        }
     }; break;
 
     case TRANSFER_RETURN: {
@@ -74,6 +76,8 @@ static void enlivenStmt(BitSet* liveOuts, IRStmt* stmt) {
     case STMT_CONST_DEF: {
         rangeStart(liveOuts, stmt->constDef.name);
     }; break;
+
+    case STMT_CLOVER: assert(false); break; // Should not exist yet
 
     case STMT_FN_DEF: {
         rangeStart(liveOuts, stmt->fnDef.name);

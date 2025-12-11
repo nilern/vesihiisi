@@ -1,7 +1,7 @@
-typedef struct MaybeUInt8 {
-    uint8_t val;
+typedef struct MaybeSize {
+    size_t val;
     bool hasVal;
-} MaybeUInt8;
+} MaybeSize;
 
 typedef struct BucketIdx {
     size_t idx;

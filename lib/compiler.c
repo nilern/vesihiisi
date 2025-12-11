@@ -58,6 +58,10 @@ inline static IRName freshName(Compiler* compiler) {
     return renameSymbolImpl(compiler, fixnumToORef(Zero));
 }
 
+inline static IRName renameIRName(Compiler* compiler, IRName name) {
+    return renameSymbolImpl(compiler, compiler->nameSyms[name.index]);
+}
+
 typedef struct IRFn {
     struct IRBlock** blocks; // OPTIMIZE: `IRBlock* blocks`
     size_t blockCount;
@@ -107,10 +111,17 @@ typedef struct ConstDef {
     IRConst v;
 } ConstDef;
 
+typedef struct Clover {
+    IRName name;
+    IRName closure;
+    uint8_t idx;
+} Clover;
+
 typedef struct FnDef {
     IRName name;
     IRFn fn;
     IRConst v;
+    Args closes;
 } FnDef;
 
 typedef struct IRStmt {
@@ -118,12 +129,14 @@ typedef struct IRStmt {
         GlobalDef globalDef;
         IRGlobal global;
         ConstDef constDef;
+        Clover clover;
         FnDef fnDef;
     };
     enum IRStmtType {
         STMT_GLOBAL_DEF,
         STMT_GLOBAL,
         STMT_CONST_DEF,
+        STMT_CLOVER,
         STMT_FN_DEF
     } type;
 } IRStmt;
@@ -134,6 +147,7 @@ static void freeStmt(IRStmt* stmt) {
     switch (stmt->type) {
     case STMT_GLOBAL_DEF: // fallthrough
     case STMT_GLOBAL: // fallthrough
+    case STMT_CLOVER: // fallthrough
     case STMT_CONST_DEF: break;
 
     case STMT_FN_DEF: {
@@ -176,7 +190,7 @@ typedef struct IRIf {
 
 typedef struct IRGoto {
     IRLabel dest;
-    IRName arg;
+    Args args;
 } IRGoto;
 
 typedef struct IRReturn {
@@ -204,11 +218,9 @@ typedef struct IRTransfer {
 static void freeTransfer(IRTransfer* transfer) {
     switch (transfer->type) {
     case TRANSFER_CALL: freeArgs(&transfer->call.args); break;
-
     case TRANSFER_TAILCALL: freeArgs(&transfer->tailcall.args); break;
-
-    case TRANSFER_IF: // fallthrough
-    case TRANSFER_GOTO: // fallthrough
+    case TRANSFER_IF: break;
+    case TRANSFER_GOTO: freeArgs(&transfer->gotoo.args); break;
     case TRANSFER_RETURN: break;
     }
 }
@@ -406,9 +418,12 @@ static IRIf* createIRIf(IRBlock* block, IRName cond, IRLabel conseqLabel, IRLabe
 }
 
 static void createIRGoto(IRBlock* block, IRLabel destLabel, IRName arg) {
+    Args args = createArgs();
+    pushArg(&args, arg);
+
     block->transfer = (IRTransfer){
         .type = TRANSFER_GOTO,
-        .gotoo = (IRGoto){.dest = destLabel, .arg = arg}
+        .gotoo = (IRGoto){.dest = destLabel, .args = args}
     };
 }
 
@@ -436,6 +451,14 @@ inline static void printIRConst(State const* state, FILE* dest, IRFn const* fn, 
     print(state, dest, fn->consts[c.index]);
 }
 
+static void printArgs(State const* state, FILE* dest, Compiler const* compiler, Args const* args) {
+    size_t const count = args->count;
+    for (size_t i = 0; i < count; ++i) {
+        if (i > 0) { fputc(' ', dest); }
+        printIRName(state, dest, compiler, args->names[i]);
+    }
+}
+
 static void printNestedIRFn(
     State const* state, FILE* dest, Compiler const* compiler, IRFn const* fn, size_t nesting
 );
@@ -460,9 +483,9 @@ static void printStmt(
         IRGlobal const global = stmt->global;
         fprintf(dest, "(let ");
         printIRName(state, dest, compiler, global.tmpName);
-        fputc(' ', dest);
+        fprintf(dest, " (global ");
         printIRConst(state, dest, fn, global.name);
-        fputc(')', dest);
+        fprintf(dest, "))");
     }; break;
 
     case STMT_CONST_DEF: {
@@ -474,22 +497,26 @@ static void printStmt(
         fputc(')', dest);
     }; break;
 
+    case STMT_CLOVER: {
+        Clover const clover = stmt->clover;
+        fprintf(dest, "(let ");
+        printIRName(state, dest, compiler, clover.name);
+        fprintf(dest, " (clover ");
+        printIRName(state, dest, compiler, clover.closure);
+        fprintf(dest, " %u))", clover.idx);
+    }; break;
+
     case STMT_FN_DEF: {
         FnDef const* const fnDef = &stmt->fnDef;
         fprintf(dest, "(let ");
         printIRName(state, dest, compiler, fnDef->name);
-        fputc('\n', dest);
+        fprintf(dest, " (closure\n");
         printNestedIRFn(state, dest, compiler, &fnDef->fn, nesting + 2);
-        fprintf(dest, ")\n");
+        fputc('\n', dest);
+        for (size_t i = 0; i < nesting + 2; ++i) { fprintf(dest, "  "); }
+        printArgs(state, dest, compiler, &fnDef->closes);
+        fprintf(dest, "))\n");
     }; break;
-    }
-}
-
-static void printArgs(State const* state, FILE* dest, Compiler const* compiler, Args const* args) {
-    size_t const count = args->count;
-    for (size_t i = 0; i < count; ++i) {
-        fputc(' ', dest);
-        printIRName(state, dest, compiler, args->names[i]);
     }
 }
 
@@ -505,6 +532,7 @@ static void printTransfer(
         printIRName(state, dest, compiler, transfer->call.callee);
         fputc(' ', dest);
         printIRLabel(dest, transfer->call.retLabel);
+        fputc(' ', dest);
         printArgs(state, dest, compiler, &transfer->call.args);
         fputc(')', dest);
     }; break;
@@ -514,6 +542,7 @@ static void printTransfer(
         printIRName(state, dest, compiler, transfer->tailcall.callee);
         fputc(' ', dest);
         printIRName(state, dest, compiler, transfer->tailcall.retFrame);
+        fputc(' ', dest);
         printArgs(state, dest, compiler, &transfer->tailcall.args);
         fputc(')', dest);
     }; break;
@@ -532,7 +561,7 @@ static void printTransfer(
         fprintf(dest, "(goto ");
         printIRLabel(dest, transfer->gotoo.dest);
         fputc(' ', dest);
-        printIRName(state, dest, compiler, transfer->gotoo.arg);
+        printArgs(state, dest, compiler, &transfer->gotoo.args);
         fputc(')', dest);
     }; break;
 
@@ -556,11 +585,14 @@ static void printBlock(
     printIRLabel(dest, block->label);
 
     fprintf(dest, " (");
-    size_t const liveInLimit = bitSetLimit(&block->liveIns);
-    for (size_t i = 0, printed = 0; i < liveInLimit; ++i) {
-        if (bitSetContains(&block->liveIns, i)) {
+    {
+        size_t printed = 0;
+        for (BitSetIter it = newBitSetIter(&block->liveIns);;) {
+            MaybeSize const maybeIdx = bitSetIterNext(&it);
+            if (!maybeIdx.hasVal) { break; }
+
             if (printed > 0) { fputc(' ', dest); }
-            printIRName(state, dest, compiler, (IRName){i});
+            printIRName(state, dest, compiler, (IRName){maybeIdx.val});
             ++printed;
         }
     }

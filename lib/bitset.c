@@ -18,8 +18,21 @@ static BitSet createBitSet(size_t cap) {
     };
 }
 
+static BitSet bitSetClone(BitSet const* bits) {
+    size_t const wordCount = bits->wordCount;
+    size_t const wordCap = bits->wordCap;
+    uintptr_t* const words = malloc(wordCap * sizeof *words);
+    memcpy(words, bits->words, wordCount * sizeof *words);
+
+    return (BitSet){.words = words, .wordCount = wordCount, .wordCap = wordCap};
+}
+
 inline static size_t bitSetLimit(BitSet const* bits) {
     return bits->wordCount * (8 * sizeof *bits->words); // OPTIMIZE
+}
+
+inline static size_t bitSetBitCap(BitSet const* bits) {
+    return bits->wordCap * (8 * sizeof *bits->words); // OPTIMIZE
 }
 
 static bool bitSetContains(BitSet const* bits, size_t n) {
@@ -101,4 +114,29 @@ static void bitSetUnionInto(BitSet* dest, BitSet const* src) {
         );
         dest->wordCount = src->wordCount;
     }
+}
+
+typedef struct BitSetIter {
+    BitSet const* bits;
+    size_t idx;
+    size_t bitCount;
+} BitSetIter;
+
+inline static BitSetIter newBitSetIter(BitSet const* bits) {
+    return (BitSetIter){.bits = bits, .idx = 0, .bitCount = bitSetLimit(bits)};
+}
+
+// OPTIMIZE: Skip empty words and bytes:
+static MaybeSize bitSetIterNext(BitSetIter* it) {
+    size_t const count = it->bitCount;
+
+    for (size_t i = it->idx; i < count; ++i) {
+        if (bitSetContains(it->bits, i)) {
+            it->idx = i + 1;
+            return (MaybeSize){.val = i, .hasVal = true};
+        }
+    }
+
+    it->idx = count;
+    return (MaybeSize){};
 }

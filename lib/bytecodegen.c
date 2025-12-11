@@ -67,7 +67,7 @@ static void pushCodeByte(MethodBuilder* builder, uint8_t byte) {
 inline static void pushOp(MethodBuilder* builder, Opcode op) { pushCodeByte(builder, (uint8_t)op); }
 
 inline static void pushReg(MethodBuilder* builder, IRName name) {
-    pushCodeByte(builder, (uint8_t)(name.index - 2)); // HACK; FIXME
+    pushCodeByte(builder, (uint8_t)(name.index - 1)); // HACK; FIXME
 }
 
 inline static void pushDisplacement(MethodBuilder* builder, size_t displacement) {
@@ -94,7 +94,7 @@ static void emitStmt(MethodBuilder* builder, IRStmt const* stmt) {
         pushOp(builder, OP_CONST);
     }; break;
 
-    case STMT_FN_DEF: {
+    case STMT_FN_DEF: case STMT_CLOVER: {
         assert(false); // TODO
     }; break;
     }

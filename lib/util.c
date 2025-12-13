@@ -3,6 +3,19 @@ typedef struct MaybeSize {
     bool hasVal;
 } MaybeSize;
 
+typedef void (*SwapFn)(void* restrict x, void* restrict y);
+
+static void reverse(void* arr, size_t count, size_t size, SwapFn swap) {
+    if (count < 2) { return; }
+
+    for (char *begin = arr, *end = begin + (count - 1) * size;
+         begin < end;
+         begin += size, end -= size
+    ) {
+        swap(begin, end);
+    }
+}
+
 typedef struct BucketIdx {
     size_t idx;
     bool occupied;

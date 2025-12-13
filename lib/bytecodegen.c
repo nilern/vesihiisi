@@ -94,7 +94,7 @@ static void emitStmt(MethodBuilder* builder, IRStmt const* stmt) {
         pushOp(builder, OP_CONST);
     }; break;
 
-    case STMT_FN_DEF: case STMT_CLOVER: {
+    case STMT_FN_DEF: case STMT_CLOVER: case STMT_MOVE: case STMT_SWAP: {
         assert(false); // TODO
     }; break;
     }

@@ -230,3 +230,111 @@ Four passes:
 			  not used by the favorite sibling).
 	- Join points: do nothing
 	- Save resulting block entry mapping, except for function main entry
+
+#### Register Shuffling
+
+**Problem:** Given a `current` register mapping and a `goal` register mapping
+where the variables of `current` are a subset of the variables of `goal`, emit a
+sequence of move and swap instructions that transform `current` into `goal`.
+
+This occurs at function entry points, where the registers of `goal` are just
+the registers of `current` with the addition of unused parameters.
+
+At `if`s we need to first compute `goal` as a "union" of the 'then' and 'else'
+start mappings:
+
+**Pre-problem**: Given a `current` and `goal0` where the variables of `goal0` are
+not a superset of those of `current`, compute a `goal` where that is the case and
+that is also a superset of `goal0` wrt. registers (i.e. interpreting the mapping
+as a set of (variable, register) tuples).
+
+##### Computing the `if` `goal` mapping
+
+Allocate a register (using the [mutating] `goal0`) for each variable in `vars(current) - vars(goal0)` (i.e. variables not in `current` but not in
+`goal0`). Try to use the register in `current` but fall back to default allocation
+strategy if that register is already reserved in `goal0`.
+
+This should be obvious but could also be proven with basic set theory.
+
+OPTIMIZE: In addition to trying to use the register from `current` here, provide
+`goal0` as a hint to the `else` branch as to what registers to keep free.
+
+##### The Shuffling Itself
+
+The variables of `goal` consist of variables also found in `current` plus other
+variables. For the former we need to generate moves and shuffles to move them
+from the `current` registers to the `goal` registers. For the latter we just need
+to vacate their registers (the `current` code path has no use for those variables,
+but they must be allowed to enter in those registers never the less).
+
+The moves consist of
+
+* **lines** e.g. `r0 <- r1 <- r2`
+* and **cycles** e.g. `... <- r0 <- r1 <- r2 <- r0 <- ...`
+
+We solve all the lines first, then all the cycles.
+
+Instead of bouncing around along each line we can repeatedly solve the ends of
+lines, shortening each line on each iteration (of the outer loop but also in the
+*mathematical* sense of "iterative"):
+
+```
+for foundLineEnd = true; foundLineEnd; {
+    foundLineEnd = false
+    
+    for (reg, var) in current.regVars {
+        goalReg = goal.varRegs[var]
+        if reg != goalReg {
+            if !current.regVars[goalReg] {
+                current.varRegs[var] = goalReg
+                current.regVars[goalReg] = var
+                current.regVars[reg] = None
+                emit `mov reg, goalReg`
+                
+                foundLineEnd = true
+            }
+        }
+    }
+}
+```
+
+(Actually we might want to emit one super-CISC `mov 3 r0, r1; r1, r2; r2, r3`
+instead...)
+
+After that only cycles remain. To solve them we do bounce around after finding the
+lowest register in each cycle. The first swap causes a "trader" variable to
+emerge. This variable then goes around swapping registers until it is in its goal
+register, having solved the entire cycle on the way:
+
+```
+for (reg, var) in current.regVars:
+    goalReg = goal.varRegs[var]
+    if reg != goalReg:
+        trader = current.regVars[goalReg]
+        
+        current.varRegs[var] = goalReg
+        current.regVars[goalReg] = var
+        current.varRegs[trader] = reg
+        current.regVars[reg] = trader
+        emit `swap reg, goalReg`
+        
+        for traderReg = reg, traderGoalReg = goal.varRegs[trader];
+            traderReg != traderGoalReg;
+        {
+            taker = goal.regVars[traderReg]
+            takerReg = current.varRegs[taker]
+            
+            current.varRegs[taker] = traderReg
+            current.regVars[traderReg] = taker
+            current.varRegs[trader] = takerReg
+            current.regVars[takerReg] = trader
+            emit `swap takerReg, traderReg`
+            
+            traderReg = takerReg
+        }
+    }
+}
+```
+
+(Actually we might want to emit one super-CISC `swap 3 r0, r1; r1, r2; r2, r0`
+instead...)

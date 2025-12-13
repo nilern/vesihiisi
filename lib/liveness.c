@@ -86,6 +86,8 @@ static void enlivenStmt(BitSet* liveOuts, IRStmt* stmt) {
         enlivenFn(innerFn);
         bitSetUnionInto(liveOuts, fnFreeVars(innerFn));
     }; break;
+
+    case STMT_MOVE: case STMT_SWAP: assert(false); break; // Should not exist yet
     }
 }
 

@@ -270,6 +270,8 @@ static IRStmt stmtWithPureLoads(
             pushArg(&stmt.fnDef.closes, closee);
         }
     }; break;
+
+    case STMT_MOVE: case STMT_SWAP: assert(false); break; // Should not exist yet
     }
 
     return stmt;

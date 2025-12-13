@@ -124,6 +124,16 @@ typedef struct FnDef {
     Args closes;
 } FnDef;
 
+typedef struct MoveStmt {
+    IRName dest;
+    IRName src;
+} MoveStmt;
+
+typedef struct SwapStmt {
+    IRName reg1;
+    IRName reg2;
+} SwapStmt;
+
 typedef struct IRStmt {
     union {
         GlobalDef globalDef;
@@ -131,13 +141,17 @@ typedef struct IRStmt {
         ConstDef constDef;
         Clover clover;
         FnDef fnDef;
+        MoveStmt mov;
+        SwapStmt swap;
     };
     enum IRStmtType {
         STMT_GLOBAL_DEF,
         STMT_GLOBAL,
         STMT_CONST_DEF,
         STMT_CLOVER,
-        STMT_FN_DEF
+        STMT_FN_DEF,
+        STMT_MOVE,
+        STMT_SWAP
     } type;
 } IRStmt;
 
@@ -148,7 +162,9 @@ static void freeStmt(IRStmt* stmt) {
     case STMT_GLOBAL_DEF: // fallthrough
     case STMT_GLOBAL: // fallthrough
     case STMT_CLOVER: // fallthrough
-    case STMT_CONST_DEF: break;
+    case STMT_CONST_DEF: // fallthrough
+    case STMT_MOVE: // fallthrough
+    case STMT_SWAP: break;
 
     case STMT_FN_DEF: {
         freeIRFn(&stmt->fnDef.fn);
@@ -169,6 +185,19 @@ inline static IRStmt constDefToStmt(ConstDef cdef) {
 }
 
 inline static IRStmt fnDefToStmt(FnDef fnDef) { return (IRStmt){{.fnDef = fnDef}, STMT_FN_DEF}; }
+
+inline static IRStmt moveToStmt(MoveStmt mov) { return (IRStmt){{.mov = mov}, STMT_MOVE}; }
+
+inline static IRStmt swapToStmt(SwapStmt swap) { return (IRStmt){{.swap = swap}, STMT_SWAP}; }
+
+static void swapStmts(void* restrict x, void* restrict y) {
+    IRStmt* const xStmt = x;
+    IRStmt* const yStmt = y;
+
+    IRStmt const tmp = *xStmt;
+    *xStmt = *yStmt;
+    *yStmt = tmp;
+}
 
 typedef struct Call {
     IRName callee;
@@ -434,6 +463,8 @@ static void createIRReturn(IRBlock* block, IRName callee, IRName arg) {
     };
 }
 
+typedef void (PrintIRNameFn)(State const* state, FILE* dest, Compiler const* compiler, IRName name);
+
 static void printIRName(State const* state, FILE* dest, Compiler const* compiler, IRName name) {
     assert(name.index < compiler->nameCount);
     ORef const maybeSym = compiler->nameSyms[name.index];
@@ -441,6 +472,12 @@ static void printIRName(State const* state, FILE* dest, Compiler const* compiler
         print(state, dest, maybeSym);
     }
     fprintf(dest, "$%ld", name.index);
+}
+
+inline static void printIRReg(
+    State const* /*state*/, FILE* dest, Compiler const* /*compiler*/, IRName name
+) {
+    fprintf(dest, "r%ld", name.index);
 }
 
 static void printIRLabel(FILE* dest, IRLabel label) {
@@ -451,21 +488,25 @@ inline static void printIRConst(State const* state, FILE* dest, IRFn const* fn, 
     print(state, dest, fn->consts[c.index]);
 }
 
-static void printArgs(State const* state, FILE* dest, Compiler const* compiler, Args const* args) {
+static void printArgs(
+    State const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
+    Args const* args
+) {
     size_t const count = args->count;
     for (size_t i = 0; i < count; ++i) {
         if (i > 0) { fputc(' ', dest); }
-        printIRName(state, dest, compiler, args->names[i]);
+        printName(state, dest, compiler, args->names[i]);
     }
 }
 
 static void printNestedIRFn(
-    State const* state, FILE* dest, Compiler const* compiler, IRFn const* fn, size_t nesting
+    State const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
+    IRFn const* fn, size_t nesting
 );
 
 static void printStmt(
-    State const* state, FILE* dest, Compiler const* compiler, IRFn const* fn,
-    size_t nesting, IRStmt const* stmt
+    State const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
+    IRFn const* fn, size_t nesting, IRStmt const* stmt
 ) {
     for (size_t i = 0; i < nesting + 1; ++i) { fprintf(dest, "  "); }
 
@@ -475,14 +516,14 @@ static void printStmt(
         fprintf(dest, "(def ");
         printIRConst(state, dest, fn, globalDef.name);
         fputc(' ', dest);
-        printIRName(state, dest, compiler, globalDef.val);
+        printName(state, dest, compiler, globalDef.val);
         fputc(')', dest);
     }; break;
 
     case STMT_GLOBAL: {
         IRGlobal const global = stmt->global;
         fprintf(dest, "(let ");
-        printIRName(state, dest, compiler, global.tmpName);
+        printName(state, dest, compiler, global.tmpName);
         fprintf(dest, " (global ");
         printIRConst(state, dest, fn, global.name);
         fprintf(dest, "))");
@@ -491,7 +532,7 @@ static void printStmt(
     case STMT_CONST_DEF: {
         ConstDef const cdef = stmt->constDef;
         fprintf(dest, "(let ");
-        printIRName(state, dest, compiler, cdef.name);
+        printName(state, dest, compiler, cdef.name);
         fputc(' ', dest);
         printIRConst(state, dest, fn, cdef.v);
         fputc(')', dest);
@@ -500,56 +541,74 @@ static void printStmt(
     case STMT_CLOVER: {
         Clover const clover = stmt->clover;
         fprintf(dest, "(let ");
-        printIRName(state, dest, compiler, clover.name);
+        printName(state, dest, compiler, clover.name);
         fprintf(dest, " (clover ");
-        printIRName(state, dest, compiler, clover.closure);
+        printName(state, dest, compiler, clover.closure);
         fprintf(dest, " %u))", clover.idx);
     }; break;
 
     case STMT_FN_DEF: {
         FnDef const* const fnDef = &stmt->fnDef;
         fprintf(dest, "(let ");
-        printIRName(state, dest, compiler, fnDef->name);
+        printName(state, dest, compiler, fnDef->name);
         fprintf(dest, " (closure\n");
-        printNestedIRFn(state, dest, compiler, &fnDef->fn, nesting + 2);
+        printNestedIRFn(state, dest, compiler, printName, &fnDef->fn, nesting + 2);
         fputc('\n', dest);
         for (size_t i = 0; i < nesting + 2; ++i) { fprintf(dest, "  "); }
-        printArgs(state, dest, compiler, &fnDef->closes);
+        printArgs(state, dest, compiler, printName, &fnDef->closes);
         fprintf(dest, "))\n");
+    }; break;
+
+    case STMT_MOVE: {
+        MoveStmt const mov = stmt->mov;
+        fprintf(dest, "(let ");
+        printName(state, dest, compiler, mov.dest);
+        fputc(' ', dest);
+        printName(state, dest, compiler, mov.src);
+        fputc(')', dest);
+    }; break;
+
+    case STMT_SWAP: {
+        SwapStmt const swap = stmt->swap;
+        fprintf(dest, "(swap ");
+        printName(state, dest, compiler, swap.reg1);
+        fputc(' ', dest);
+        printName(state, dest, compiler, swap.reg2);
+        fputc(')', dest);
     }; break;
     }
 }
 
 static void printTransfer(
-    State const* state, FILE* dest, Compiler const* compiler, size_t nesting,
-    IRTransfer const* transfer
+    State const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
+    size_t nesting, IRTransfer const* transfer
 ) {
     for (size_t i = 0; i < nesting + 1; ++i) { fprintf(dest, "  "); }
 
     switch (transfer->type) {
     case TRANSFER_CALL: {
         fprintf(dest, "(call ");
-        printIRName(state, dest, compiler, transfer->call.callee);
+        printName(state, dest, compiler, transfer->call.callee);
         fputc(' ', dest);
         printIRLabel(dest, transfer->call.retLabel);
         fputc(' ', dest);
-        printArgs(state, dest, compiler, &transfer->call.args);
+        printArgs(state, dest, compiler, printName, &transfer->call.args);
         fputc(')', dest);
     }; break;
 
     case TRANSFER_TAILCALL: {
         fprintf(dest, "(tailcall ");
-        printIRName(state, dest, compiler, transfer->tailcall.callee);
+        printName(state, dest, compiler, transfer->tailcall.callee);
         fputc(' ', dest);
-        printIRName(state, dest, compiler, transfer->tailcall.retFrame);
+        printName(state, dest, compiler, transfer->tailcall.retFrame);
         fputc(' ', dest);
-        printArgs(state, dest, compiler, &transfer->tailcall.args);
+        printArgs(state, dest, compiler, printName, &transfer->tailcall.args);
         fputc(')', dest);
     }; break;
 
     case TRANSFER_IF: {
         fprintf(dest, "(if ");
-        printIRName(state, dest, compiler, transfer->iff.cond);
+        printName(state, dest, compiler, transfer->iff.cond);
         fputc(' ', dest);
         printIRLabel(dest, transfer->iff.conseq);
         fputc(' ', dest);
@@ -561,23 +620,23 @@ static void printTransfer(
         fprintf(dest, "(goto ");
         printIRLabel(dest, transfer->gotoo.dest);
         fputc(' ', dest);
-        printArgs(state, dest, compiler, &transfer->gotoo.args);
+        printArgs(state, dest, compiler, printName, &transfer->gotoo.args);
         fputc(')', dest);
     }; break;
 
     case TRANSFER_RETURN: {
         fprintf(dest, "(return ");
-        printIRName(state, dest, compiler, transfer->ret.callee);
+        printName(state, dest, compiler, transfer->ret.callee);
         fputc(' ', dest);
-        printIRName(state, dest, compiler, transfer->ret.arg);
+        printName(state, dest, compiler, transfer->ret.arg);
         fputc(')', dest);
     }; break;
     }
 }
 
 static void printBlock(
-    State const* state, FILE* dest, Compiler const* compiler, IRFn const* fn, size_t nesting,
-    IRBlock* block
+    State const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
+    IRFn const* fn, size_t nesting, IRBlock* block
 ) {
     for (size_t i = 0; i < nesting; ++i) { fprintf(dest, "  "); }
     fprintf(dest, "(label ");
@@ -601,7 +660,7 @@ static void printBlock(
     size_t const paramCount = block->paramCount;
     for (size_t i = 0; i < paramCount; ++i) {
         if (i > 0) { fputc(' ', dest); }
-        printIRName(state, dest, compiler, block->params[i]);
+        printName(state, dest, compiler, block->params[i]);
     }
     fputc(')', dest);
 
@@ -621,17 +680,18 @@ static void printBlock(
     
     size_t const stmtCount = block->stmtCount;
     for (size_t i = 0; i < stmtCount; ++i) {
-        printStmt(state, dest, compiler, fn, nesting, &block->stmts[i]);
+        printStmt(state, dest, compiler, printName, fn, nesting, &block->stmts[i]);
         fputc('\n', dest);
     }
     
-    printTransfer(state, dest, compiler, nesting, &block->transfer);
+    printTransfer(state, dest, compiler, printName, nesting, &block->transfer);
 
     fprintf(dest, ")");
 }
 
 static void printNestedIRFn(
-    State const* state, FILE* dest, Compiler const* compiler, IRFn const* fn, size_t nesting
+    State const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
+    IRFn const* fn, size_t nesting
 ) {
     for (size_t i = 0; i < nesting; ++i) { fprintf(dest, "  "); }
     fprintf(dest, "(fn\n");
@@ -639,13 +699,16 @@ static void printNestedIRFn(
     size_t const blockCount = fn->blockCount;
     for (size_t i = 0; i < blockCount; ++i) {
         if (i > 0) { fprintf(dest, "\n\n"); }
-        printBlock(state, dest, compiler, fn, nesting + 1, fn->blocks[i]);
+        printBlock(state, dest, compiler, printName, fn, nesting + 1, fn->blocks[i]);
     }
     
     fprintf(dest, ")");
 }
 
-static void printIRFn(State const* state, FILE* dest, Compiler const* compiler, IRFn const* fn) {
-    printNestedIRFn(state, dest, compiler, fn, 0);
+static void printIRFn(
+    State const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
+    IRFn const* fn
+) {
+    printNestedIRFn(state, dest, compiler, printName, fn, 0);
 }
 

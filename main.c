@@ -18,6 +18,7 @@
 #include "lib/tocps.c"
 #include "lib/liveness.c"
 #include "lib/pureloads.c"
+#include "lib/regalloc.c"
 #include "lib/bytecode.c"
 #include "lib/bytecodegen.c"
 #include "lib/namespace.c"
@@ -58,19 +59,25 @@ int main(int /*argc*/, char** /*argv*/) {
 
                 IRFn irFn = topLevelExprToIR(&state, &compiler, expr);
                 puts(";; # IR:");
-                printIRFn(&state, stdout, &compiler, &irFn);
+                printIRFn(&state, stdout, &compiler, printIRName, &irFn);
 
                 puts("\n");
 
                 enlivenFn(&irFn);
                 puts(";; # Enlivened IR:");
-                printIRFn(&state, stdout, &compiler, &irFn);
+                printIRFn(&state, stdout, &compiler, printIRName, &irFn);
 
                 puts("\n");
 
                 irFn = fnWithPureLoads(&compiler, irFn);
                 puts(";; # Cachy-loading IR:");
-                printIRFn(&state, stdout, &compiler, &irFn);
+                printIRFn(&state, stdout, &compiler, printIRName, &irFn);
+
+                puts("\n");
+
+                regAllocFn(&compiler, &irFn);
+                puts(";; # Registral IR:");
+                printIRFn(&state, stdout, &compiler, printIRReg, &irFn);
 
                 puts("\n");
 

@@ -348,6 +348,18 @@ static void freeIRFn(IRFn* fn) {
 
 inline static BitSet const* fnFreeVars(IRFn const* fn) { return &fn->blocks[0]->liveIns; }
 
+static IRConst pushFnConst(IRFn* fn, ORef c) {
+    if (fn->constCount == fn->constCap) {
+        uint8_t const newCap = fn->constCap + (fn->constCap >> 1);
+        fn->consts = realloc(fn->consts, newCap * sizeof *fn->consts);
+        fn->constCap = newCap;
+    }
+
+    uint8_t const index = fn->constCount;
+    fn->consts[fn->constCount++] = c;
+    return (IRConst){index};
+}
+
 static IRConst fnConst(IRFn* fn, ORef c) {
     // Linear search is actually good since there usually aren't that many constants per fn:
     size_t const constCount = fn->constCount;
@@ -356,16 +368,10 @@ static IRConst fnConst(IRFn* fn, ORef c) {
         if (eq(ic, c)) { return (IRConst){(uint8_t)i}; }
     }
 
-    if (fn->constCount == fn->constCap) {
-        uint8_t const newCap = fn->constCap + (fn->constCap >> 1);
-        fn->consts = realloc(fn->consts, newCap * sizeof *fn->consts);
-        fn->constCap = newCap;
-    }
-    
-    uint8_t const index = fn->constCount;
-    fn->consts[fn->constCount++] = c;
-    return (IRConst){index};
+    return pushFnConst(fn, c);
 }
+
+inline static IRConst allocFnConst(IRFn* fn) { return pushFnConst(fn, fixnumToORef(Zero)); }
 
 inline static void setFnConst(IRFn* fn, IRConst c, ORef v) {
     assert(c.index < fn->constCount);

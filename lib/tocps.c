@@ -266,7 +266,7 @@ static IRName exprToIR(
 
                     IRName const name = toCpsContDestName(compiler, k);
                     // Placeholder, will be replaced with `Method` in codegen:
-                    IRConst const constIdx = fnConst(fn, fixnumToORef(Zero));
+                    IRConst const constIdx = allocFnConst(fn);
                     pushIRStmt(*block, fnDefToStmt((FnDef){name, innerFn, constIdx, createArgs()}));
 
                     if (k.type == TO_CPS_CONT_RETURN) {

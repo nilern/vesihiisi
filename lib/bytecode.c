@@ -1,6 +1,8 @@
 // TODO: Bigger (only when necessary?) displacements for BR(F)?
 
 typedef enum Opcode : uint8_t {
+    OP_MOVE,
+    OP_SWAP,
     OP_DEF,
     OP_GLOBAL,
     OP_CONST,
@@ -8,6 +10,7 @@ typedef enum Opcode : uint8_t {
     OP_BR,
     OP_RET,
     OP_CLOSURE,
+    OP_CLOVER,
     OP_TAILCALL
 } Opcode;
 
@@ -27,6 +30,20 @@ static void disassembleNested(State const* state, FILE* dest, MethodRef methodRe
         fprintf(dest, "[%lu]:\t", i);
 
         switch ((Opcode)code[i++]) { // FIXME: Handle invalid instruction
+        case OP_MOVE: {
+            fprintf(dest, "mov ");
+            disassembleReg(dest, code[i++]);
+            fputc(' ', dest);
+            disassembleReg(dest, code[i++]);
+        }; break;
+
+        case OP_SWAP: {
+            fprintf(dest, "swap ");
+            disassembleReg(dest, code[i++]);
+            fputc(' ', dest);
+            disassembleReg(dest, code[i++]);
+        }; break;
+
         case OP_DEF: {
             fprintf(dest, "def ");
             uint8_t const constIdx = code[i++];
@@ -71,13 +88,10 @@ static void disassembleNested(State const* state, FILE* dest, MethodRef methodRe
         case OP_CLOSURE: {
             disassembleReg(dest, code[i++]);
             uint8_t const methodConstIdx = code[i++];
-            fprintf(dest, " = closure %u\n", methodConstIdx);
-            // TODO: Bounds & type check:
-            MethodRef const innerMethod = uncheckedORefToMethod(consts[methodConstIdx]);
-            disassembleNested(state, dest, innerMethod, nesting + 1);
+            fprintf(dest, " = closure %u", methodConstIdx);
 
             uint8_t const byteCount = code[i++];
-            if (byteCount > 0) { fputc(' ', dest); }
+            if (byteCount > 0) { fprintf(dest, " #b"); }
             for (size_t j = 0; j < byteCount; ++j) {
                 uint8_t const byte = code[i++];
 
@@ -87,6 +101,18 @@ static void disassembleNested(State const* state, FILE* dest, MethodRef methodRe
                     fprintf(dest, "%u", bit);
                 }
             }
+            fputc('\n', dest);
+
+            // TODO: Bounds & type check:
+            MethodRef const innerMethod = uncheckedORefToMethod(consts[methodConstIdx]);
+            disassembleNested(state, dest, innerMethod, nesting + 1);
+        }; break;
+
+        case OP_CLOVER: {
+            disassembleReg(dest, code[i++]);
+            fprintf(dest, " = clover ");
+            disassembleReg(dest, code[i++]);
+            fprintf(dest, " %u", code[i++]);
         }; break;
 
         case OP_TAILCALL: {

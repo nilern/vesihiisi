@@ -1,5 +1,5 @@
 static ORef run(State* state, ClosureRef selfRef) {
-    // TODO: Debug type checks & bytecode verifier
+    // TODO: Debug index & type checks & bytecode verifier
 
     Closure const* const self = closureToPtr(selfRef);
     Method const* const method = methodToPtr(uncheckedORefToMethod(self->method));
@@ -11,6 +11,22 @@ static ORef run(State* state, ClosureRef selfRef) {
 
     for (;/*ever*/;) {
         switch ((Opcode)state->code[state->pc++]) {
+        case OP_MOVE: {
+            uint8_t const destReg = state->code[state->pc++];
+            uint8_t const srcReg = state->code[state->pc++];
+
+            state->regs[destReg] = state->regs[srcReg];
+        }; break;
+
+        case OP_SWAP: {
+            uint8_t const reg1 = state->code[state->pc++];
+            uint8_t const reg2 = state->code[state->pc++];
+
+            ORef const tmp = state->regs[reg1];
+            state->regs[reg1] = state->regs[reg2];
+            state->regs[reg2] = tmp;
+        }; break;
+
         case OP_DEF: {
             uint8_t const constIdx = state->code[state->pc++];
             uint8_t const srcReg = state->code[state->pc++];
@@ -103,11 +119,9 @@ static ORef run(State* state, ClosureRef selfRef) {
             // OPTIMIZE:
             {
                 size_t const end = state->pc;
-                for (size_t byteIdx = end - cloverSetByteCount, cloverIdx = 0;
-                     byteIdx < end;
-                     ++byteIdx
-                ) {
-                    uint8_t const byte = state->code[byteIdx];
+                size_t const start = end - cloverSetByteCount;
+                for (size_t byteIdx = 0, cloverIdx = 0; byteIdx < cloverSetByteCount; ++byteIdx) {
+                    uint8_t const byte = state->code[start + byteIdx];
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
                         if ((byte >> (UINT8_WIDTH - 1 - bitIdx)) & 1) {
                             ORef* const cloverPtr =
@@ -122,8 +136,18 @@ static ORef run(State* state, ClosureRef selfRef) {
             state->regs[destReg] = closureToORef(closure);
         }; break;
 
+        case OP_CLOVER: {
+            uint8_t const destReg = state->code[state->pc++];
+            uint8_t const closureReg = state->code[state->pc++];
+            uint8_t const cloverIdx = state->code[state->pc++];
+
+            Closure const* const closure =
+                closureToPtr(uncheckedORefToClosure(state->regs[closureReg]));
+            state->regs[destReg] = closure->clovers[cloverIdx];
+        }; break;
+
         case OP_TAILCALL: {
-            uint8_t const argc /*FIXME:*/ [[maybe_unused]] = state->code[state->pc++];
+            uint8_t const regCount /*FIXME:*/ [[maybe_unused]] = state->code[state->pc++];
 
             Closure const* const closure = closureToPtr(uncheckedORefToClosure(state->regs[0]));
             Method const* const method = methodToPtr(uncheckedORefToMethod(closure->method));

@@ -128,8 +128,23 @@ static void emitStmt(State* state, MethodBuilder* builder, IRFn* fn, IRStmt* stm
         pushOp(builder, OP_CLOSURE);
     }; break;
 
-    case STMT_CLOVER: case STMT_MOVE: case STMT_SWAP: {
-        assert(false); // TODO
+    case STMT_CLOVER: {
+        pushCodeByte(builder, stmt->clover.idx);
+        pushReg(builder, stmt->clover.closure);
+        pushReg(builder, stmt->clover.name);
+        pushOp(builder, OP_CLOVER);
+    }; break;
+
+    case STMT_MOVE: {
+        pushReg(builder, stmt->mov.src);
+        pushReg(builder, stmt->mov.dest);
+        pushOp(builder, OP_MOVE);
+    }; break;
+
+    case STMT_SWAP: {
+        pushReg(builder, stmt->swap.reg2);
+        pushReg(builder, stmt->swap.reg1);
+        pushOp(builder, OP_SWAP);
     }; break;
     }
 }

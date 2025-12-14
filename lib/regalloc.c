@@ -277,6 +277,7 @@ static RegEnv regAllocIfSuccession(
             IRName const var = altEnv->regVars[i];
             if (irNameEq(var, invalidIRName)) { continue; } // Loop artefact: `reg` is free
 
+            // OPTIMIZE: Try to use the same reg as in `altEnv`:
             getVarReg(&goal, var); // Just ensure that `var` is in `goal`; discard return value
         }
     }

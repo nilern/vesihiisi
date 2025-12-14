@@ -171,6 +171,9 @@ Four passes:
 		
 ### Bytecode generation with register allocation
 
+OPTIMIZE: Provide entry point or truthy branch mapping as hint to code whose
+register allocation eventually ends up at the relevant shuffling point
+
 * Post-order CFG DAG traversal (= go backwards through blocks and their
   contents).
   	- The calling convention is the only register constraint we have, so
@@ -255,9 +258,6 @@ Allocate a register (using the [mutating] `goal0`) for each variable in `vars(cu
 strategy if that register is already reserved in `goal0`.
 
 This should be obvious but could also be proven with basic set theory.
-
-OPTIMIZE: In addition to trying to use the register from `current` here, provide
-`goal0` as a hint to the `else` branch as to what registers to keep free.
 
 ##### The Shuffling Itself
 

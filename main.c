@@ -1,4 +1,4 @@
-#define _POSIX_C_SOURCE 200809L
+#define _POSIX_C_SOURCE 200809L // For `getline`
 
 #include <assert.h>
 #include <stdint.h>
@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
+#include <stdbit.h>
 
 #include "lib/util.c"
 #include "lib/bitset.c"

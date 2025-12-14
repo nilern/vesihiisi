@@ -1,8 +1,8 @@
 static ORef run(State* state, ClosureRef selfRef) {
+    // TODO: Debug type checks & bytecode verifier
+
     Closure const* const self = closureToPtr(selfRef);
-    ORef const anyMethod = self->method;
-    // TODO: Debug type check:
-    Method const* const method = methodToPtr(uncheckedORefToMethod(anyMethod));
+    Method const* const method = methodToPtr(uncheckedORefToMethod(self->method));
     state->code = byteArrayToPtr(method->code);
     state->pc = 0;
     state->consts = arrayToPtr(method->consts);
@@ -25,8 +25,7 @@ static ORef run(State* state, ClosureRef selfRef) {
             }
 
             varToPtr(var)->val = state->regs[srcReg];
-            break;
-        }
+        }; break;
 
         case OP_GLOBAL: {
             uint8_t const destReg = state->code[state->pc++];
@@ -52,23 +51,20 @@ static ORef run(State* state, ClosureRef selfRef) {
                 assert(false); // FIXME: use of unbound var
             }
             state->regs[destReg] = v;
-            break;
-        }
+        }; break;
 
         case OP_CONST: {
             uint8_t const destReg = state->code[state->pc++];
             uint8_t const constIdx = state->code[state->pc++];
 
             state->regs[destReg] = state->consts[constIdx];
-            break;
-        }
+        }; break;
 
         case OP_BR: {
             uint8_t const displacement = state->code[state->pc++];
 
             state->pc += displacement;
-            break;
-        }
+        }; break;
 
         case OP_BRF: {
             uint8_t const condReg = state->code[state->pc++];
@@ -77,8 +73,7 @@ static ORef run(State* state, ClosureRef selfRef) {
             if (eq(state->regs[condReg], boolToORef(False))) {
                 state->pc += displacement;
             }
-            break;
-        }
+        }; break;
 
         case OP_RET: {
             assert(eq(typeToORef(typeOf(state, state->regs[1])),
@@ -91,9 +86,51 @@ static ORef run(State* state, ClosureRef selfRef) {
             } else { // Exit
                 return state->regs[2];
             }
-        }
+        }; break;
 
-        case OP_CLOSURE: case OP_TAILCALL: assert(false); break;
+        case OP_CLOSURE: {
+            uint8_t const destReg = state->code[state->pc++];
+            uint8_t const methodConstIdx = state->code[state->pc++];
+            uint8_t const cloverSetByteCount = state->code[state->pc++];
+            size_t cloverCount = 0;
+            // OPTIMIZE:
+            for (size_t i = 0; i < cloverSetByteCount; ++i) {
+                cloverCount += stdc_count_ones(state->code[state->pc++]);
+            }
+
+            MethodRef const method = uncheckedORefToMethod(state->consts[methodConstIdx]);
+            ClosureRef const closure = allocClosure(state, method, tagInt((intptr_t)cloverCount));
+            // OPTIMIZE:
+            {
+                size_t const end = state->pc;
+                for (size_t byteIdx = end - cloverSetByteCount, cloverIdx = 0;
+                     byteIdx < end;
+                     ++byteIdx
+                ) {
+                    uint8_t const byte = state->code[byteIdx];
+                    for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
+                        if ((byte >> (UINT8_WIDTH - 1 - bitIdx)) & 1) {
+                            ORef* const cloverPtr =
+                                (ORef*)closureToPtr(closure)->clovers + cloverIdx++;
+                            size_t const regIdx = byteIdx + bitIdx;
+                            *cloverPtr = state->regs[regIdx];
+                        }
+                    }
+                }
+            }
+
+            state->regs[destReg] = closureToORef(closure);
+        }; break;
+
+        case OP_TAILCALL: {
+            uint8_t const argc /*FIXME:*/ [[maybe_unused]] = state->code[state->pc++];
+
+            Closure const* const closure = closureToPtr(uncheckedORefToClosure(state->regs[0]));
+            Method const* const method = methodToPtr(uncheckedORefToMethod(closure->method));
+            state->code = byteArrayToPtr(method->code);
+            state->pc = 0;
+            state->consts = arrayToPtr(method->consts);
+        }; break;
         }
     }
 }

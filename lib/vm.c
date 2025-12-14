@@ -81,20 +81,19 @@ static ORef run(State* state, ClosureRef selfRef) {
         }
 
         case OP_RET: {
-            uint8_t const retReg = state->code[state->pc++];
-            uint8_t const vReg = state->code[state->pc++];
-
-            assert(eq(typeToORef(typeOf(state, state->regs[retReg])),
+            assert(eq(typeToORef(typeOf(state, state->regs[1])),
                       typeToORef(state->closureType)));
-            ClosureRef const retRef = uncheckedORefToClosure(state->regs[retReg]);
+            ClosureRef const retRef = uncheckedORefToClosure(state->regs[1]);
             Closure const* const ret = closureToPtr(retRef);
             ORef const anyMethod = ret->method;
             if (!eq(anyMethod, fixnumToORef(Zero))) {
                 assert(false); // TODO
             } else { // Exit
-                return state->regs[vReg];
+                return state->regs[2];
             }
         }
+
+        case OP_CLOSURE: case OP_TAILCALL: assert(false); break;
         }
     }
 }

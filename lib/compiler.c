@@ -367,6 +367,12 @@ static IRConst fnConst(IRFn* fn, ORef c) {
     return (IRConst){index};
 }
 
+inline static void setFnConst(IRFn* fn, IRConst c, ORef v) {
+    assert(c.index < fn->constCount);
+
+    fn->consts[c.index] = v;
+}
+
 static IRBlock const* irLabelBlock(IRFn const* fn, IRLabel label) {
     assert(label.blockIndex < fn->blockCount);
 

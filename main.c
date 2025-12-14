@@ -9,6 +9,7 @@
 
 #include "lib/util.c"
 #include "lib/bitset.c"
+#include "lib/bytefulbitset.c"
 #include "lib/object.c"
 #include "lib/heap.c"
 #include "lib/state.c"

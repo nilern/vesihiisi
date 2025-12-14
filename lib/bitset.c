@@ -7,15 +7,11 @@ typedef struct BitSet {
 inline static void freeBitSet(BitSet* bits) { free(bits->words); }
 
 static BitSet createBitSet(size_t cap) {
-    size_t wordCap = cap / (8 * sizeof(uintptr_t)); // OPTIMIZE
+    size_t wordCap = cap / UINTPTR_WIDTH;
     if (wordCap < 2) { wordCap = 2; }
     uintptr_t* const words = calloc(wordCap, sizeof *words);
 
-    return (BitSet){
-        .words = words,
-        .wordCount = 0,
-        .wordCap = wordCap
-    };
+    return (BitSet){.words = words, .wordCount = 0, .wordCap = wordCap};
 }
 
 static BitSet bitSetClone(BitSet const* bits) {
@@ -28,29 +24,29 @@ static BitSet bitSetClone(BitSet const* bits) {
 }
 
 inline static size_t bitSetLimit(BitSet const* bits) {
-    return bits->wordCount * (8 * sizeof *bits->words); // OPTIMIZE
+    return bits->wordCount * UINTPTR_WIDTH;
 }
 
 inline static size_t bitSetBitCap(BitSet const* bits) {
-    return bits->wordCap * (8 * sizeof *bits->words); // OPTIMIZE
+    return bits->wordCap * UINTPTR_WIDTH;
 }
 
 static bool bitSetContains(BitSet const* bits, size_t n) {
-    size_t const wordIdx = n / (8 * sizeof *bits->words); // OPTIMIZE
+    size_t const wordIdx = n / UINTPTR_WIDTH;
 
     if (wordIdx >= bits->wordCount) { return false; } // Cannot have been set
 
     uintptr_t const word = bits->words[wordIdx];
-    size_t const subIdx = n % (8 * sizeof *bits->words); // OPTIMIZE
-    uintptr_t const mask = 1lu << (8 * sizeof *bits->words - 1 - subIdx); // OPTIMIZE
+    size_t const subIdx = n % UINTPTR_WIDTH;
+    uintptr_t const mask = 1lu << (UINTPTR_WIDTH - 1 - subIdx);
     return (word & mask) != 0;
 }
 
 static void bitSetSet(BitSet* bits, size_t n) {
-    size_t const wordIdx = n / (8 * sizeof *bits->words); // OPTIMIZE
+    size_t const wordIdx = n / UINTPTR_WIDTH;
 
     if (wordIdx >= bits->wordCap) { // Does not even fit allocation => grow:
-        size_t const newCap = bits->wordCap + (bits->wordCap << 1);
+        size_t const newCap = bits->wordCap + bits->wordCap / 2;
         uintptr_t* const newWords = malloc(newCap * sizeof *newWords);
 
         memcpy(newWords, bits->words, bits->wordCount * sizeof *newWords);
@@ -70,17 +66,17 @@ static void bitSetSet(BitSet* bits, size_t n) {
         bits->wordCount = newCount;
     }
 
-    size_t const subIdx = n % (8 * sizeof *bits->words); // OPTIMIZE
-    bits->words[wordIdx] |= 1lu << (8 * sizeof *bits->words - 1 - subIdx); // OPTIMIZE
+    size_t const subIdx = n % UINTPTR_WIDTH;
+    bits->words[wordIdx] |= 1lu << (UINTPTR_WIDTH - 1 - subIdx);
 }
 
 static void bitSetRemove(BitSet* bits, size_t n) {
-    size_t const wordIdx = n / (8 * sizeof *bits->words); // OPTIMIZE
+    size_t const wordIdx = n / UINTPTR_WIDTH;
 
     if (wordIdx >= bits->wordCount) { return; } // Was never set to begin with
 
-    size_t const subIdx = n % (8 * sizeof *bits->words); // OPTIMIZE
-    bits->words[wordIdx] &= ~(1lu << (8 * sizeof *bits->words - 1 - subIdx)); // OPTIMIZE
+    size_t const subIdx = n % UINTPTR_WIDTH;
+    bits->words[wordIdx] &= ~(1lu << (UINTPTR_WIDTH - 1 - subIdx));
 }
 
 static void bitSetUnionInto(BitSet* dest, BitSet const* src) {

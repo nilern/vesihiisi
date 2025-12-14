@@ -3,6 +3,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "../lib/util.c"
 #include "../lib/bitset.c"
 
 static const size_t wordBitSize = sizeof(uintptr_t) * 8;

@@ -492,7 +492,7 @@ static IRName exprToIR(
                 pushIRParam(retBlock, frame);
                 pushIRParam(retBlock, retValName);
 
-                createCall(*block, calleeName, retBlock->label, cpsArgs);
+                createCall(*block, calleeName, retBlock->label, createArgs(), cpsArgs);
 
                 *block = retBlock;
             } else {

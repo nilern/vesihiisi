@@ -240,6 +240,28 @@ inline static ClosureRef tagClosure(Closure* ptr) {
     return (ClosureRef){(uintptr_t)(void*)ptr | (uintptr_t)TAG_HEAPED};
 }
 
+typedef struct Continuation {
+    ORef method;
+    Fixnum pc;
+    ORef const saves[];
+} Continuation;
+
+typedef struct ContinuationRef { uintptr_t bits; } ContinuationRef;
+
+inline static ORef continuationToORef(ContinuationRef v) { return (ORef){v.bits}; }
+
+inline static ContinuationRef uncheckedORefToContinuation(ORef v) {
+    return (ContinuationRef){v.bits};
+}
+
+inline static Continuation* continuationToPtr(ContinuationRef v) {
+    return (Continuation*)(void*)(v.bits & ~tag_bits);
+}
+
+inline static ContinuationRef tagContinuation(Continuation* ptr) {
+    return (ContinuationRef){(uintptr_t)(void*)ptr | (uintptr_t)TAG_HEAPED};
+}
+
 typedef struct UnboundRef { uintptr_t bits; } UnboundRef;
 
 inline static UnboundRef tagUnbound(void const* ptr) {

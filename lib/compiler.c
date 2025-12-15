@@ -202,6 +202,7 @@ static void swapStmts(void* restrict x, void* restrict y) {
 typedef struct Call {
     IRName callee;
     IRLabel retLabel;
+    Args closes;
     Args args;
 } Call;
 
@@ -435,10 +436,10 @@ static void pushIRParam(IRBlock* block, IRName param) {
     block->params[block->paramCount++] = param;
 }
 
-static void createCall(IRBlock* block, IRName callee, IRLabel retLabel, Args args) {
+static void createCall(IRBlock* block, IRName callee, IRLabel retLabel, Args closes, Args args) {
     block->transfer = (IRTransfer){
         .type = TRANSFER_CALL,
-        .call = (Call){.callee = callee, .retLabel = retLabel, .args = args}
+        .call = (Call){.callee = callee, .retLabel = retLabel, .closes = closes, .args = args}
     };
 }
 
@@ -601,9 +602,11 @@ static void printTransfer(
     case TRANSFER_CALL: {
         fprintf(dest, "(call ");
         printName(state, dest, compiler, transfer->call.callee);
-        fputc(' ', dest);
+        fprintf(dest, " (");
         printIRLabel(dest, transfer->call.retLabel);
         fputc(' ', dest);
+        printArgs(state, dest, compiler, printName, &transfer->call.closes);
+        fprintf(dest, ") ");
         printArgs(state, dest, compiler, printName, &transfer->call.args);
         fputc(')', dest);
     }; break;

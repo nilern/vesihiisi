@@ -1,11 +1,14 @@
+// FIXME: Magic register numbers:
 static ORef run(State* state, ClosureRef selfRef) {
     // TODO: Debug index & type checks & bytecode verifier
 
     Closure const* const self = closureToPtr(selfRef);
-    Method const* const method = methodToPtr(uncheckedORefToMethod(self->method));
-    state->code = byteArrayToPtr(method->code);
+    ORef const method = self->method;
+    Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
+    state->method = method;
+    state->code = byteArrayToPtr(methodPtr->code);
     state->pc = 0;
-    state->consts = arrayToPtr(method->consts);
+    state->consts = arrayToPtr(methodPtr->consts);
     state->regs[0] = closureToORef(selfRef);
     state->regs[1] = closureToORef(state->exit); // Return continuation
 
@@ -93,12 +96,17 @@ static ORef run(State* state, ClosureRef selfRef) {
 
         case OP_RET: {
             assert(eq(typeToORef(typeOf(state, state->regs[1])),
-                      typeToORef(state->closureType)));
-            ClosureRef const retRef = uncheckedORefToClosure(state->regs[1]);
-            Closure const* const ret = closureToPtr(retRef);
-            ORef const anyMethod = ret->method;
-            if (!eq(anyMethod, fixnumToORef(Zero))) {
-                assert(false); // TODO
+                      typeToORef(state->continuationType)));
+            ContinuationRef const retRef = uncheckedORefToContinuation(state->regs[1]);
+            Continuation const* const ret = continuationToPtr(retRef);
+            ORef const method = ret->method;
+            if (!eq(method, fixnumToORef(Zero))) {
+                assert(isMethod(state, method));
+                Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
+                state->method = method;
+                state->code = byteArrayToPtr(methodPtr->code);
+                state->pc = (size_t)fixnumToInt(ret->pc);
+                state->consts = arrayToPtr(methodPtr->consts);
             } else { // Exit
                 return state->regs[2];
             }
@@ -116,6 +124,7 @@ static ORef run(State* state, ClosureRef selfRef) {
 
             MethodRef const method = uncheckedORefToMethod(state->consts[methodConstIdx]);
             ClosureRef const closure = allocClosure(state, method, tagInt((intptr_t)cloverCount));
+            // TODO: DRY wrt. OP_CALL:
             // OPTIMIZE:
             {
                 size_t const end = state->pc;
@@ -141,19 +150,76 @@ static ORef run(State* state, ClosureRef selfRef) {
             uint8_t const closureReg = state->code[state->pc++];
             uint8_t const cloverIdx = state->code[state->pc++];
 
-            Closure const* const closure =
-                closureToPtr(uncheckedORefToClosure(state->regs[closureReg]));
-            state->regs[destReg] = closure->clovers[cloverIdx];
+            // OPTIMIZE: Separate OP_CONT_CLOVER:
+            ORef const anyClosure = state->regs[closureReg];
+            if (!isClosure(state, anyClosure)) {
+                Continuation const* const cont =
+                    continuationToPtr(uncheckedORefToContinuation(anyClosure));
+                state->regs[destReg] = cont->saves[cloverIdx];
+            } else {
+                Closure const* const closure = closureToPtr(uncheckedORefToClosure(anyClosure));
+                state->regs[destReg] = closure->clovers[cloverIdx];
+            }
+        }; break;
+
+        case OP_CALL: {
+            uint8_t const regCount /*FIXME:*/ [[maybe_unused]] = state->code[state->pc++];
+            uint8_t const cloverSetByteCount = state->code[state->pc++];
+            size_t cloverCount = 0;
+            // OPTIMIZE:
+            for (size_t i = 0; i < cloverSetByteCount; ++i) {
+                cloverCount += stdc_count_ones(state->code[state->pc++]);
+            }
+
+            MethodRef const callerMethod = uncheckedORefToMethod(state->method);
+            ContinuationRef const cont = allocContinuation(
+                state, callerMethod, tagInt((intptr_t)state->pc), tagInt((intptr_t)cloverCount)
+            );
+            // TODO: DRY wrt. OP_CLOSURE:
+            // OPTIMIZE:
+            {
+                size_t const end = state->pc;
+                size_t const start = end - cloverSetByteCount;
+                for (size_t byteIdx = 0, cloverIdx = 0; byteIdx < cloverSetByteCount; ++byteIdx) {
+                    uint8_t const byte = state->code[start + byteIdx];
+                    for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
+                        if ((byte >> (UINT8_WIDTH - 1 - bitIdx)) & 1) {
+                            ORef* const cloverPtr =
+                                (ORef*)continuationToPtr(cont)->saves + cloverIdx++;
+                            size_t const regIdx = byteIdx + bitIdx;
+                            *cloverPtr = state->regs[regIdx];
+                        }
+                    }
+                }
+            }
+
+            state->regs[1] = continuationToORef(cont);
+
+            // TODO: DRY wrt. OP_TAILCALL:
+            assert(isClosure(state, state->regs[0]));
+            Closure const* const closure = closureToPtr(uncheckedORefToClosure(state->regs[0]));
+            ORef const method = closure->method;
+            assert(isMethod(state, method));
+            Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
+            state->method = method;
+            state->code = byteArrayToPtr(methodPtr->code);
+            state->pc = 0;
+            state->consts = arrayToPtr(methodPtr->consts);
         }; break;
 
         case OP_TAILCALL: {
             uint8_t const regCount /*FIXME:*/ [[maybe_unused]] = state->code[state->pc++];
 
+            // TODO: DRY wrt. OP_CALL:
+            assert(isClosure(state, state->regs[0]));
             Closure const* const closure = closureToPtr(uncheckedORefToClosure(state->regs[0]));
-            Method const* const method = methodToPtr(uncheckedORefToMethod(closure->method));
-            state->code = byteArrayToPtr(method->code);
+            ORef const method = closure->method;
+            assert(isMethod(state, method));
+            Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
+            state->method = method;
+            state->code = byteArrayToPtr(methodPtr->code);
             state->pc = 0;
-            state->consts = arrayToPtr(method->consts);
+            state->consts = arrayToPtr(methodPtr->consts);
         }; break;
         }
     }

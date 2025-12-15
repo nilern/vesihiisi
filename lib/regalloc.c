@@ -1,3 +1,5 @@
+// FIXME: Magic register numbers:
+
 typedef struct { uint8_t index; } Reg;
 
 inline static bool regEq(Reg reg1, Reg reg2) { return reg1.index == reg2.index; }
@@ -293,6 +295,37 @@ static void regAllocBlock(
     Compiler const* compiler, SavedRegEnvs* savedEnvs, BitSet* visited, IRFn* fn, IRBlock* block
 );
 
+static IRName regAllocCallee(RegEnv* env, IRBlock* block, IRName callee) {
+    Reg const reg = (Reg){0};
+
+    MaybeMove const maybeCalleeMove = allocTransferArgReg(env, callee, reg);
+    if (maybeCalleeMove.hasVal) {
+        pushIRStmt(block, moveToStmt((MoveStmt){
+            .dest = (IRName){maybeCalleeMove.dest.index},
+            .src = (IRName){maybeCalleeMove.src.index}
+        }));
+    }
+
+    return (IRName){reg.index};
+}
+
+static void regAllocArgs(RegEnv* env, IRBlock* block, Args* args) {
+    size_t const arity = args->count;
+    for (size_t i = 0; i < arity; ++i) {
+        Reg const reg = (Reg){(uint8_t)(2 + i)};
+
+        MaybeMove const maybeMove = allocTransferArgReg(env, args->names[i], reg);
+        if (maybeMove.hasVal) {
+            pushIRStmt(block, moveToStmt((MoveStmt){
+                .dest = (IRName){maybeMove.dest.index},
+                .src = (IRName){maybeMove.src.index}
+            }));
+        }
+
+        args->names[i] = (IRName){reg.index};
+    }
+}
+
 static RegEnv regAllocTransfer(
     Compiler const* compiler, SavedRegEnvs* savedEnvs, BitSet* visited, IRFn* fn, IRBlock* block,
     IRTransfer* transfer
@@ -301,21 +334,31 @@ static RegEnv regAllocTransfer(
     // order of lower to higher destination register.
 
     switch (transfer->type) {
-    case TRANSFER_CALL: assert(false); return newRegEnv(compiler); // TODO
+    case TRANSFER_CALL: {
+        IRLabel const retLabel = transfer->call.retLabel;
+        assert(retLabel.blockIndex < fn->blockCount);
+        IRBlock* const retBlock = fn->blocks[retLabel.blockIndex];
+        regAllocBlock(compiler, savedEnvs, visited, fn, retBlock);
+
+        RegEnv env = newRegEnv(compiler);
+
+        transfer->call.callee = regAllocCallee(&env, block, transfer->call.callee);
+
+        regAllocArgs(&env, block, &transfer->call.args);
+
+        // FIXME: Clovers should be in register order:
+        for (size_t i = transfer->call.closes.count; i-- > 0;) {
+            transfer->call.closes.names[i] =
+                (IRName){getVarReg(&env, transfer->call.closes.names[i]).index};
+        }
+
+        return env;
+    }; break;
 
     case TRANSFER_TAILCALL: {
         RegEnv env = newRegEnv(compiler);
 
-        Reg const calleeReg = (Reg){0};
-        MaybeMove const maybeCalleeMove =
-            allocTransferArgReg(&env, transfer->tailcall.callee, calleeReg);
-        if (maybeCalleeMove.hasVal) {
-            pushIRStmt(block, moveToStmt((MoveStmt){
-                .dest = (IRName){maybeCalleeMove.dest.index},
-                .src = (IRName){maybeCalleeMove.src.index}
-            }));
-        }
-        transfer->tailcall.callee = (IRName){calleeReg.index};
+        transfer->tailcall.callee = regAllocCallee(&env, block, transfer->tailcall.callee);
 
         Reg const contReg = (Reg){1};
         [[maybe_unused]] MaybeMove const maybeContMove =
@@ -323,19 +366,7 @@ static RegEnv regAllocTransfer(
         assert(!maybeContMove.hasVal);
         transfer->tailcall.retFrame = (IRName){contReg.index};
 
-        size_t const arity = transfer->tailcall.args.count;
-        for (size_t i = 0; i < arity; ++i) {
-            Reg const reg = (Reg){(uint8_t)(2 + i)};
-            MaybeMove const maybeMove =
-                allocTransferArgReg(&env, transfer->tailcall.args.names[i], reg);
-            if (maybeMove.hasVal) {
-                pushIRStmt(block, moveToStmt((MoveStmt){
-                    .dest = (IRName){maybeMove.dest.index},
-                    .src = (IRName){maybeMove.src.index}
-                }));
-            }
-            transfer->tailcall.args.names[i] = (IRName){reg.index};
-        }
+        regAllocArgs(&env, block, &transfer->tailcall.args);
 
         return env;
     }; break;
@@ -360,7 +391,7 @@ static RegEnv regAllocTransfer(
     case TRANSFER_GOTO: {
         IRLabel const destLabel = transfer->gotoo.dest;
         assert(destLabel.blockIndex < fn->blockCount);
-        IRBlock* destBlock = fn->blocks[destLabel.blockIndex];
+        IRBlock* const destBlock = fn->blocks[destLabel.blockIndex];
         regAllocBlock(compiler, savedEnvs, visited, fn, destBlock);
 
         assert(savedEnvs->vals[destLabel.blockIndex].hasVal);
@@ -417,6 +448,7 @@ static void regAllocStmt(Compiler const* compiler, RegEnv* env, IRStmt* stmt) {
         stmt->constDef.name = (IRName){deallocVarReg(env, stmt->constDef.name).index};
     }; break;
 
+    // FIXME: Clovers should be in register order:
     case STMT_CLOVER: {
         stmt->clover.name = (IRName){deallocVarReg(env, stmt->clover.name).index};
         stmt->clover.closure = (IRName){getVarReg(env, stmt->clover.closure).index};
@@ -425,6 +457,7 @@ static void regAllocStmt(Compiler const* compiler, RegEnv* env, IRStmt* stmt) {
     case STMT_FN_DEF: {
         stmt->fnDef.name = (IRName){deallocVarReg(env, stmt->fnDef.name).index};
 
+        // FIXME: Clovers should be in register order:
         for (size_t i = stmt->fnDef.closes.count; i-- > 0;) {
             stmt->fnDef.closes.names[i] =
                 (IRName){getVarReg(env, stmt->fnDef.closes.names[i]).index};
@@ -442,11 +475,14 @@ static void regAllocParams(Compiler const* compiler, RegEnv* env, IRBlock* block
         RegEnv goal = newRegEnv(compiler);
 
         size_t const arity = block->paramCount;
-        for (size_t i = 0; i < arity; ++i) {
+        for (size_t i = 0, regIdx = block->label.blockIndex == 0 ? 0 : 1;
+             i < arity;
+             ++i, ++regIdx
+        ) {
             IRName* const param = &block->params[i];
-            Reg const reg = {(uint8_t)i};
+            Reg const reg = {(uint8_t)regIdx};
             regEnvAdd(&goal, *param, reg);
-            *param = (IRName){i};
+            *param = (IRName){regIdx};
         }
 
         shuffleRegs(env, &goal, block);

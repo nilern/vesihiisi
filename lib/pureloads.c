@@ -247,6 +247,18 @@ static PureLoadsEnv blockPureLoadsEnv(
 
 static IRFn fnWithPureLoads(Compiler* compiler, IRFn fn);
 
+static void linearizeCloses(
+    Compiler* compiler, PureLoadsEnv* env, IRBlock* newBlock, Args* dest, BitSet const* closes
+) {
+    for (BitSetIter it = newBitSetIter(closes);;) {
+        MaybeSize const maybeIdx = bitSetIterNext(&it);
+        if (!maybeIdx.hasVal) { break; }
+
+        IRName const closee = deepLexicalUse(compiler, env, newBlock, (IRName){maybeIdx.val});
+        pushArg(dest, closee);
+    }
+}
+
 static IRStmt stmtWithPureLoads(
     Compiler* compiler, PureLoadsEnv* env, IRBlock* newBlock, IRStmt stmt
 ) {
@@ -262,13 +274,9 @@ static IRStmt stmtWithPureLoads(
     case STMT_FN_DEF: {
         stmt.fnDef.fn = fnWithPureLoads(compiler, stmt.fnDef.fn);
 
-        for (BitSetIter it = newBitSetIter(&stmt.fnDef.fn.blocks[0]->liveIns);;) {
-            MaybeSize const maybeIdx = bitSetIterNext(&it);
-            if (!maybeIdx.hasVal) { break; }
-
-            IRName const closee = deepLexicalUse(compiler, env, newBlock, (IRName){maybeIdx.val});
-            pushArg(&stmt.fnDef.closes, closee);
-        }
+        linearizeCloses(
+            compiler, env, newBlock, &stmt.fnDef.closes, &stmt.fnDef.fn.blocks[0]->liveIns
+        );
     }; break;
 
     case STMT_MOVE: case STMT_SWAP: assert(false); break; // Should not exist yet
@@ -279,7 +287,7 @@ static IRStmt stmtWithPureLoads(
 
 static IRTransfer transferWithPureLoads(
     Compiler* compiler, MaybePureLoadsEnv* savedEnvs, PureLoadsEnv* env, IRBlock* newBlock,
-    IRTransfer transfer
+    IRFn const* fn, IRTransfer transfer
 ) {
     switch (transfer.type) {
     case TRANSFER_CALL: {
@@ -291,7 +299,8 @@ static IRTransfer transferWithPureLoads(
                 deepLexicalUse(compiler, env, newBlock, transfer.call.args.names[i]);
         }
 
-        // TODO: Emit close into transfer (with `deepLexicalUse`s, like `STMT_FN_DEF`):
+        IRBlock const* const retBlock = fn->blocks[transfer.call.retLabel.blockIndex];
+        linearizeCloses(compiler, env, newBlock, &transfer.call.closes, &retBlock->liveIns);
 
         freePureLoadsEnv(env);
     }; break;
@@ -339,7 +348,8 @@ static IRTransfer transferWithPureLoads(
 }
 
 static void blockWithPureLoads(
-    Compiler* compiler, MaybePureLoadsEnv* savedEnvs, IRFn* newFn, IRBlock const* const block
+    Compiler* compiler, MaybePureLoadsEnv* savedEnvs, IRFn* newFn,
+    IRFn const* fn, IRBlock const* const block
 ) {
     size_t const callerCount = block->callers.count;
     IRBlock* const newBlock = createIRBlock(newFn, callerCount);
@@ -362,7 +372,7 @@ static void blockWithPureLoads(
     }
 
     newBlock->transfer =
-        transferWithPureLoads(compiler, savedEnvs, &env, newBlock, block->transfer);
+        transferWithPureLoads(compiler, savedEnvs, &env, newBlock, fn, block->transfer);
 }
 
 static IRFn fnWithPureLoads(Compiler* compiler, IRFn fn) {
@@ -372,7 +382,7 @@ static IRFn fnWithPureLoads(Compiler* compiler, IRFn fn) {
 
     size_t const blockCount = fn.blockCount;
     for (size_t i = 0; i < blockCount; ++i) {
-        blockWithPureLoads(compiler, savedEnvs, &newFn, fn.blocks[i]);
+        blockWithPureLoads(compiler, savedEnvs, &newFn, &fn, fn.blocks[i]);
     }
 
     freeIRFnHusk(&fn);

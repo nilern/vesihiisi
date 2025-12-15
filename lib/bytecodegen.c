@@ -151,13 +151,23 @@ static void emitStmt(State* state, MethodBuilder* builder, IRFn* fn, IRStmt* stm
 
 static void emitTransfer(MethodBuilder* builder, IRTransfer const* transfer) {
     switch (transfer->type) {
-    case TRANSFER_CALL: assert(false); break; // TODO
+    case TRANSFER_CALL: {
+        // Guaranteed not to need an `OP_BR` to return block here.
+
+        emitClose(builder, &transfer->call.closes);
+
+        size_t const regCount = 2 + transfer->tailcall.args.count;
+        assert(regCount < UINT8_MAX); // TODO: Handle absurd argument count (probably too late here)
+        pushCodeByte(builder, (uint8_t)regCount);
+
+        pushOp(builder, OP_CALL);
+    }; break;
 
     case TRANSFER_TAILCALL: {
         size_t const regCount = 2 + transfer->tailcall.args.count;
         assert(regCount < UINT8_MAX); // TODO: Handle absurd argument count (probably too late here)
-
         pushCodeByte(builder, (uint8_t)regCount);
+
         pushOp(builder, OP_TAILCALL);
     }; break;
 

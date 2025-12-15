@@ -54,6 +54,10 @@ static void print(State const* state, FILE* dest, ORef v) {
             fputc(')', dest);
         } else if (isEmptyList(state, v)) {
             fprintf(dest, "()");
+        } else if (isClosure(state, v)) {
+            fprintf(dest, "#<fn>");
+        } else if (isContinuation(state, v)) {
+            fprintf(dest, "#<continuation>");
         } else  {
             assert(false); // FIXME
         }

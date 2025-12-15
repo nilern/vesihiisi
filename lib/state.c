@@ -36,6 +36,7 @@ static bool tryCreateNamespace(
 #define REG_COUNT 256
 
 typedef struct State {
+    ORef method;
     uint8_t const* code;
     size_t pc;
     ORef regs[REG_COUNT];
@@ -55,6 +56,7 @@ typedef struct State {
     TypeRef unboundType;
     TypeRef methodType;
     TypeRef closureType;
+    TypeRef continuationType;
     TypeRef varType;
     TypeRef nsType;
     union {
@@ -252,6 +254,21 @@ static Type* tryCreateClosureType(Semispace* semispace, Type const* typeType) {
     return type;
 }
 
+static Type* tryCreateContinuationType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = tryAlloc(semispace, typeType);
+    if (!maybeType) { return nullptr; }
+
+    Type* const type = (Type*)maybeType;
+    *type = (Type){
+        .minSize = tagInt(sizeof(Continuation)),
+        .align = tagInt(alignof(Continuation)),
+        .isBytes = False,
+        .isFlex = True
+    };
+
+    return type;
+}
+
 static Type* tryCreateVarType(Semispace* semispace, Type const* typeType) {
     void* const maybeType = tryAlloc(semispace, typeType);
     if (!maybeType) { return nullptr; }
@@ -335,6 +352,8 @@ static bool tryCreateState(State* dest, size_t heapSize) {
     if (!methodType) { return false; }
     Type const* const closureType = tryCreateClosureType(&heap.tospace, typeTypePtr);
     if (!closureType) { return false; }
+    Type const* const continuationType = tryCreateContinuationType(&heap.tospace, typeTypePtr);
+    if (!continuationType) { return false; }
     Type const* const unboundType = tryCreateUnboundType(&heap.tospace, typeTypePtr);
     if (!unboundType) { return false; }
     Type const* const varType = tryCreateVarType(&heap.tospace, typeTypePtr);
@@ -357,13 +376,14 @@ static bool tryCreateState(State* dest, size_t heapSize) {
     if (!emptyListPtr) { return false; }
     void const* const unbound = tryAlloc(&heap.tospace, unboundType);
     if (!unbound) { return false; }
-    void* const exitPtr = tryAllocFlex(&heap.tospace, closureType, Zero);
+    void* const exitPtr = tryAllocFlex(&heap.tospace, continuationType, Zero);
     if (!exitPtr) { return false; }
 
     NamespaceRef ns;
     if (!tryCreateNamespace(&heap.tospace, &ns, nsType, arrayTypePtr)) { return false; }
     
     *dest = (State){
+        .method = fixnumToORef(Zero),
         .code = nullptr,
         .pc = 0,
         .consts = nullptr,
@@ -381,6 +401,7 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         .emptyListType = tagType(emptyListTypePtr),
         .methodType = tagType(methodType),
         .closureType = tagType(closureType),
+        .continuationType = tagType(continuationType),
         .unboundType = tagType(unboundType),
         .varType = tagType(varType),
         .nsType = tagType(nsType),
@@ -407,6 +428,8 @@ static TypeRef typeOf(State const* state, ORef v) {
         : uncheckedORefToTypeRef(state->immTypes[tag]);
 }
 
+// OPTMIZE: If we already know that `isHeaped(v)`, the calls `typeOf` recheck that redundantly:
+
 inline static bool isString(State const* state, ORef v) {
     return isHeaped(v)
         && eq(typeToORef(typeOf(state, v)), typeToORef(state->stringType));
@@ -424,6 +447,21 @@ inline static bool isPair(State const* state, ORef v) {
 
 inline static bool isEmptyList(State const* state, ORef v) {
     return eq(v, emptyListToORef(state->emptyList));
+}
+
+inline static bool isMethod(State const* state, ORef v) {
+    return isHeaped(v)
+        && eq(typeToORef(typeOf(state, v)), typeToORef(state->methodType));
+}
+
+inline static bool isClosure(State const* state, ORef v) {
+    return isHeaped(v)
+        && eq(typeToORef(typeOf(state, v)), typeToORef(state->closureType));
+}
+
+inline static bool isContinuation(State const* state, ORef v) {
+    return isHeaped(v)
+        && eq(typeToORef(typeOf(state, v)), typeToORef(state->continuationType));
 }
 
 static StringRef createString(State* state, Str str) {
@@ -560,4 +598,17 @@ static ClosureRef allocClosure(State* state, MethodRef method, Fixnum cloverCoun
     ptr->method = methodToORef(method);
 
     return tagClosure(ptr);
+}
+
+static ContinuationRef allocContinuation(
+    State* state, MethodRef method, Fixnum pc, Fixnum cloverCount
+) {
+    Continuation* const ptr =
+        tryAllocFlex(&state->heap.tospace, typeToPtr(state->continuationType), cloverCount);
+    if (!ptr) { assert(false); } // TODO: Collect garbage here
+
+    ptr->method = methodToORef(method);
+    ptr->pc = pc;
+
+    return tagContinuation(ptr);
 }

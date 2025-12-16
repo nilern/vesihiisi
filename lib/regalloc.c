@@ -34,14 +34,13 @@ static RegEnv cloneRegEnv(RegEnv const* env) {
     MaybeReg* const varRegs = malloc(varCap * sizeof *varRegs);
     memcpy(varRegs, env->varRegs, varCap * sizeof *varRegs); // OPTIMIZE
 
-    size_t const maxVarCount = env->maxVarCount;
     IRName* const regVars = malloc(REG_COUNT * sizeof *regVars);
-    memcpy(regVars, env->regVars, maxVarCount * sizeof *regVars);
+    memcpy(regVars, env->regVars, REG_COUNT * sizeof *regVars);
 
     return (RegEnv){
         .varRegs = varRegs,
         .regVars = regVars,
-        .maxVarCount = maxVarCount,
+        .maxVarCount = env->maxVarCount,
         .varCap = varCap
     };
 }

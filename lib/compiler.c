@@ -94,6 +94,7 @@ static void pushArg(Args* args, IRName arg) {
     if (args->count == args->cap) {
         size_t const newCap = args->cap + args->cap / 2;
         args->names = realloc(args->names, newCap * sizeof *args->names);
+        args->cap = newCap;
     }
 
     args->names[args->count++] = arg;

@@ -1,6 +1,6 @@
 TEST_FLAGS := -std=c2x -Wall -Wextra -Wpedantic -Wconversion
 BASE_FLAGS := $(TEST_FLAGS) -Werror
-DEBUG_FLAGS := -g
+DEBUG_FLAGS := -g -fsanitize=address -fsanitize=leak
 OPT_FLAGS := -O2 -DNDEBUG
 
 LIB_SRCS := $(shell find lib -name '*.c')
@@ -19,8 +19,9 @@ run-dev: vesihiisi-dev
 	rlwrap ./vesihiisi-dev
 
 .PHONY: test
-test: test/test_heap test/test_bitset
+test: test/test_heap test/test_arena test/test_bitset
 	./test/test_heap
+	./test/test_arena
 	./test/test_bitset
 
 vesihiisi: main.c $(LIB_SRCS)
@@ -37,3 +38,5 @@ clean:
 	rm -f vesihiisi
 	rm -f vesihiisi-dev
 	rm -f test/test_heap
+	rm -f test/test_arena
+	rm -f test/test_bitset

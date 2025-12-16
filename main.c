@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L // For `getline`
 
+#include <stddef.h>
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -9,6 +10,7 @@
 #include <stdbit.h>
 
 #include "lib/util.c"
+#include "lib/arena.c"
 #include "lib/bitset.c"
 #include "lib/bytefulbitset.c"
 #include "lib/object.c"
@@ -21,6 +23,7 @@
 #include "lib/liveness.c"
 #include "lib/pureloads.c"
 #include "lib/regalloc.c"
+#include "lib/cloverindexing.c"
 #include "lib/bytecode.c"
 #include "lib/bytecodegen.c"
 #include "lib/namespace.c"
@@ -83,6 +86,12 @@ int main(int /*argc*/, char** /*argv*/) {
 
                 puts("\n");
 
+                indexToplevelFnClovers(&compiler, &irFn);
+                puts(";; # Concrete IR:");
+                printIRFn(&state, stdout, &compiler, printIRReg, &irFn);
+
+                puts("\n");
+
                 method = emitMethod(&state, &irFn);
                 puts(";; # Bytecode:");
                 disassemble(&state, stdout, method);
@@ -102,6 +111,7 @@ int main(int /*argc*/, char** /*argv*/) {
             puts("Error reading input");
             
             free(line);
+            freeState(&state);
             return EXIT_FAILURE;
         }
     }

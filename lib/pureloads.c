@@ -7,7 +7,6 @@ typedef struct MaybeIRName {
 
 typedef struct CloverLoc {
     MaybeIRName reg;
-    uint8_t closureIdx;
 } CloverLoc;
 
 typedef struct CloverLocs {
@@ -21,14 +20,11 @@ static CloverLocs newCloverLocs(BitSet const vars) {
     size_t const count = bitSetLimit(&vars);
     CloverLoc* const vals = malloc(count * sizeof *vals);
 
-    {
-        uint8_t closureIdx = 0;
-        for (size_t i = 0; i < count; ++i) {
-            if (bitSetContains(&vars, i)) {
-                vals[i] = (CloverLoc){.reg = {}, .closureIdx = closureIdx++};
-            } else {
-                vals[i] = (CloverLoc){.reg = {.val = invalidIRName, .hasVal = true}};
-            }
+    for (size_t i = 0; i < count; ++i) {
+        if (bitSetContains(&vars, i)) {
+            vals[i] = (CloverLoc){.reg = {}};
+        } else {
+            vals[i] = (CloverLoc){.reg = {.val = invalidIRName, .hasVal = true}};
         }
     }
 
@@ -122,7 +118,10 @@ static IRName deepLexicalUse(Compiler* compiler, PureLoadsEnv* env, IRBlock* new
     if (loc.reg.hasVal) { return loc.reg.val; } // Already loaded
 
     IRName const newReg = renameIRName(compiler, use);
-    pushIRStmt(newBlock, (IRStmt){.clover = {newReg, env->closure, loc.closureIdx}, STMT_CLOVER});
+    pushIRStmt(newBlock, (IRStmt){
+        .clover = {newReg, env->closure, use, 0},
+        STMT_CLOVER
+    });
     setCloverReg(&env->locs, use, newReg);
     return newReg;
 }

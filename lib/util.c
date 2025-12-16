@@ -3,6 +3,11 @@ typedef struct MaybeSize {
     bool hasVal;
 } MaybeSize;
 
+typedef struct MaybeUInt8 {
+    uint8_t val;
+    bool hasVal;
+} MaybeUInt8;
+
 typedef void (*SwapFn)(void* restrict x, void* restrict y);
 
 static void reverse(void* arr, size_t count, size_t size, SwapFn swap) {

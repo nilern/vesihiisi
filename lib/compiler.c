@@ -14,6 +14,7 @@ typedef struct IRLabel { size_t blockIndex; } IRLabel;
 typedef struct IRConst { uint8_t index; } IRConst;
 
 typedef struct Compiler {
+    Arena arena;
     ORef* nameSyms;
     size_t nameCount;
     size_t nameCap;
@@ -28,6 +29,7 @@ static Compiler createCompiler(void) {
     nameSyms[0] = fixnumToORef(Zero);
     
     return (Compiler){
+        .arena = newArena(defaultArenaBlockSize),
         .nameSyms = nameSyms,
         .nameCount = nameCount,
         .nameCap = nameCap
@@ -35,6 +37,7 @@ static Compiler createCompiler(void) {
 }
 
 static void freeCompiler(Compiler* compiler) {
+    freeArena(&compiler->arena);
     free(compiler->nameSyms);
 }
 
@@ -114,6 +117,7 @@ typedef struct ConstDef {
 typedef struct Clover {
     IRName name;
     IRName closure;
+    IRName origName;
     uint8_t idx;
 } Clover;
 
@@ -557,6 +561,8 @@ static void printStmt(
         printName(state, dest, compiler, clover.name);
         fprintf(dest, " (clover ");
         printName(state, dest, compiler, clover.closure);
+        fputc(' ', dest);
+        printIRName(state, dest, compiler, clover.origName);
         fprintf(dest, " %u))", clover.idx);
     }; break;
 

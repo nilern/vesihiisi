@@ -1,4 +1,5 @@
 // FIXME: Magic register numbers:
+// OPTIMIZE: At this point bitsets are slow because we are usually iterating over them.
 
 typedef struct { uint8_t index; } Reg;
 

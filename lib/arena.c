@@ -116,6 +116,7 @@ static void arenaGrow(Arena* arena) {
     arena->start = newStart;
 }
 
+[[maybe_unused]]
 static void* amalloc(Arena* arena, size_t size) {
     for (;/*ever*/;) {
         uintptr_t address = (uintptr_t)arena->free;

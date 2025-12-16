@@ -1,13 +1,12 @@
 typedef struct CloverIdxs {
-    IRName closure;
     MaybeUInt8* idxs;
     size_t cap;
 } CloverIdxs;
 
-static CloverIdxs newCloverIdxs(Compiler* compiler, IRName closure) {
+static CloverIdxs newCloverIdxs(Compiler* compiler) {
     size_t const cap = compiler->nameCount;
     MaybeUInt8* const idxs = acalloc(&compiler->arena, cap, sizeof *idxs);
-    return (CloverIdxs){.closure = closure, .idxs = idxs, .cap = cap};
+    return (CloverIdxs){.idxs = idxs, .cap = cap};
 }
 
 static uint8_t getCloverIdx(CloverIdxs const* env, IRName origName) {
@@ -42,10 +41,8 @@ static CloverIdxs const* getCloverIdxs(CloverIndexing const* pass, IRLabel label
     return &maybeCloverIdxs->val;
 }
 
-static CloverIdxs closeCloverIdxs(
-    Compiler* compiler, BitSet const* clovers, IRName closure, Args const* close
-) {
-    CloverIdxs env = newCloverIdxs(compiler, closure);
+static CloverIdxs closeCloverIdxs(Compiler* compiler, BitSet const* clovers, Args const* close) {
+    CloverIdxs env = newCloverIdxs(compiler);
 
     {
         size_t const cloverCount = close->count;
@@ -73,13 +70,9 @@ static CloverIdxs closeCloverIdxs(
     return env;
 }
 
-static void indexFnClovers(
-    Compiler* compiler, CloverIndexing* pass, CloverIdxs const* fnEnv, IRFn* fn
-);
+static void indexFnClovers(Compiler* compiler, CloverIdxs const* fnEnv, IRFn* fn);
 
-static void indexStmtClovers(
-    Compiler* compiler, CloverIndexing* pass, CloverIdxs const* env, IRStmt* stmt
-) {
+static void indexStmtClovers(Compiler* compiler, CloverIdxs const* env, IRStmt* stmt) {
     switch (stmt->type) {
     case STMT_GLOBAL_DEF: case STMT_GLOBAL: case STMT_CONST_DEF: break;
 
@@ -89,10 +82,8 @@ static void indexStmtClovers(
 
     case STMT_FN_DEF: {
         IRBlock const* const entryBlock = stmt->fnDef.fn.blocks[0];
-        CloverIdxs innerEnv = closeCloverIdxs(
-            compiler, &entryBlock->liveIns, entryBlock->params[0], &stmt->fnDef.closes
-        );
-        indexFnClovers(compiler, pass, &innerEnv, &stmt->fnDef.fn);
+        CloverIdxs innerEnv = closeCloverIdxs(compiler, &entryBlock->liveIns, &stmt->fnDef.closes);
+        indexFnClovers(compiler, &innerEnv, &stmt->fnDef.fn);
     }; break;
 
     case STMT_MOVE: case STMT_SWAP: break;
@@ -107,9 +98,7 @@ static void indexTransferClovers(
     case TRANSFER_CALL: {
         IRLabel const retLabel = transfer->call.retLabel;
         IRBlock const* const retBlock = fn->blocks[retLabel.blockIndex];
-        CloverIdxs retEnv = closeCloverIdxs(
-            compiler, &retBlock->liveIns, retBlock->params[0], &transfer->call.closes
-        );
+        CloverIdxs retEnv = closeCloverIdxs(compiler, &retBlock->liveIns, &transfer->call.closes);
         saveCloverIdxs(pass, retLabel, &retEnv);
     }; break;
 
@@ -138,23 +127,22 @@ static void indexBlockClovers(
 
     size_t const stmtCount = block->stmtCount;
     for (size_t i = 0; i < stmtCount; ++i) {
-        indexStmtClovers(compiler, pass, env, &block->stmts[i]);
+        indexStmtClovers(compiler, env, &block->stmts[i]);
     }
 
     indexTransferClovers(compiler, pass, fn, env, &block->transfer);
 }
 
-static void indexFnClovers(
-    Compiler* compiler, CloverIndexing* pass, CloverIdxs const* fnEnv, IRFn* fn
-) {
+static void indexFnClovers(Compiler* compiler, CloverIdxs const* fnEnv, IRFn* fn) {
+    CloverIndexing pass = newCloverIndexing(compiler, fn);
+
     size_t const blockCount = fn->blockCount;
     for (size_t i = 0; i < blockCount; ++i) {
-        indexBlockClovers(compiler, pass, fn, fnEnv, fn->blocks[i]);
+        indexBlockClovers(compiler, &pass, fn, fnEnv, fn->blocks[i]);
     }
 }
 
 static void indexToplevelFnClovers(Compiler* compiler, IRFn* fn) {
-    CloverIndexing pass = newCloverIndexing(compiler, fn);
-    CloverIdxs const emptyFnEnv = newCloverIdxs(compiler, fn->blocks[0]->params[0]);
-    indexFnClovers(compiler, &pass, &emptyFnEnv, fn);
+    CloverIdxs const emptyFnEnv = newCloverIdxs(compiler);
+    indexFnClovers(compiler, &emptyFnEnv, fn);
 }

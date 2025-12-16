@@ -14,8 +14,9 @@ static void test_lifecycle(void) {
 
 static void test_amalloc(void) {
     Arena arena = newArena(defaultArenaBlockSize);
-    void* const obj = amalloc(&arena, defaultArenaBlockSize / 2);
+    uint8_t* const obj = amalloc(&arena, defaultArenaBlockSize / 2);
     assert(obj);
+    assert(arena.free >= obj + defaultArenaBlockSize / 2);
 
     freeArena(&arena);
 }
@@ -35,6 +36,7 @@ static void test_acalloc(void) {
     uint8_t* const obj = acalloc(&arena, count, size);
 
     assert(obj);
+    assert(arena.free >= obj + count * size);
 
     size_t const totalSize = count * size;
     for (size_t i = 0; i < totalSize; ++i) {

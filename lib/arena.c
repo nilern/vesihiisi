@@ -139,12 +139,14 @@ static void* amalloc(Arena* arena, size_t size) {
 }
 
 static void* acalloc(Arena* arena, size_t count, size_t size) {
+    size_t const totalSize = count * size;
+
     for (;/*ever*/;) {
         uintptr_t address = (uintptr_t)arena->free;
         size_t const align = alignof(max_align_t);
         address = (address + align - 1) & ~(align - 1); // Align `address` up
 
-        uint8_t* newFree = (uint8_t*)(address + size);
+        uint8_t* newFree = (uint8_t*)(address + totalSize);
         if (newFree >= arena->limit) {
             if (size < arena->blockSize) {
                 arenaGrow(arena);
@@ -156,7 +158,7 @@ static void* acalloc(Arena* arena, size_t count, size_t size) {
 
         arena->free = newFree;
         void* const obj = (void*)address;
-        memset(obj, 0, count * size);
+        memset(obj, 0, totalSize);
         return obj;
     }
 }

@@ -2,11 +2,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <stdio.h>
 
 #include "../lib/util.c"
 #include "../lib/object.c"
 #include "../lib/heap.c"
 #include "../lib/state.c"
+#include "../lib/namespace.c"
+#include "../lib/print.c"
+#include "../lib/bytecode.c"
+#include "../lib/primops.c"
 
 static void testBootstrap(void) {
     State state;

@@ -332,6 +332,9 @@ inline static Type* tryCreateBoolType(Semispace* semispace, Type const* typeType
 
 static PrimopRes callBytecode(State* state);
 static PrimopRes primopIdentical(State* state);
+static PrimopRes primopFxAdd(State* state);
+static PrimopRes primopFxSub(State* state);
+static PrimopRes primopFxMul(State* state);
 
 static MethodRef createPrimopMethod(State* state, MethodCode nativeCode);
 
@@ -340,6 +343,17 @@ static ClosureRef allocClosure(State* state, MethodRef method, Fixnum cloverCoun
 static SymbolRef intern(State* state, Str name);
 
 static VarRef getVar(State* state, NamespaceRef nsRef, SymbolRef name);
+
+static void installPrimop(State* state, Str name, MethodCode nativeCode) {
+    MethodRef* const method =
+        (MethodRef*)pushTmp(state, methodToORef(createPrimopMethod(state, nativeCode)));
+    ClosureRef* const closure =
+        (ClosureRef*)pushTmp(state, closureToORef(allocClosure(state, *method, Zero)));
+    SymbolRef* const symbol = (SymbolRef*)pushTmp(state, symbolToORef(intern(state, name)));
+    VarRef const var = getVar(state, state->ns, *symbol);
+    varToPtr(var)->val = closureToORef(*closure);
+    popTmps(state, 3);
+}
 
 static bool tryCreateState(State* dest, size_t heapSize) {
     Heap heap = tryCreateHeap(heapSize);
@@ -428,17 +442,10 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         .exit = tagClosure(exitPtr)
     };
 
-    {
-        MethodRef* const method =
-            (MethodRef*)pushTmp(dest, methodToORef(createPrimopMethod(dest, primopIdentical)));
-        ClosureRef* const closure =
-            (ClosureRef*)pushTmp(dest, closureToORef(allocClosure(dest, *method, Zero)));
-        SymbolRef* const name = (SymbolRef*)pushTmp(
-                dest, symbolToORef(intern(dest, (Str){"identical?", /*FIXME:*/ 10})));
-        VarRef const var = getVar(dest, dest->ns, *name);
-        varToPtr(var)->val = closureToORef(*closure);
-        popTmps(dest, 3);
-    }
+    installPrimop(dest, (Str){"identical?", /*FIXME:*/ 10}, primopIdentical);
+    installPrimop(dest, (Str){"fx+", /*FIXME:*/ 3}, primopFxAdd);
+    installPrimop(dest, (Str){"fx-", /*FIXME:*/ 3}, primopFxSub);
+    installPrimop(dest, (Str){"fx*", /*FIXME:*/ 3}, primopFxMul);
 
     return true;
 }

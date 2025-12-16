@@ -7,7 +7,10 @@ inline static Parser createParser(Str src) {
     return (Parser){.curr = src.data, .end = src.data + src.len};
 }
 
-inline static bool isSymbolChar(char c) { return isalpha(c) || c == '!' || c == '?'; }
+inline static bool isSymbolChar(char c) {
+    return isalpha(c) || c == '!' || c == '?'
+        || c == '+' || c == '-' || c == '*' || c == '/';
+}
 
 static bool read(State* state, ORef* dest, Parser* parser) {
     while (isspace(*parser->curr)) { ++parser->curr; }

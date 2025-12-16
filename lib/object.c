@@ -163,6 +163,8 @@ inline static ArrayRef tagArray(ORef* xs) {
 
 inline static ORef arrayToORef(ArrayRef xs) { return (ORef){xs.bits}; }
 
+inline static ArrayRef uncheckedORefToArray(ORef v) { return (ArrayRef){v.bits}; }
+
 inline static Fixnum arrayCount(ArrayRef xs) { return flexLength(arrayToORef(xs)); }
 
 inline static ORef* arrayToPtr(ArrayRef xs) { return (ORef*)(void*)(xs.bits & ~tag_bits); }
@@ -174,6 +176,8 @@ inline static ByteArrayRef tagByteArray(uint8_t* bs) {
 }
 
 inline static ORef byteArrayToORef(ByteArrayRef bs) { return (ORef){bs.bits}; }
+
+inline static ByteArrayRef uncheckedORefToByteArray(ORef v) { return (ByteArrayRef){v.bits}; }
 
 inline static Fixnum byteArrayCount(ByteArrayRef bs) { return flexLength(byteArrayToORef(bs)); }
 
@@ -206,9 +210,19 @@ inline static EmptyListRef tagEmptyList(void const* ptr) {
 
 inline static ORef emptyListToORef(EmptyListRef v) { return (ORef){v.bits}; }
 
+typedef enum PrimopRes {
+    PRIMOP_RES_CONTINUE,
+    PRIMOP_RES_TAILCALL
+} PrimopRes;
+
+struct State;
+
+typedef PrimopRes (*MethodCode)(struct State*);
+
 typedef struct Method {
-    ByteArrayRef code;
-    ArrayRef consts;
+    MethodCode nativeCode; // TODO: GC must treat this specially (like CHICKEN's SPECIALBLOCK_BIT)
+    ORef code;
+    ORef consts;
 } Method;
 
 typedef struct MethodRef { uintptr_t bits; } MethodRef;

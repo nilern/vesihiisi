@@ -7,6 +7,8 @@ inline static Parser createParser(Str src) {
     return (Parser){.curr = src.data, .end = src.data + src.len};
 }
 
+inline static bool isSymbolChar(char c) { return isalpha(c) || c == '!' || c == '?'; }
+
 static bool read(State* state, ORef* dest, Parser* parser) {
     while (isspace(*parser->curr)) { ++parser->curr; }
     
@@ -69,12 +71,12 @@ static bool read(State* state, ORef* dest, Parser* parser) {
         *dest = popTmp(state);
         popTmp(state);
         return true;
-    } else if (isalpha(c)) {
+    } else if (isSymbolChar(c)) {
         StringBuilder builder = createStringBuilder();
          do {
             stringBuilderPush(&builder, c);
             c = *++parser->curr;
-         } while (isalpha(c));
+         } while (isSymbolChar(c));
         
         *dest = symbolToORef(intern(state, stringBuilderStr(&builder)));
         freeStringBuilder(&builder); // OPTIMIZE: Reuse same builder

@@ -22,6 +22,9 @@ typedef enum Opcode : uint8_t {
     OP_TAILCALL // TODO: Encode as call with 0 closes (nontail call always saves at least ret cont)?
 } Opcode;
 
+static const uint8_t firstArgReg = 2;
+static const uint8_t retReg = 2;
+
 inline static void disassembleReg(FILE* dest, uint8_t reg) { fprintf(dest, "r%u", reg); }
 
 inline static void disassembleDisplacement(FILE* dest, uint8_t len) { fprintf(dest, "%u", len); }
@@ -50,8 +53,9 @@ static size_t disassembleNestedInstr(
     State const* state, FILE* dest, MethodRef methodRef, size_t pc, size_t nesting
 ) {
     Method const* const method = methodToPtr(methodRef);
-    uint8_t const* const code = byteArrayToPtr(method->code);
-    ORef const* const consts = arrayToPtr(method->consts);
+    assert(method->nativeCode == callBytecode);
+    uint8_t const* const code = byteArrayToPtr(uncheckedORefToByteArray(method->code));
+    ORef const* const consts = arrayToPtr(uncheckedORefToArray(method->consts));
 
     for (size_t j = 0; j < nesting; ++j) { fputc('\t', dest); }
     fprintf(dest, "[%lu]:\t", pc);
@@ -152,7 +156,9 @@ static size_t disassembleInstr(State const* state, FILE* dest, MethodRef methodR
 // TODO: Print labels for BR(F) and their targets:
 static void disassembleNested(State const* state, FILE* dest, MethodRef methodRef, size_t nesting) {
     Method const* const method = methodToPtr(methodRef);
-    uintptr_t const codeCount = (uintptr_t)fixnumToInt(byteArrayCount(method->code));
+    assert(method->nativeCode == callBytecode);
+    uintptr_t const codeCount =
+        (uintptr_t)fixnumToInt(byteArrayCount(uncheckedORefToByteArray(method->code)));
 
     for (size_t pc = 0; pc < codeCount;) {
         pc = disassembleNestedInstr(state, dest, methodRef, pc, nesting);

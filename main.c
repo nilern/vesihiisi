@@ -18,16 +18,17 @@
 #include "lib/state.c"
 #include "lib/read.c"
 #include "lib/print.c"
+#include "lib/bytecode.c"
+#include "lib/namespace.c"
+#include "lib/primops.c"
+#include "lib/vm.c"
 #include "lib/compiler.c"
 #include "lib/tocps.c"
 #include "lib/liveness.c"
 #include "lib/pureloads.c"
 #include "lib/regalloc.c"
 #include "lib/cloverindexing.c"
-#include "lib/bytecode.c"
 #include "lib/bytecodegen.c"
-#include "lib/namespace.c"
-#include "lib/vm.c"
 
 static const char prompt[] = "vesihiisi> ";
 

@@ -35,7 +35,7 @@ static MethodRef buildMethod(State* state, MethodBuilder builder, IRFn const* fn
     ArrayRef const consts = createArray(state, tagInt((intptr_t)fn->constCount));
     memcpy(arrayToPtr(consts), fn->consts, fn->constCount * sizeof *fn->consts);
 
-    MethodRef const method = createMethod(state, code, consts);
+    MethodRef const method = createBytecodeMethod(state, code, consts);
 
     free(builder.code);
     freeLabelIdxs(&builder.labelIdxs);

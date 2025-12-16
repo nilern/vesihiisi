@@ -330,6 +330,17 @@ inline static Type* tryCreateBoolType(Semispace* semispace, Type const* typeType
     return tryCreateImmType(semispace, typeType);
 }
 
+static PrimopRes callBytecode(State* state);
+static PrimopRes primopIdentical(State* state);
+
+static MethodRef createPrimopMethod(State* state, MethodCode nativeCode);
+
+static ClosureRef allocClosure(State* state, MethodRef method, Fixnum cloverCount);
+
+static SymbolRef intern(State* state, Str name);
+
+static VarRef getVar(State* state, NamespaceRef nsRef, SymbolRef name);
+
 static bool tryCreateState(State* dest, size_t heapSize) {
     Heap heap = tryCreateHeap(heapSize);
     if (!heapIsValid(&heap)) { return false; }
@@ -381,7 +392,7 @@ static bool tryCreateState(State* dest, size_t heapSize) {
 
     NamespaceRef ns;
     if (!tryCreateNamespace(&heap.tospace, &ns, nsType, arrayTypePtr)) { return false; }
-    
+
     *dest = (State){
         .method = fixnumToORef(Zero),
         .code = nullptr,
@@ -416,6 +427,19 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         .unbound = tagUnbound(unbound),
         .exit = tagClosure(exitPtr)
     };
+
+    {
+        MethodRef* const method =
+            (MethodRef*)pushTmp(dest, methodToORef(createPrimopMethod(dest, primopIdentical)));
+        ClosureRef* const closure =
+            (ClosureRef*)pushTmp(dest, closureToORef(allocClosure(dest, *method, Zero)));
+        SymbolRef* const name = (SymbolRef*)pushTmp(
+                dest, symbolToORef(intern(dest, (Str){"identical?", /*FIXME:*/ 10})));
+        VarRef const var = getVar(dest, dest->ns, *name);
+        varToPtr(var)->val = closureToORef(*closure);
+        popTmps(dest, 3);
+    }
+
     return true;
 }
 
@@ -581,11 +605,28 @@ static PairRef allocPair(State* state) {
     return tagPair(ptr);
 }
 
-static MethodRef createMethod(State* state, ByteArrayRef code, ArrayRef consts) {
+static MethodRef createBytecodeMethod(State* state, ByteArrayRef code, ArrayRef consts) {
     Method* const ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->methodType));
     if (!ptr) { assert(false); } // TODO: Collect garbage here
 
-    *ptr = (Method){.code = code, .consts = consts};
+    *ptr = (Method){
+        .nativeCode = callBytecode,
+        .code = byteArrayToORef(code),
+        .consts = arrayToORef(consts)
+    };
+
+    return tagMethod(ptr);
+}
+
+static MethodRef createPrimopMethod(State* state, MethodCode nativeCode) {
+    Method* const ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->methodType));
+    if (!ptr) { assert(false); } // TODO: Collect garbage here
+
+    *ptr = (Method){
+        .nativeCode = nativeCode,
+        .code = fixnumToORef(Zero),
+        .consts = fixnumToORef(Zero)
+    };
 
     return tagMethod(ptr);
 }

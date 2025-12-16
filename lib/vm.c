@@ -5,10 +5,11 @@ static ORef run(State* state, ClosureRef selfRef) {
     Closure const* const self = closureToPtr(selfRef);
     ORef const method = self->method;
     Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
+    assert(methodPtr->nativeCode == callBytecode);
     state->method = method;
-    state->code = byteArrayToPtr(methodPtr->code);
+    state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
     state->pc = 0;
-    state->consts = arrayToPtr(methodPtr->consts);
+    state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
     state->regs[0] = closureToORef(selfRef);
     state->regs[1] = closureToORef(state->exit); // Return continuation
 
@@ -104,9 +105,9 @@ static ORef run(State* state, ClosureRef selfRef) {
                 assert(isMethod(state, method));
                 Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
                 state->method = method;
-                state->code = byteArrayToPtr(methodPtr->code);
+                state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
                 state->pc = (size_t)fixnumToInt(ret->pc);
-                state->consts = arrayToPtr(methodPtr->consts);
+                state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
             } else { // Exit
                 return state->regs[2];
             }
@@ -196,30 +197,90 @@ static ORef run(State* state, ClosureRef selfRef) {
             state->regs[1] = continuationToORef(cont);
 
             // TODO: DRY wrt. OP_TAILCALL:
-            assert(isClosure(state, state->regs[0]));
-            Closure const* const closure = closureToPtr(uncheckedORefToClosure(state->regs[0]));
-            ORef const method = closure->method;
-            assert(isMethod(state, method));
-            Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
-            state->method = method;
-            state->code = byteArrayToPtr(methodPtr->code);
-            state->pc = 0;
-            state->consts = arrayToPtr(methodPtr->consts);
+            bool trampoline = true;
+            while (trampoline) {
+                assert(isClosure(state, state->regs[0]));
+                Closure const* const closure = closureToPtr(uncheckedORefToClosure(state->regs[0]));
+                ORef const method = closure->method;
+                assert(isMethod(state, method));
+                Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
+                if (methodPtr->nativeCode == callBytecode) {
+                    state->method = method;
+                    state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
+                    state->pc = 0;
+                    state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
+                    trampoline = false;
+                } else {
+                    switch (methodPtr->nativeCode(state)) {
+                    case PRIMOP_RES_CONTINUE: { // TODO: DRY wrt. OP_RET:
+                        assert(eq(typeToORef(typeOf(state, state->regs[1])),
+                                typeToORef(state->continuationType)));
+                        ContinuationRef const retRef = uncheckedORefToContinuation(state->regs[1]);
+                        Continuation const* const ret = continuationToPtr(retRef);
+                        ORef const method = ret->method;
+                        if (!eq(method, fixnumToORef(Zero))) {
+                            assert(isMethod(state, method));
+                            Method const* const methodPtr =
+                                methodToPtr(uncheckedORefToMethod(method));
+                            state->method = method;
+                            state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
+                            state->pc = (size_t)fixnumToInt(ret->pc);
+                            state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
+                            trampoline = false;
+                        } else { // Exit
+                            return state->regs[2];
+                        }
+                    }; break;
+
+                    case PRIMOP_RES_TAILCALL: break; // All is in place, just keep trampolining
+                    }
+                }
+            }
         }; break;
 
         case OP_TAILCALL: {
             uint8_t const regCount /*FIXME:*/ [[maybe_unused]] = state->code[state->pc++];
 
             // TODO: DRY wrt. OP_CALL:
-            assert(isClosure(state, state->regs[0]));
-            Closure const* const closure = closureToPtr(uncheckedORefToClosure(state->regs[0]));
-            ORef const method = closure->method;
-            assert(isMethod(state, method));
-            Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
-            state->method = method;
-            state->code = byteArrayToPtr(methodPtr->code);
-            state->pc = 0;
-            state->consts = arrayToPtr(methodPtr->consts);
+            bool trampoline = true;
+            while (trampoline) {
+                assert(isClosure(state, state->regs[0]));
+                Closure const* const closure = closureToPtr(uncheckedORefToClosure(state->regs[0]));
+                ORef const method = closure->method;
+                assert(isMethod(state, method));
+                Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
+                if (methodPtr->nativeCode == callBytecode) {
+                    state->method = method;
+                    state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
+                    state->pc = 0;
+                    state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
+                    trampoline = false;
+                } else {
+                    switch (methodPtr->nativeCode(state)) {
+                    case PRIMOP_RES_CONTINUE: { // TODO: DRY wrt. OP_RET:
+                        assert(eq(typeToORef(typeOf(state, state->regs[1])),
+                                typeToORef(state->continuationType)));
+                        ContinuationRef const retRef = uncheckedORefToContinuation(state->regs[1]);
+                        Continuation const* const ret = continuationToPtr(retRef);
+                        ORef const method = ret->method;
+                        if (!eq(method, fixnumToORef(Zero))) {
+                            assert(isMethod(state, method));
+                            Method const* const methodPtr =
+                                methodToPtr(uncheckedORefToMethod(method));
+                            state->method = method;
+                            state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
+                            state->pc = (size_t)fixnumToInt(ret->pc);
+                            state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
+                            trampoline = false;
+                        } else { // Exit
+                            return state->regs[2];
+                        }
+                    }; break;
+
+                    case PRIMOP_RES_TAILCALL: break; // All is in place, just keep trampolining
+                    }
+                }
+            }
         }; break;
         }
     }

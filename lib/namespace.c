@@ -1,6 +1,6 @@
 static VarRef createUnboundVar(State* state) {
     Var* ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->varType));
-    if (!ptr) { assert(false); } // TODO: Collect garbage here
+    if (mustCollect(ptr)) { assert(false); } // TODO: Collect garbage here
     ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->varType));
 
     *ptr = (Var){.val = unboundToORef(state->unbound)};

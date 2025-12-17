@@ -44,6 +44,14 @@ static void freeHeap(Heap* heap) {
     freeSemispace(&heap->tospace);
 }
 
+inline static bool mustCollect(void* ptr) {
+#ifdef GC_ALOT
+    return !ptr || true;
+#else
+    return !ptr;
+#endif
+}
+
 static void* tryAlloc(Semispace* semispace, Type const* type) {
     assert(semispaceIsValid(semispace));
     assert(!unwrapBool(type->isFlex));

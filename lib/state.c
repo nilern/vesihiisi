@@ -498,7 +498,7 @@ inline static bool isContinuation(State const* state, ORef v) {
 static StringRef createString(State* state, Str str) {
     char* stringPtr =
         tryAllocFlex(&state->heap.tospace, typeToPtr(state->stringType), tagInt((intptr_t)str.len));
-    if (!stringPtr) { assert(false); } // TODO: Collect garbage here
+    if (mustCollect(stringPtr)) { assert(false); } // TODO: Collect garbage here
     stringPtr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->stringType),
                                tagInt((intptr_t)str.len));
     
@@ -509,7 +509,7 @@ static StringRef createString(State* state, Str str) {
 
 static ArrayRef createArray(State* state, Fixnum count) {
     ORef* ptr = tryAllocFlex(&state->heap.tospace, typeToPtr(state->arrayType), count);
-    if (!ptr) { assert(false); } // TODO: Collect garbage here
+    if (mustCollect(ptr)) { assert(false); } // TODO: Collect garbage here
     ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->arrayType), count);
     
     return tagArray(ptr);
@@ -517,7 +517,7 @@ static ArrayRef createArray(State* state, Fixnum count) {
 
 static ByteArrayRef createByteArray(State* state, Fixnum count) {
     uint8_t* ptr = tryAllocFlex(&state->heap.tospace, typeToPtr(state->byteArrayType), count);
-    if (!ptr) { assert(false); } // TODO: Collect garbage here
+    if (mustCollect(ptr)) { assert(false); } // TODO: Collect garbage here
     ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->byteArrayType), count);
 
     return tagByteArray(ptr);
@@ -526,7 +526,7 @@ static ByteArrayRef createByteArray(State* state, Fixnum count) {
 static SymbolRef createUninternedSymbol(State* state, Fixnum hash, Str name) {
     Symbol* ptr = tryAllocFlex(
         &state->heap.tospace, typeToPtr(state->symbolType), tagInt((intptr_t)name.len));
-    if (!ptr) { assert(false); } // TODO: Collect garbage here
+    if (mustCollect(ptr)) { assert(false); } // TODO: Collect garbage here
     ptr = allocFlexOrDie(
         &state->heap.tospace, typeToPtr(state->symbolType), tagInt((intptr_t)name.len));
     
@@ -613,7 +613,7 @@ static SymbolRef intern(State* state, Str name) {
 
 static PairRef allocPair(State* state) {
     Pair* ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->pairType));
-    if (!ptr) { assert(false); } // TODO: Collect garbage here
+    if (mustCollect(ptr)) { assert(false); } // TODO: Collect garbage here
     ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->pairType));
     
     return tagPair(ptr);
@@ -621,7 +621,7 @@ static PairRef allocPair(State* state) {
 
 static MethodRef createBytecodeMethod(State* state, ByteArrayRef code, ArrayRef consts) {
     Method* ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->methodType));
-    if (!ptr) { assert(false); } // TODO: Collect garbage here
+    if (mustCollect(ptr)) { assert(false); } // TODO: Collect garbage here
     ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->methodType));
 
     *ptr = (Method){
@@ -635,7 +635,7 @@ static MethodRef createBytecodeMethod(State* state, ByteArrayRef code, ArrayRef 
 
 static MethodRef createPrimopMethod(State* state, MethodCode nativeCode) {
     Method* ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->methodType));
-    if (!ptr) { assert(false); } // TODO: Collect garbage here
+    if (mustCollect(ptr)) { assert(false); } // TODO: Collect garbage here
     ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->methodType));
 
     *ptr = (Method){
@@ -649,7 +649,7 @@ static MethodRef createPrimopMethod(State* state, MethodCode nativeCode) {
 
 static ClosureRef allocClosure(State* state, MethodRef method, Fixnum cloverCount) {
     Closure* ptr = tryAllocFlex(&state->heap.tospace, typeToPtr(state->closureType), cloverCount);
-    if (!ptr) { assert(false); } // TODO: Collect garbage here
+    if (mustCollect(ptr)) { assert(false); } // TODO: Collect garbage here
     ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->closureType), cloverCount);
 
     ptr->method = methodToORef(method);
@@ -662,7 +662,7 @@ static ContinuationRef allocContinuation(
 ) {
     Continuation* ptr =
         tryAllocFlex(&state->heap.tospace, typeToPtr(state->continuationType), cloverCount);
-    if (!ptr) { assert(false); } // TODO: Collect garbage here
+    if (mustCollect(ptr)) { assert(false); } // TODO: Collect garbage here
     ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->continuationType), cloverCount);
 
     ptr->method = methodToORef(method);

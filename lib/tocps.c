@@ -174,7 +174,7 @@ static IRName toCpsContDestName(Compiler* compiler, ToCpsCont k) {
 static IRName constToCPS(Compiler* compiler, IRFn* fn, IRBlock* block, ORef expr, ToCpsCont k) {
     IRName const name = toCpsContDestName(compiler, k);
     IRConst const c = fnConst(fn, expr);
-    pushIRStmt(block, constDefToStmt((ConstDef){name, c}));
+    pushIRStmt(&block->stmts, constDefToStmt((ConstDef){name, c}));
 
     if (k.type == TO_CPS_CONT_RETURN) {
         createIRReturn(block, k.ret.cont, name);
@@ -188,7 +188,7 @@ static IRName globalToCPS(
 ) {
     IRName const name = toCpsContDestName(compiler, k);
     IRConst const symIdx = fnConst(fn, symbolToORef(sym));
-    pushIRStmt(block, globalToStmt((IRGlobal){name, symIdx}));
+    pushIRStmt(&block->stmts, globalToStmt((IRGlobal){name, symIdx}));
 
     if (k.type == TO_CPS_CONT_RETURN) {
         createIRReturn(block, k.ret.cont, name);
@@ -267,7 +267,8 @@ static IRName exprToIR(
                     IRName const name = toCpsContDestName(compiler, k);
                     // Placeholder, will be replaced with `Method` in codegen:
                     IRConst const constIdx = allocFnConst(fn);
-                    pushIRStmt(*block, fnDefToStmt((FnDef){name, innerFn, constIdx, createArgs()}));
+                    pushIRStmt(&(*block)->stmts,
+                               fnDefToStmt((FnDef){name, innerFn, constIdx, createArgs()}));
 
                     if (k.type == TO_CPS_CONT_RETURN) {
                         createIRReturn(*block, k.ret.cont, name);
@@ -376,7 +377,7 @@ static IRName exprToIR(
                     ToCpsCont const defK = (ToCpsCont){{}, TO_CPS_CONT_VAL};
                     IRName const valName = exprToIR(state, compiler, fn, env, block, val, defK);
                     IRConst const nameIdx = fnConst(fn, symbolToORef(name));
-                    pushIRStmt(*block, globalDefToStmt((GlobalDef){nameIdx, valName}));
+                    pushIRStmt(&(*block)->stmts, globalDefToStmt((GlobalDef){nameIdx, valName}));
                     // FIXME: Return e.g. nil/undefined/unspecified instead of new val:
                     IRName const resName = valName;
                     if (k.type == TO_CPS_CONT_RETURN) {

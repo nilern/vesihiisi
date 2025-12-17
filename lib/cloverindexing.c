@@ -125,9 +125,9 @@ static void indexBlockClovers(
         ? getCloverIdxs(pass, block->label)
         : fnEnv;
 
-    size_t const stmtCount = block->stmtCount;
+    size_t const stmtCount = block->stmts.count;
     for (size_t i = 0; i < stmtCount; ++i) {
-        indexStmtClovers(compiler, env, &block->stmts[i]);
+        indexStmtClovers(compiler, env, &block->stmts.vals[i]);
     }
 
     indexTransferClovers(compiler, pass, fn, env, &block->transfer);

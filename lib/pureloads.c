@@ -104,7 +104,7 @@ static void freeSavedEnvs(MaybePureLoadsEnv* savedEnvs, size_t blockCount) {
 static void freeIRFnHusk(IRFn* fn) {
     size_t const blockCount = fn->blockCount;
     for (size_t i = 0; i < blockCount; ++i) {
-        free(fn->blocks[i]->stmts);
+        freeStmts(&fn->blocks[i]->stmts);
     }
 
     free(fn->blocks);
@@ -118,7 +118,7 @@ static IRName deepLexicalUse(Compiler* compiler, PureLoadsEnv* env, IRBlock* new
     if (loc.reg.hasVal) { return loc.reg.val; } // Already loaded
 
     IRName const newReg = renameIRName(compiler, use);
-    pushIRStmt(newBlock, (IRStmt){
+    pushIRStmt(&newBlock->stmts, (IRStmt){
         .clover = {newReg, env->closure, use, 0},
         STMT_CLOVER
     });
@@ -365,9 +365,10 @@ static void blockWithPureLoads(
 
     PureLoadsEnv env = blockPureLoadsEnv(compiler, savedEnvs, newFn, newBlock, block);
 
-    size_t const stmtCount = block->stmtCount;
+    size_t const stmtCount = block->stmts.count;
     for (size_t i = 0; i < stmtCount; ++i) {
-        pushIRStmt(newBlock, stmtWithPureLoads(compiler, &env, newBlock, block->stmts[i]));
+        pushIRStmt(&newBlock->stmts,
+                   stmtWithPureLoads(compiler, &env, newBlock, block->stmts.vals[i]));
     }
 
     newBlock->transfer =

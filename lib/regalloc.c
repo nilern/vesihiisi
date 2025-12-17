@@ -187,7 +187,7 @@ static void regEnvSwap(RegEnv* env, IRName var1, Reg reg1, IRName var2, Reg reg2
 
 static void shuffleRegs(RegEnv* current, RegEnv const* goal, IRBlock* block) {
     // Reversing the block retargets `pushIRStmt` to the start of the block:
-    reverse(block->stmts, block->stmtCount, sizeof *block->stmts, swapStmts);
+    reverse(block->stmts.vals, block->stmts.count, sizeof *block->stmts.vals, swapStmts);
 
     // Iterate until no line ends = `mov` all lines away:
     for (bool foundLineEnd = true; foundLineEnd;) {
@@ -205,7 +205,7 @@ static void shuffleRegs(RegEnv* current, RegEnv const* goal, IRBlock* block) {
             if (!regEq(reg, goalReg)) { // Needs move or swap
                 if (isRegFree(current, goalReg)) { // Can move now
                     regEnvMove(current, var, reg, goalReg);
-                    pushIRStmt(block, moveToStmt((MoveStmt){
+                    pushIRStmt(&block->stmts, moveToStmt((MoveStmt){
                         .dest = (IRName){reg.index},
                         .src = (IRName){goalReg.index}
                     }));
@@ -232,7 +232,7 @@ static void shuffleRegs(RegEnv* current, RegEnv const* goal, IRBlock* block) {
 
             // Loop-breaking swap:
             regEnvSwap(current, var, reg, trader, goalReg);
-            pushIRStmt(block, swapToStmt((SwapStmt){
+            pushIRStmt(&block->stmts, swapToStmt((SwapStmt){
                 .reg1 = (IRName){reg.index},
                 .reg2 = (IRName){goalReg.index}
             }));
@@ -249,7 +249,7 @@ static void shuffleRegs(RegEnv* current, RegEnv const* goal, IRBlock* block) {
                 Reg const takerReg = maybeTakerReg.val;
 
                 regEnvSwap(current, taker, takerReg, trader, traderReg);
-                pushIRStmt(block, swapToStmt((SwapStmt){
+                pushIRStmt(&block->stmts, swapToStmt((SwapStmt){
                     .reg1 = (IRName){takerReg.index},
                     .reg2 = (IRName){traderReg.index}
                 }));
@@ -260,7 +260,7 @@ static void shuffleRegs(RegEnv* current, RegEnv const* goal, IRBlock* block) {
     }
 
     // Undo the block reversal to restore the correct statement order:
-    reverse(block->stmts, block->stmtCount, sizeof *block->stmts, swapStmts);
+    reverse(block->stmts.vals, block->stmts.count, sizeof *block->stmts.vals, swapStmts);
 }
 
 static RegEnv regAllocIfSuccession(
@@ -300,7 +300,7 @@ static IRName regAllocCallee(RegEnv* env, IRBlock* block, IRName callee) {
 
     MaybeMove const maybeCalleeMove = allocTransferArgReg(env, callee, reg);
     if (maybeCalleeMove.hasVal) {
-        pushIRStmt(block, moveToStmt((MoveStmt){
+        pushIRStmt(&block->stmts, moveToStmt((MoveStmt){
             .dest = (IRName){maybeCalleeMove.dest.index},
             .src = (IRName){maybeCalleeMove.src.index}
         }));
@@ -316,7 +316,7 @@ static void regAllocArgs(RegEnv* env, IRBlock* block, Args* args) {
 
         MaybeMove const maybeMove = allocTransferArgReg(env, args->names[i], reg);
         if (maybeMove.hasVal) {
-            pushIRStmt(block, moveToStmt((MoveStmt){
+            pushIRStmt(&block->stmts, moveToStmt((MoveStmt){
                 .dest = (IRName){maybeMove.dest.index},
                 .src = (IRName){maybeMove.src.index}
             }));
@@ -508,8 +508,8 @@ static void regAllocBlock(
 
     RegEnv env = regAllocTransfer(compiler, savedEnvs, visited, fn, block, &block->transfer);
 
-    for (size_t i = block->stmtCount; i-- > 0;) {
-        regAllocStmt(compiler, &env, &block->stmts[i]);
+    for (size_t i = block->stmts.count; i-- > 0;) {
+        regAllocStmt(compiler, &env, &block->stmts.vals[i]);
     }
 
     regAllocParams(compiler, &env, block);

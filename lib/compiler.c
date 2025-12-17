@@ -273,6 +273,27 @@ static Callers createCallers(size_t cap) {
     return (Callers){.vals = vals, .count = 0, .cap = cap};
 }
 
+typedef struct Stmts {
+    IRStmt* vals;
+    size_t count;
+    size_t cap;
+} Stmts;
+
+static void freeStmts(Stmts* stmts) {
+    size_t const count = stmts->count;
+    for (size_t i = 0; i < count; ++i) {
+        freeStmt(&stmts->vals[i]);
+    }
+
+    free(stmts->vals);
+}
+
+static Stmts newStmts(void) {
+    size_t const cap = 2;
+    IRStmt* const vals = malloc(cap * sizeof *vals);
+    return (Stmts){.vals = vals, .count = 0, .cap = cap};
+}
+
 typedef struct IRBlock {
     IRLabel label;
 
@@ -284,26 +305,16 @@ typedef struct IRBlock {
     size_t paramCount;
     size_t paramCap;
     
-    IRStmt* stmts;
-    size_t stmtCount;
-    size_t stmtCap;
+    Stmts stmts;
     
     IRTransfer transfer;
 } IRBlock;
 
 static void freeBlock(IRBlock* block) {
     freeCallers(&block->callers);
-
     freeBitSet(&block->liveIns);
-
     free(block->params);
-    
-    size_t const stmtCount = block->stmtCount;
-    for (size_t i = 0; i < stmtCount; ++i) {
-        freeStmt(&block->stmts[i]);
-    }
-    free(block->stmts);
-    
+    freeStmts(&block->stmts);
     freeTransfer(&block->transfer);
 }
 
@@ -311,14 +322,14 @@ inline static void pushCaller(IRBlock* block, IRLabel caller) {
     block->callers.vals[block->callers.count++] = caller;
 }
 
-static void pushIRStmt(IRBlock* block, IRStmt stmt) {
-    if (block->stmtCount == block->stmtCap) {
-        size_t const newCap = block->stmtCap + (block->stmtCap >> 1);
-        block->stmts = realloc(block->stmts, newCap * sizeof *block->stmts);
-        block->stmtCap = newCap;
+static void pushIRStmt(Stmts* stmts, IRStmt stmt) {
+    if (stmts->count == stmts->cap) {
+        size_t const newCap = stmts->cap + (stmts->cap >> 1);
+        stmts->vals = realloc(stmts->vals, newCap * sizeof *stmts->vals);
+        stmts->cap = newCap;
     }
 
-    block->stmts[block->stmtCount++] = stmt;
+    stmts->vals[stmts->count++] = stmt;
 }
 
 static IRFn createIRFnWithConsts(ORef* const consts, uint8_t constCount, uint8_t constCap) {
@@ -399,9 +410,6 @@ static IRBlock* createIRBlock(IRFn* fn, size_t callerCap) {
     size_t const paramCap = 2;
     IRName* const params = malloc(paramCap * sizeof *params);
     
-    size_t const stmtCap = 2;
-    IRStmt* const stmts = malloc(stmtCap * sizeof *stmts);
-    
     IRBlock* const block = malloc(sizeof *block);
     *block = (IRBlock){
         .label = (IRLabel){fn->blockCount},
@@ -413,10 +421,8 @@ static IRBlock* createIRBlock(IRFn* fn, size_t callerCap) {
         .params = params,
         .paramCount = 0,
         .paramCap = paramCap,
-        
-        .stmts = stmts,
-        .stmtCount = 0,
-        .stmtCap = stmtCap,
+
+        .stmts = newStmts(),
         
         .transfer = {}
     };
@@ -700,9 +706,9 @@ static void printBlock(
 
     fputc('\n', dest);
     
-    size_t const stmtCount = block->stmtCount;
+    size_t const stmtCount = block->stmts.count;
     for (size_t i = 0; i < stmtCount; ++i) {
-        printStmt(state, dest, compiler, printName, fn, nesting, &block->stmts[i]);
+        printStmt(state, dest, compiler, printName, fn, nesting, &block->stmts.vals[i]);
         fputc('\n', dest);
     }
     

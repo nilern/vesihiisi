@@ -201,8 +201,8 @@ static void emitTransfer(MethodBuilder* builder, IRTransfer const* transfer) {
 static void emitBlock(State* state, MethodBuilder* builder, IRFn* fn, IRBlock const* block) {
     emitTransfer(builder, &block->transfer);
 
-    for (size_t i = block->stmtCount; i-- > 0;) {
-        emitStmt(state, builder, fn, &block->stmts[i]);
+    for (size_t i = block->stmts.count; i-- > 0;) {
+        emitStmt(state, builder, fn, &block->stmts.vals[i]);
     }
 
     // TODO: Handle block params?

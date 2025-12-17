@@ -103,8 +103,8 @@ static void enlivenBlock(IRFn const* fn, IRBlock* block) {
 
     enlivenTransfer(lives, &block->transfer);
 
-    for (size_t i = block->stmtCount; i-- > 0;) {
-        enlivenStmt(lives, &block->stmts[i]);
+    for (size_t i = block->stmts.count; i-- > 0;) {
+        enlivenStmt(lives, &block->stmts.vals[i]);
     }
 
     enlivenParams(lives, block);

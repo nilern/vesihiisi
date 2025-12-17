@@ -101,16 +101,7 @@ static void freeSavedEnvs(MaybePureLoadsEnv* savedEnvs, size_t blockCount) {
     free(savedEnvs);
 }
 
-static void freeIRFnHusk(IRFn* fn) {
-    size_t const blockCount = fn->blockCount;
-    for (size_t i = 0; i < blockCount; ++i) {
-        freeStmts(&fn->blocks[i]->stmts);
-    }
-
-    free(fn->blocks);
-}
-
-static IRName deepLexicalUse(Compiler* compiler, PureLoadsEnv* env, IRBlock* newBlock, IRName use) {
+static IRName deepLexicalUse(Compiler* compiler, PureLoadsEnv* env, Stmts* newStmts, IRName use) {
     MaybeCloverLoc const maybeLoc = getCloverLoc(env->locs, use);
     if (!maybeLoc.hasVal) { return use; }
     CloverLoc const loc = maybeLoc.val;
@@ -118,7 +109,7 @@ static IRName deepLexicalUse(Compiler* compiler, PureLoadsEnv* env, IRBlock* new
     if (loc.reg.hasVal) { return loc.reg.val; } // Already loaded
 
     IRName const newReg = renameIRName(compiler, use);
-    pushIRStmt(&newBlock->stmts, (IRStmt){
+    pushIRStmt(newStmts, (IRStmt){
         .clover = {newReg, env->closure, use, 0},
         STMT_CLOVER
     });
@@ -177,7 +168,7 @@ static LiftingAnalysis joinLambdaLiftees(MaybePureLoadsEnv* savedEnvs, IRBlock c
 }
 
 static void liftArgs(
-    Compiler* compiler, PureLoadsEnv* env, IRBlock* newBlock, Args* args, BitSet liftees
+    Compiler* compiler, PureLoadsEnv* env, Stmts* newStmts, Args* args, BitSet liftees
 ) {
     for (BitSetIter it = newBitSetIter(&liftees);;) {
         MaybeSize const maybeIdx = bitSetIterNext(&it);
@@ -185,25 +176,24 @@ static void liftArgs(
         IRName const liftee = {maybeIdx.val};
 
         // OPTIMIZE: Does not need to `setCloverReg`, which `deepLexicalUse` will do:
-        pushArg(args, deepLexicalUse(compiler, env, newBlock,liftee));
+        pushArg(args, deepLexicalUse(compiler, env, newStmts, liftee));
     }
 }
 
-static void liftParams(Compiler* compiler, PureLoadsEnv* env, IRBlock* newBlock, BitSet liftees) {
+static void liftParams(Compiler* compiler, PureLoadsEnv* env, IRBlock* block, BitSet liftees) {
     for (BitSetIter it = newBitSetIter(&liftees);;) {
         MaybeSize const maybeIdx = bitSetIterNext(&it);
         if (!maybeIdx.hasVal) { break; }
         IRName const liftee = {maybeIdx.val};
 
         IRName const phi = renameIRName(compiler, liftee);
-        pushIRParam(newBlock, phi);
+        pushIRParam(block, phi);
         setCloverReg(&env->locs, liftee, phi);
     }
 }
 
 static PureLoadsEnv blockPureLoadsEnv(
-    Compiler* compiler, MaybePureLoadsEnv* savedEnvs, IRFn* newFn, IRBlock* newBlock,
-    IRBlock const* block
+    Compiler* compiler, MaybePureLoadsEnv* savedEnvs, IRFn* fn, IRBlock* block
 ) {
     switch (block->callers.count) {
     case 0: {
@@ -227,43 +217,43 @@ static PureLoadsEnv blockPureLoadsEnv(
 
                 assert(savedEnvs[callerLabel.blockIndex].hasVal);
                 PureLoadsEnv* callerEnv = &savedEnvs[callerLabel.blockIndex].val;
-                assert(callerLabel.blockIndex < newFn->blockCount);
-                IRBlock* const newCaller = newFn->blocks[callerLabel.blockIndex];
-                IRTransfer* const callerTransfer = &newCaller->transfer;
+                assert(callerLabel.blockIndex < fn->blockCount);
+                IRBlock* const caller = fn->blocks[callerLabel.blockIndex];
+                IRTransfer* const callerTransfer = &caller->transfer;
                 assert(callerTransfer->type == TRANSFER_GOTO);
                 Args* const callerArgs = &callerTransfer->gotoo.args;
-                liftArgs(compiler, callerEnv, newCaller, callerArgs, lifting.liftees);
+                liftArgs(compiler, callerEnv, &caller->stmts, callerArgs, lifting.liftees);
             }
         }
 
         PureLoadsEnv env = newPureLoadsEnv(lifting.closure, lifting.liftees);
-        liftParams(compiler, &env, newBlock, lifting.liftees);
+        liftParams(compiler, &env, block, lifting.liftees);
 
         return env;
     }
     }
 }
 
-static IRFn fnWithPureLoads(Compiler* compiler, IRFn fn);
+static void fnWithPureLoads(Compiler* compiler, IRFn* fn);
 
 static void linearizeCloses(
-    Compiler* compiler, PureLoadsEnv* env, IRBlock* newBlock, Args* dest, BitSet const* closes
+    Compiler* compiler, PureLoadsEnv* env, Stmts* newStmts, Args* dest, BitSet const* closes
 ) {
     for (BitSetIter it = newBitSetIter(closes);;) {
         MaybeSize const maybeIdx = bitSetIterNext(&it);
         if (!maybeIdx.hasVal) { break; }
 
-        IRName const closee = deepLexicalUse(compiler, env, newBlock, (IRName){maybeIdx.val});
+        IRName const closee = deepLexicalUse(compiler, env, newStmts, (IRName){maybeIdx.val});
         pushArg(dest, closee);
     }
 }
 
 static IRStmt stmtWithPureLoads(
-    Compiler* compiler, PureLoadsEnv* env, IRBlock* newBlock, IRStmt stmt
+    Compiler* compiler, PureLoadsEnv* env, Stmts* newStmts, IRStmt stmt
 ) {
     switch (stmt.type) {
     case STMT_GLOBAL_DEF: {
-        stmt.globalDef.val = deepLexicalUse(compiler, env, newBlock, stmt.globalDef.val);
+        stmt.globalDef.val = deepLexicalUse(compiler, env, newStmts, stmt.globalDef.val);
     }; break;
 
     case STMT_GLOBAL: case STMT_CONST_DEF: break;
@@ -271,10 +261,10 @@ static IRStmt stmtWithPureLoads(
     case STMT_CLOVER: assert(false); break; // Should not exist yet
 
     case STMT_FN_DEF: {
-        stmt.fnDef.fn = fnWithPureLoads(compiler, stmt.fnDef.fn);
+        fnWithPureLoads(compiler, &stmt.fnDef.fn);
 
         linearizeCloses(
-            compiler, env, newBlock, &stmt.fnDef.closes, &stmt.fnDef.fn.blocks[0]->liveIns
+            compiler, env, newStmts, &stmt.fnDef.closes, &stmt.fnDef.fn.blocks[0]->liveIns
         );
     }; break;
 
@@ -285,59 +275,59 @@ static IRStmt stmtWithPureLoads(
 }
 
 static IRTransfer transferWithPureLoads(
-    Compiler* compiler, MaybePureLoadsEnv* savedEnvs, PureLoadsEnv* env, IRBlock* newBlock,
-    IRFn const* fn, IRTransfer transfer
+    Compiler* compiler, MaybePureLoadsEnv* savedEnvs, PureLoadsEnv* env,
+    IRFn const* fn, IRBlock const* block, Stmts* newStmts, IRTransfer transfer
 ) {
     switch (transfer.type) {
     case TRANSFER_CALL: {
-        transfer.call.callee = deepLexicalUse(compiler, env, newBlock, transfer.call.callee);
+        transfer.call.callee = deepLexicalUse(compiler, env, newStmts, transfer.call.callee);
 
         size_t const arity = transfer.call.args.count;
         for (size_t i = 0; i < arity; ++i) {
             transfer.call.args.names[i] =
-                deepLexicalUse(compiler, env, newBlock, transfer.call.args.names[i]);
+                deepLexicalUse(compiler, env, newStmts, transfer.call.args.names[i]);
         }
 
         IRBlock const* const retBlock = fn->blocks[transfer.call.retLabel.blockIndex];
-        linearizeCloses(compiler, env, newBlock, &transfer.call.closes, &retBlock->liveIns);
+        linearizeCloses(compiler, env, newStmts, &transfer.call.closes, &retBlock->liveIns);
 
         freePureLoadsEnv(env);
     }; break;
 
     case TRANSFER_TAILCALL: {
         transfer.tailcall.callee =
-            deepLexicalUse(compiler, env, newBlock, transfer.tailcall.callee);
+            deepLexicalUse(compiler, env, newStmts, transfer.tailcall.callee);
         transfer.tailcall.retFrame =
-            deepLexicalUse(compiler, env, newBlock, transfer.tailcall.retFrame);
+            deepLexicalUse(compiler, env, newStmts, transfer.tailcall.retFrame);
 
         size_t const arity = transfer.tailcall.args.count;
         for (size_t i = 0; i < arity; ++i) {
             transfer.tailcall.args.names[i] =
-                deepLexicalUse(compiler, env, newBlock, transfer.tailcall.args.names[i]);
+                deepLexicalUse(compiler, env, newStmts, transfer.tailcall.args.names[i]);
         }
 
         freePureLoadsEnv(env);
     }; break;
 
     case TRANSFER_IF: {
-        transfer.iff.cond = deepLexicalUse(compiler, env, newBlock, transfer.iff.cond);
+        transfer.iff.cond = deepLexicalUse(compiler, env, newStmts, transfer.iff.cond);
 
-        savedEnvs[newBlock->label.blockIndex] = (MaybePureLoadsEnv){.val = *env, .hasVal = true};
+        savedEnvs[block->label.blockIndex] = (MaybePureLoadsEnv){.val = *env, .hasVal = true};
     }; break;
 
     case TRANSFER_GOTO: {
         size_t const arity = transfer.gotoo.args.count;
         for (size_t i = 0; i < arity; ++i) {
             transfer.gotoo.args.names[i] =
-                deepLexicalUse(compiler, env, newBlock, transfer.gotoo.args.names[i]);
+                deepLexicalUse(compiler, env, newStmts, transfer.gotoo.args.names[i]);
         }
 
-        savedEnvs[newBlock->label.blockIndex] = (MaybePureLoadsEnv){.val = *env, .hasVal = true};
+        savedEnvs[block->label.blockIndex] = (MaybePureLoadsEnv){.val = *env, .hasVal = true};
     }; break;
 
     case TRANSFER_RETURN: {
-        transfer.ret.callee = deepLexicalUse(compiler, env, newBlock, transfer.ret.callee);
-        transfer.ret.arg = deepLexicalUse(compiler, env, newBlock, transfer.ret.arg);
+        transfer.ret.callee = deepLexicalUse(compiler, env, newStmts, transfer.ret.callee);
+        transfer.ret.arg = deepLexicalUse(compiler, env, newStmts, transfer.ret.arg);
 
         freePureLoadsEnv(env);
     }; break;
@@ -347,46 +337,33 @@ static IRTransfer transferWithPureLoads(
 }
 
 static void blockWithPureLoads(
-    Compiler* compiler, MaybePureLoadsEnv* savedEnvs, IRFn* newFn,
-    IRFn const* fn, IRBlock const* const block
+    Compiler* compiler, MaybePureLoadsEnv* savedEnvs, IRFn* fn, IRBlock* block
 ) {
-    size_t const callerCount = block->callers.count;
-    IRBlock* const newBlock = createIRBlock(newFn, callerCount);
+    PureLoadsEnv env = blockPureLoadsEnv(compiler, savedEnvs, fn, block);
 
-    for (size_t i = 0; i < callerCount; ++i) {
-        pushCaller(newBlock, block->callers.vals[i]);
-    }
-
-    newBlock->liveIns = block->liveIns;
-
-    newBlock->params = block->params;
-    newBlock->paramCount = block->paramCount;
-    newBlock->paramCap = block->paramCap;
-
-    PureLoadsEnv env = blockPureLoadsEnv(compiler, savedEnvs, newFn, newBlock, block);
+    Stmts newStmts = newStmtsWithCap(block->stmts.count);
 
     size_t const stmtCount = block->stmts.count;
     for (size_t i = 0; i < stmtCount; ++i) {
-        pushIRStmt(&newBlock->stmts,
-                   stmtWithPureLoads(compiler, &env, newBlock, block->stmts.vals[i]));
+        pushIRStmt(&newStmts, stmtWithPureLoads(compiler, &env, &newStmts, block->stmts.vals[i]));
     }
 
-    newBlock->transfer =
-        transferWithPureLoads(compiler, savedEnvs, &env, newBlock, fn, block->transfer);
+    block->transfer =
+        transferWithPureLoads(compiler, savedEnvs, &env, fn, block, &newStmts, block->transfer);
+
+    // All the stmts were moved to `newStmts` so must just free `block->stmts.vals`. Calling
+    // `freeStmts` would also call `freeStmt`, resulting in use-after-frees later:
+    free(block->stmts.vals);
+    block->stmts = newStmts;
 }
 
-static IRFn fnWithPureLoads(Compiler* compiler, IRFn fn) {
-    MaybePureLoadsEnv* const savedEnvs = calloc(fn.blockCount, sizeof *savedEnvs);
+static void fnWithPureLoads(Compiler* compiler, IRFn* fn) {
+    MaybePureLoadsEnv* const savedEnvs = calloc(fn->blockCount, sizeof *savedEnvs);
 
-    IRFn newFn = createIRFnWithConsts(fn.consts, fn.constCount, fn.constCap);
-
-    size_t const blockCount = fn.blockCount;
+    size_t const blockCount = fn->blockCount;
     for (size_t i = 0; i < blockCount; ++i) {
-        blockWithPureLoads(compiler, savedEnvs, &newFn, &fn, fn.blocks[i]);
+        blockWithPureLoads(compiler, savedEnvs, fn, fn->blocks[i]);
     }
 
-    freeIRFnHusk(&fn);
-
-    freeSavedEnvs(savedEnvs, fn.blockCount);
-    return newFn;
+    freeSavedEnvs(savedEnvs, fn->blockCount);
 }

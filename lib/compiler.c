@@ -269,6 +269,7 @@ typedef struct Callers {
 inline static void freeCallers(Callers* callers) { free(callers->vals); }
 
 static Callers createCallers(size_t cap) {
+    if (cap < 2) { cap = 2; }
     IRLabel* const vals = malloc(cap * sizeof *vals);
     return (Callers){.vals = vals, .count = 0, .cap = cap};
 }
@@ -288,11 +289,13 @@ static void freeStmts(Stmts* stmts) {
     free(stmts->vals);
 }
 
-static Stmts newStmts(void) {
-    size_t const cap = 2;
+static Stmts newStmtsWithCap(size_t cap) {
+    if (cap < 2) { cap = 2; }
     IRStmt* const vals = malloc(cap * sizeof *vals);
     return (Stmts){.vals = vals, .count = 0, .cap = cap};
 }
+
+inline static Stmts newStmts(void) { return newStmtsWithCap(2); }
 
 typedef struct IRBlock {
     IRLabel label;
@@ -332,7 +335,10 @@ static void pushIRStmt(Stmts* stmts, IRStmt stmt) {
     stmts->vals[stmts->count++] = stmt;
 }
 
-static IRFn createIRFnWithConsts(ORef* const consts, uint8_t constCount, uint8_t constCap) {
+static IRFn createIRFn(void) {
+    uint8_t const constCap = 2;
+    ORef* const consts = malloc(constCap * sizeof *consts);
+
     size_t const blockCap = 2;
     IRBlock** const blocks = malloc(blockCap * sizeof *blocks);
 
@@ -342,15 +348,9 @@ static IRFn createIRFnWithConsts(ORef* const consts, uint8_t constCount, uint8_t
         .blockCap = blockCap,
 
         .consts = consts,
-        .constCount = constCount,
+        .constCount = 0,
         .constCap = constCap
     };
-}
-
-static IRFn createIRFn(void) {
-    uint8_t const constCap = 2;
-    ORef* const consts = malloc(constCap * sizeof *consts);
-    return createIRFnWithConsts(consts, 0, constCap);
 }
 
 static void freeIRFn(IRFn* fn) {

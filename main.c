@@ -75,7 +75,7 @@ int main(int /*argc*/, char** /*argv*/) {
 
                 puts("\n");
 
-                irFn = fnWithPureLoads(&compiler, irFn);
+                fnWithPureLoads(&compiler, &irFn);
                 puts(";; # Cachy-loading IR:");
                 printIRFn(&state, stdout, &compiler, printIRName, &irFn);
 

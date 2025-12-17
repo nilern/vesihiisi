@@ -1,4 +1,3 @@
-// FIXME: Magic register numbers:
 // OPTIMIZE: At this point bitsets are slow because we are usually iterating over them.
 
 typedef struct { uint8_t index; } Reg;
@@ -296,7 +295,7 @@ static void regAllocBlock(
 );
 
 static IRName regAllocCallee(RegEnv* env, IRBlock* block, IRName callee) {
-    Reg const reg = (Reg){0};
+    Reg const reg = (Reg){calleeReg};
 
     MaybeMove const maybeCalleeMove = allocTransferArgReg(env, callee, reg);
     if (maybeCalleeMove.hasVal) {
@@ -360,7 +359,7 @@ static RegEnv regAllocTransfer(
 
         transfer->tailcall.callee = regAllocCallee(&env, block, transfer->tailcall.callee);
 
-        Reg const contReg = (Reg){1};
+        Reg const contReg = (Reg){retContReg};
         [[maybe_unused]] MaybeMove const maybeContMove =
             allocTransferArgReg(&env, transfer->tailcall.retFrame, contReg);
         assert(!maybeContMove.hasVal);
@@ -413,13 +412,13 @@ static RegEnv regAllocTransfer(
     case TRANSFER_RETURN: {
         RegEnv env = newRegEnv(compiler);
 
-        Reg const calleeReg = (Reg){1};
+        Reg const calleeReg = (Reg){retContReg};
         [[maybe_unused]] MaybeMove const maybeContMove =
             allocTransferArgReg(&env, transfer->ret.callee, calleeReg);
         assert(!maybeContMove.hasVal);
         transfer->ret.callee = (IRName){calleeReg.index};
 
-        Reg const valReg = (Reg){2};
+        Reg const valReg = (Reg){retReg};
         [[maybe_unused]] MaybeMove const maybeValMove =
             allocTransferArgReg(&env, transfer->ret.arg, valReg);
         assert(!maybeValMove.hasVal);
@@ -474,12 +473,29 @@ static void regAllocParams(Compiler const* compiler, RegEnv* env, IRBlock* block
     if (block->callers.count == 0) {
         RegEnv goal = newRegEnv(compiler);
 
+        size_t paramIdx = 0;
+
+        if (block->label.blockIndex == 0) { // Call entry block
+            IRName* const callee = &block->params[0];
+            regEnvAdd(&goal, *callee, (Reg){calleeReg});
+            *callee = (IRName){calleeReg};
+
+            IRName* const retCont = &block->params[1];
+            regEnvAdd(&goal, *retCont, (Reg){retContReg});
+            *retCont = (IRName){retContReg};
+
+            paramIdx = 2;
+        } else { // Return entry block
+            IRName* const retCont = &block->params[0];
+            regEnvAdd(&goal, *retCont, (Reg){retContReg});
+            *retCont = (IRName){retContReg};
+
+            paramIdx = 1;
+        }
+
         size_t const arity = block->paramCount;
-        for (size_t i = 0, regIdx = block->label.blockIndex == 0 ? 0 : 1;
-             i < arity;
-             ++i, ++regIdx
-        ) {
-            IRName* const param = &block->params[i];
+        for (size_t regIdx = 2; paramIdx < arity; ++paramIdx, ++regIdx) {
+            IRName* const param = &block->params[paramIdx];
             Reg const reg = {(uint8_t)regIdx};
             regEnvAdd(&goal, *param, reg);
             *param = (IRName){regIdx};

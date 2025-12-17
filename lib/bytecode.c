@@ -22,8 +22,11 @@ typedef enum Opcode : uint8_t {
     OP_TAILCALL // TODO: Encode as call with 0 closes (nontail call always saves at least ret cont)?
 } Opcode;
 
+// Calling convention:
+static const uint8_t calleeReg = 0;
+static const uint8_t retContReg = 1;
 static const uint8_t firstArgReg = 2;
-static const uint8_t retReg = 2;
+static const uint8_t retReg = firstArgReg;
 
 inline static void disassembleReg(FILE* dest, uint8_t reg) { fprintf(dest, "r%u", reg); }
 

@@ -173,6 +173,7 @@ static void freeStmt(IRStmt* stmt) {
 
     case STMT_FN_DEF: {
         freeIRFn(&stmt->fnDef.fn);
+        freeArgs(&stmt->fnDef.closes);
     }; break;
     }
 }
@@ -252,7 +253,11 @@ typedef struct IRTransfer {
 
 static void freeTransfer(IRTransfer* transfer) {
     switch (transfer->type) {
-    case TRANSFER_CALL: freeArgs(&transfer->call.args); break;
+    case TRANSFER_CALL: {
+        freeArgs(&transfer->call.closes);
+        freeArgs(&transfer->call.args);
+    }; break;
+
     case TRANSFER_TAILCALL: freeArgs(&transfer->tailcall.args); break;
     case TRANSFER_IF: break;
     case TRANSFER_GOTO: freeArgs(&transfer->gotoo.args); break;

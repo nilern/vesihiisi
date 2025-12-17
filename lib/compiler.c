@@ -81,19 +81,18 @@ typedef struct Args {
     size_t cap;
 } Args;
 
-inline static void freeArgs(Args* args) { free(args->names); }
-
-static Args createArgs(void) {
+static Args createArgs(Compiler* compiler) {
     size_t const cap = 2;
-    IRName* names = malloc(cap * sizeof *names);
+    IRName* names = amalloc(&compiler->arena, cap * sizeof *names);
 
     return (Args){.names = names, .count = 0, .cap = cap};
 }
 
-static void pushArg(Args* args, IRName arg) {
+static void pushArg(Compiler* compiler, Args* args, IRName arg) {
     if (args->count == args->cap) {
         size_t const newCap = args->cap + args->cap / 2;
-        args->names = realloc(args->names, newCap * sizeof *args->names);
+        args->names = arealloc(&compiler->arena, args->names, args->cap * sizeof *args->names,
+                               newCap * sizeof *args->names);
         args->cap = newCap;
     }
 
@@ -159,24 +158,6 @@ typedef struct IRStmt {
         STMT_SWAP
     } type;
 } IRStmt;
-
-static void freeIRFn(IRFn* fn);
-
-static void freeStmt(IRStmt* stmt) {
-    switch (stmt->type) {
-    case STMT_GLOBAL_DEF: // fallthrough
-    case STMT_GLOBAL: // fallthrough
-    case STMT_CLOVER: // fallthrough
-    case STMT_CONST_DEF: // fallthrough
-    case STMT_MOVE: // fallthrough
-    case STMT_SWAP: break;
-
-    case STMT_FN_DEF: {
-        freeIRFn(&stmt->fnDef.fn);
-        freeArgs(&stmt->fnDef.closes);
-    }; break;
-    }
-}
 
 inline static IRStmt globalDefToStmt(GlobalDef globalDef) {
     return (IRStmt){{.globalDef = globalDef}, STMT_GLOBAL_DEF};
@@ -251,31 +232,15 @@ typedef struct IRTransfer {
     } type;
 } IRTransfer;
 
-static void freeTransfer(IRTransfer* transfer) {
-    switch (transfer->type) {
-    case TRANSFER_CALL: {
-        freeArgs(&transfer->call.closes);
-        freeArgs(&transfer->call.args);
-    }; break;
-
-    case TRANSFER_TAILCALL: freeArgs(&transfer->tailcall.args); break;
-    case TRANSFER_IF: break;
-    case TRANSFER_GOTO: freeArgs(&transfer->gotoo.args); break;
-    case TRANSFER_RETURN: break;
-    }
-}
-
 typedef struct Callers {
     IRLabel* vals;
     size_t count;
     size_t cap;
 } Callers;
 
-inline static void freeCallers(Callers* callers) { free(callers->vals); }
-
-static Callers createCallers(size_t cap) {
+static Callers createCallers(Compiler* compiler, size_t cap) {
     if (cap < 2) { cap = 2; }
-    IRLabel* const vals = malloc(cap * sizeof *vals);
+    IRLabel* const vals = amalloc(&compiler->arena, cap * sizeof *vals);
     return (Callers){.vals = vals, .count = 0, .cap = cap};
 }
 
@@ -285,22 +250,13 @@ typedef struct Stmts {
     size_t cap;
 } Stmts;
 
-static void freeStmts(Stmts* stmts) {
-    size_t const count = stmts->count;
-    for (size_t i = 0; i < count; ++i) {
-        freeStmt(&stmts->vals[i]);
-    }
-
-    free(stmts->vals);
-}
-
-static Stmts newStmtsWithCap(size_t cap) {
+static Stmts newStmtsWithCap(Compiler* compiler, size_t cap) {
     if (cap < 2) { cap = 2; }
-    IRStmt* const vals = malloc(cap * sizeof *vals);
+    IRStmt* const vals = amalloc(&compiler->arena, cap * sizeof *vals);
     return (Stmts){.vals = vals, .count = 0, .cap = cap};
 }
 
-inline static Stmts newStmts(void) { return newStmtsWithCap(2); }
+inline static Stmts newStmts(Compiler* compiler) { return newStmtsWithCap(compiler, 2); }
 
 typedef struct IRBlock {
     IRLabel label;
@@ -318,34 +274,27 @@ typedef struct IRBlock {
     IRTransfer transfer;
 } IRBlock;
 
-static void freeBlock(IRBlock* block) {
-    freeCallers(&block->callers);
-    freeBitSet(&block->liveIns);
-    free(block->params);
-    freeStmts(&block->stmts);
-    freeTransfer(&block->transfer);
-}
-
 inline static void pushCaller(IRBlock* block, IRLabel caller) {
     block->callers.vals[block->callers.count++] = caller;
 }
 
-static void pushIRStmt(Stmts* stmts, IRStmt stmt) {
+static void pushIRStmt(Compiler* compiler, Stmts* stmts, IRStmt stmt) {
     if (stmts->count == stmts->cap) {
         size_t const newCap = stmts->cap + (stmts->cap >> 1);
-        stmts->vals = realloc(stmts->vals, newCap * sizeof *stmts->vals);
+        stmts->vals = arealloc(&compiler->arena, stmts->vals, stmts->cap * sizeof *stmts->vals,
+                               newCap * sizeof *stmts->vals);
         stmts->cap = newCap;
     }
 
     stmts->vals[stmts->count++] = stmt;
 }
 
-static IRFn createIRFn(void) {
+static IRFn createIRFn(Compiler* compiler) {
     uint8_t const constCap = 2;
-    ORef* const consts = malloc(constCap * sizeof *consts);
+    ORef* const consts = amalloc(&compiler->arena, constCap * sizeof *consts);
 
     size_t const blockCap = 2;
-    IRBlock** const blocks = malloc(blockCap * sizeof *blocks);
+    IRBlock** const blocks = amalloc(&compiler->arena, blockCap * sizeof *blocks);
 
     return (IRFn){
         .blocks = blocks,
@@ -358,22 +307,13 @@ static IRFn createIRFn(void) {
     };
 }
 
-static void freeIRFn(IRFn* fn) {
-    size_t const blockCount = fn->blockCount;
-    for (size_t i = 0; i < blockCount; ++i) {
-        freeBlock(fn->blocks[i]);
-    }
-    free(fn->blocks);
-
-    free(fn->consts);
-}
-
 inline static BitSet const* fnFreeVars(IRFn const* fn) { return &fn->blocks[0]->liveIns; }
 
-static IRConst pushFnConst(IRFn* fn, ORef c) {
+static IRConst pushFnConst(Compiler* compiler, IRFn* fn, ORef c) {
     if (fn->constCount == fn->constCap) {
         uint8_t const newCap = fn->constCap + (fn->constCap >> 1);
-        fn->consts = realloc(fn->consts, newCap * sizeof *fn->consts);
+        fn->consts = arealloc(&compiler->arena, fn->consts, fn->constCap * sizeof *fn->consts,
+                              newCap * sizeof *fn->consts);
         fn->constCap = newCap;
     }
 
@@ -382,7 +322,7 @@ static IRConst pushFnConst(IRFn* fn, ORef c) {
     return (IRConst){index};
 }
 
-static IRConst fnConst(IRFn* fn, ORef c) {
+static IRConst fnConst(Compiler* compiler, IRFn* fn, ORef c) {
     // Linear search is actually good since there usually aren't that many constants per fn:
     size_t const constCount = fn->constCount;
     for (size_t i = 0; i < constCount; ++i) {
@@ -390,10 +330,12 @@ static IRConst fnConst(IRFn* fn, ORef c) {
         if (eq(ic, c)) { return (IRConst){(uint8_t)i}; }
     }
 
-    return pushFnConst(fn, c);
+    return pushFnConst(compiler, fn, c);
 }
 
-inline static IRConst allocFnConst(IRFn* fn) { return pushFnConst(fn, fixnumToORef(Zero)); }
+inline static IRConst allocFnConst(Compiler* compiler, IRFn* fn) {
+    return pushFnConst(compiler, fn, fixnumToORef(Zero));
+}
 
 inline static void setFnConst(IRFn* fn, IRConst c, ORef v) {
     assert(c.index < fn->constCount);
@@ -407,15 +349,15 @@ static IRBlock const* irLabelBlock(IRFn const* fn, IRLabel label) {
     return fn->blocks[label.blockIndex];
 }
 
-static IRBlock* createIRBlock(IRFn* fn, size_t callerCap) {
-    Callers const callers = createCallers(callerCap);
+static IRBlock* createIRBlock(Compiler* compiler, IRFn* fn, size_t callerCap) {
+    Callers const callers = createCallers(compiler, callerCap);
 
-    BitSet const liveIns = createBitSet(0);
+    BitSet const liveIns = createBitSet(&compiler->arena, 0);
 
     size_t const paramCap = 2;
-    IRName* const params = malloc(paramCap * sizeof *params);
+    IRName* const params = amalloc(&compiler->arena, paramCap * sizeof *params);
     
-    IRBlock* const block = malloc(sizeof *block);
+    IRBlock* const block = amalloc(&compiler->arena, sizeof *block);
     *block = (IRBlock){
         .label = (IRLabel){fn->blockCount},
 
@@ -427,14 +369,15 @@ static IRBlock* createIRBlock(IRFn* fn, size_t callerCap) {
         .paramCount = 0,
         .paramCap = paramCap,
 
-        .stmts = newStmts(),
+        .stmts = newStmts(compiler),
         
         .transfer = {}
     };
     
     if (fn->blockCount == fn->blockCap) {
         size_t const newCap = fn->blockCap + (fn->blockCap >> 1);
-        fn->blocks = realloc(fn->blocks, newCap * sizeof *fn->blocks);
+        fn->blocks = arealloc(&compiler->arena, fn->blocks, fn->blockCap * sizeof *fn->blocks,
+                              newCap * sizeof *fn->blocks);
         fn->blockCap = newCap;
     }
     fn->blocks[fn->blockCount++] = block;
@@ -442,10 +385,12 @@ static IRBlock* createIRBlock(IRFn* fn, size_t callerCap) {
     return block;
 }
 
-static void pushIRParam(IRBlock* block, IRName param) {
+static void pushIRParam(Compiler* compiler, IRBlock* block, IRName param) {
     if (block->paramCount == block->paramCap) {
         size_t const newCap = block->paramCap + (block->paramCap >> 1);
-        block->params = realloc(block->params, newCap * sizeof *block->params);
+        block->params =
+            arealloc(&compiler->arena, block->params, block->paramCap * sizeof *block->params,
+                     newCap * sizeof *block->params);
         block->paramCap = newCap;
     }
 
@@ -475,9 +420,9 @@ static IRIf* createIRIf(IRBlock* block, IRName cond, IRLabel conseqLabel, IRLabe
     return &block->transfer.iff;
 }
 
-static void createIRGoto(IRBlock* block, IRLabel destLabel, IRName arg) {
-    Args args = createArgs();
-    pushArg(&args, arg);
+static void createIRGoto(Compiler* compiler, IRBlock* block, IRLabel destLabel, IRName arg) {
+    Args args = createArgs(compiler);
+    pushArg(compiler, &args, arg);
 
     block->transfer = (IRTransfer){
         .type = TRANSFER_GOTO,

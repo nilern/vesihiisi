@@ -109,7 +109,7 @@ static IRName deepLexicalUse(Compiler* compiler, PureLoadsEnv* env, Stmts* newSt
     if (loc.reg.hasVal) { return loc.reg.val; } // Already loaded
 
     IRName const newReg = renameIRName(compiler, use);
-    pushIRStmt(newStmts, (IRStmt){
+    pushIRStmt(compiler, newStmts, (IRStmt){
         .clover = {newReg, env->closure, use, 0},
         STMT_CLOVER
     });
@@ -122,7 +122,9 @@ typedef struct LiftingAnalysis {
     IRName closure;
 } LiftingAnalysis;
 
-static LiftingAnalysis joinLambdaLiftees(MaybePureLoadsEnv* savedEnvs, IRBlock const* block) {
+static LiftingAnalysis joinLambdaLiftees(
+    Compiler* compiler, MaybePureLoadsEnv* savedEnvs, IRBlock const* block
+) {
     size_t const callerCount = block->callers.count;
 
     IRName closure = invalidIRName;
@@ -134,7 +136,7 @@ static LiftingAnalysis joinLambdaLiftees(MaybePureLoadsEnv* savedEnvs, IRBlock c
             closure = callerClosure; // Init to first one
         } else if (!irNameEq(callerClosure, closure)) { // Disagreement on `closure`
             return (LiftingAnalysis){
-                .liftees = bitSetClone(&block->liveIns),
+                .liftees = bitSetClone(&compiler->arena, &block->liveIns),
                 .closure = invalidIRName
             };
         }
@@ -142,7 +144,7 @@ static LiftingAnalysis joinLambdaLiftees(MaybePureLoadsEnv* savedEnvs, IRBlock c
 
     // At this point all callers share the closure so only lift vars preloaded in all callers:
 
-    BitSet liftees = createBitSet(bitSetBitCap(&block->liveIns));
+    BitSet liftees = createBitSet(&compiler->arena, bitSetBitCap(&block->liveIns));
     for (BitSetIter it = newBitSetIter(&block->liveIns);;) {
         MaybeSize const maybeIdx = bitSetIterNext(&it);
         if (!maybeIdx.hasVal) { break; }
@@ -161,7 +163,7 @@ static LiftingAnalysis joinLambdaLiftees(MaybePureLoadsEnv* savedEnvs, IRBlock c
             }
         }
 
-        if (liftable) { bitSetSet(&liftees, liftee.index); }
+        if (liftable) { bitSetSet(&compiler->arena, &liftees, liftee.index); }
     }
 
     return (LiftingAnalysis){.liftees = liftees, .closure = closure};
@@ -176,7 +178,7 @@ static void liftArgs(
         IRName const liftee = {maybeIdx.val};
 
         // OPTIMIZE: Does not need to `setCloverReg`, which `deepLexicalUse` will do:
-        pushArg(args, deepLexicalUse(compiler, env, newStmts, liftee));
+        pushArg(compiler, args, deepLexicalUse(compiler, env, newStmts, liftee));
     }
 }
 
@@ -187,7 +189,7 @@ static void liftParams(Compiler* compiler, PureLoadsEnv* env, IRBlock* block, Bi
         IRName const liftee = {maybeIdx.val};
 
         IRName const phi = renameIRName(compiler, liftee);
-        pushIRParam(block, phi);
+        pushIRParam(compiler, block, phi);
         setCloverReg(&env->locs, liftee, phi);
     }
 }
@@ -208,7 +210,7 @@ static PureLoadsEnv blockPureLoadsEnv(
     }
 
     default: {
-        LiftingAnalysis const lifting = joinLambdaLiftees(savedEnvs, block);
+        LiftingAnalysis const lifting = joinLambdaLiftees(compiler, savedEnvs, block);
 
         {
             size_t const callerCount = block->callers.count;
@@ -244,7 +246,7 @@ static void linearizeCloses(
         if (!maybeIdx.hasVal) { break; }
 
         IRName const closee = deepLexicalUse(compiler, env, newStmts, (IRName){maybeIdx.val});
-        pushArg(dest, closee);
+        pushArg(compiler, dest, closee);
     }
 }
 
@@ -341,19 +343,17 @@ static void blockWithPureLoads(
 ) {
     PureLoadsEnv env = blockPureLoadsEnv(compiler, savedEnvs, fn, block);
 
-    Stmts newStmts = newStmtsWithCap(block->stmts.count);
+    Stmts newStmts = newStmtsWithCap(compiler, block->stmts.count);
 
     size_t const stmtCount = block->stmts.count;
     for (size_t i = 0; i < stmtCount; ++i) {
-        pushIRStmt(&newStmts, stmtWithPureLoads(compiler, &env, &newStmts, block->stmts.vals[i]));
+        pushIRStmt(compiler, &newStmts,
+                   stmtWithPureLoads(compiler, &env, &newStmts, block->stmts.vals[i]));
     }
 
     block->transfer =
         transferWithPureLoads(compiler, savedEnvs, &env, fn, block, &newStmts, block->transfer);
 
-    // All the stmts were moved to `newStmts` so must just free `block->stmts.vals`. Calling
-    // `freeStmts` would also call `freeStmt`, resulting in use-after-frees later:
-    free(block->stmts.vals);
     block->stmts = newStmts;
 }
 

@@ -4,20 +4,18 @@ typedef struct BitSet {
     size_t wordCap;
 } BitSet;
 
-inline static void freeBitSet(BitSet* bits) { free(bits->words); }
-
-static BitSet createBitSet(size_t cap) {
+static BitSet createBitSet(Arena* arena, size_t cap) {
     size_t wordCap = cap / UINTPTR_WIDTH;
     if (wordCap < 2) { wordCap = 2; }
-    uintptr_t* const words = calloc(wordCap, sizeof *words);
+    uintptr_t* const words = acalloc(arena, wordCap, sizeof *words);
 
     return (BitSet){.words = words, .wordCount = 0, .wordCap = wordCap};
 }
 
-static BitSet bitSetClone(BitSet const* bits) {
+static BitSet bitSetClone(Arena* arena, BitSet const* bits) {
     size_t const wordCount = bits->wordCount;
     size_t const wordCap = bits->wordCap;
-    uintptr_t* const words = malloc(wordCap * sizeof *words);
+    uintptr_t* const words = amalloc(arena, wordCap * sizeof *words);
     memcpy(words, bits->words, wordCount * sizeof *words);
 
     return (BitSet){.words = words, .wordCount = wordCount, .wordCap = wordCap};
@@ -42,12 +40,12 @@ static bool bitSetContains(BitSet const* bits, size_t n) {
     return (word & mask) != 0;
 }
 
-static void bitSetSet(BitSet* bits, size_t n) {
+static void bitSetSet(Arena* arena, BitSet* bits, size_t n) {
     size_t const wordIdx = n / UINTPTR_WIDTH;
 
     if (wordIdx >= bits->wordCap) { // Does not even fit allocation => grow:
         size_t const newCap = bits->wordCap + bits->wordCap / 2;
-        uintptr_t* const newWords = malloc(newCap * sizeof *newWords);
+        uintptr_t* const newWords = amalloc(arena, newCap * sizeof *newWords);
 
         memcpy(newWords, bits->words, bits->wordCount * sizeof *newWords);
 
@@ -79,12 +77,12 @@ static void bitSetRemove(BitSet* bits, size_t n) {
     bits->words[wordIdx] &= ~(1lu << (UINTPTR_WIDTH - 1 - subIdx));
 }
 
-static void bitSetUnionInto(BitSet* dest, BitSet const* src) {
+static void bitSetUnionInto(Arena* arena, BitSet* dest, BitSet const* src) {
     bool const extend = dest->wordCount < src->wordCount;
 
     if (src->wordCount > dest->wordCap) { // Will not even fit allocation => grow:
         size_t const newCap = src->wordCap;
-        uintptr_t* const newWords = malloc(newCap * sizeof *newWords);
+        uintptr_t* const newWords = amalloc(arena, newCap * sizeof *newWords);
 
         // `src->wordCount > dest->wordCap` => `dest->wordCount < src->wordCount`:
         size_t const commonCount = dest->wordCount;

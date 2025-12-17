@@ -29,6 +29,38 @@ static void test_amallocHuge(void) {
     freeArena(&arena);
 }
 
+static void test_arealloc(void) {
+    Arena arena = newArena(defaultArenaBlockSize);
+    size_t const oldSize = defaultArenaBlockSize / 2;
+    uint8_t* const obj = amalloc(&arena, oldSize);
+
+    uint8_t* newObj = arealloc(&arena, obj, oldSize, defaultArenaBlockSize / 4 * 3);
+    assert(newObj);
+    assert(newObj != obj);
+
+    for (size_t i = 0; i < oldSize; ++i) {
+        assert(newObj[i] == obj[i]);
+    }
+
+    freeArena(&arena);
+}
+
+static void test_areallocHuge(void) {
+    Arena arena = newArena(defaultArenaBlockSize);
+    size_t const oldSize = defaultArenaBlockSize * 2;
+    uint8_t* const obj = amalloc(&arena, oldSize);
+
+    uint8_t* newObj = arealloc(&arena, obj, oldSize, defaultArenaBlockSize * 3);
+    assert(newObj);
+    assert(newObj != obj);
+
+    for (size_t i = 0; i < oldSize; ++i) {
+        assert(newObj[i] == obj[i]);
+    }
+
+    freeArena(&arena);
+}
+
 static void test_acalloc(void) {
     Arena arena = newArena(defaultArenaBlockSize);
     size_t const count = 3;
@@ -66,6 +98,8 @@ int main(int /*argc*/, char** /*argv*/) {
     test_lifecycle();
     test_amalloc();
     test_amallocHuge();
+    test_arealloc();
+    test_areallocHuge();
     test_acalloc();
     test_acallocHuge();
 

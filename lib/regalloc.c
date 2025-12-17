@@ -184,7 +184,7 @@ static void regEnvSwap(RegEnv* env, IRName var1, Reg reg1, IRName var2, Reg reg2
     env->regVars[reg1.index] = var2;
 }
 
-static void shuffleRegs(RegEnv* current, RegEnv const* goal, IRBlock* block) {
+static void shuffleRegs(Compiler* compiler, RegEnv* current, RegEnv const* goal, IRBlock* block) {
     // Reversing the block retargets `pushIRStmt` to the start of the block:
     reverse(block->stmts.vals, block->stmts.count, sizeof *block->stmts.vals, swapStmts);
 
@@ -204,7 +204,7 @@ static void shuffleRegs(RegEnv* current, RegEnv const* goal, IRBlock* block) {
             if (!regEq(reg, goalReg)) { // Needs move or swap
                 if (isRegFree(current, goalReg)) { // Can move now
                     regEnvMove(current, var, reg, goalReg);
-                    pushIRStmt(&block->stmts, moveToStmt((MoveStmt){
+                    pushIRStmt(compiler, &block->stmts, moveToStmt((MoveStmt){
                         .dest = (IRName){reg.index},
                         .src = (IRName){goalReg.index}
                     }));
@@ -231,7 +231,7 @@ static void shuffleRegs(RegEnv* current, RegEnv const* goal, IRBlock* block) {
 
             // Loop-breaking swap:
             regEnvSwap(current, var, reg, trader, goalReg);
-            pushIRStmt(&block->stmts, swapToStmt((SwapStmt){
+            pushIRStmt(compiler, &block->stmts, swapToStmt((SwapStmt){
                 .reg1 = (IRName){reg.index},
                 .reg2 = (IRName){goalReg.index}
             }));
@@ -248,7 +248,7 @@ static void shuffleRegs(RegEnv* current, RegEnv const* goal, IRBlock* block) {
                 Reg const takerReg = maybeTakerReg.val;
 
                 regEnvSwap(current, taker, takerReg, trader, traderReg);
-                pushIRStmt(&block->stmts, swapToStmt((SwapStmt){
+                pushIRStmt(compiler, &block->stmts, swapToStmt((SwapStmt){
                     .reg1 = (IRName){takerReg.index},
                     .reg2 = (IRName){traderReg.index}
                 }));
@@ -263,7 +263,7 @@ static void shuffleRegs(RegEnv* current, RegEnv const* goal, IRBlock* block) {
 }
 
 static RegEnv regAllocIfSuccession(
-    SavedRegEnvs* savedEnvs, IRFn* fn, IRLabel conseqLabel, IRLabel altLabel
+    Compiler* compiler, SavedRegEnvs* savedEnvs, IRFn* fn, IRLabel conseqLabel, IRLabel altLabel
 ) {
     assert(savedEnvs->vals[conseqLabel.blockIndex].hasVal);
     RegEnv const* conseqEnv = &savedEnvs->vals[conseqLabel.blockIndex].val;
@@ -285,21 +285,21 @@ static RegEnv regAllocIfSuccession(
 
     assert(altLabel.blockIndex < fn->blockCount);
     IRBlock* altBlock = fn->blocks[altLabel.blockIndex];
-    shuffleRegs(altEnv, &goal, altBlock);
+    shuffleRegs(compiler, altEnv, &goal, altBlock);
 
     return goal;
 }
 
 static void regAllocBlock(
-    Compiler const* compiler, SavedRegEnvs* savedEnvs, BitSet* visited, IRFn* fn, IRBlock* block
+    Compiler* compiler, SavedRegEnvs* savedEnvs, BitSet* visited, IRFn* fn, IRBlock* block
 );
 
-static IRName regAllocCallee(RegEnv* env, IRBlock* block, IRName callee) {
+static IRName regAllocCallee(Compiler* compiler, RegEnv* env, IRBlock* block, IRName callee) {
     Reg const reg = (Reg){calleeReg};
 
     MaybeMove const maybeCalleeMove = allocTransferArgReg(env, callee, reg);
     if (maybeCalleeMove.hasVal) {
-        pushIRStmt(&block->stmts, moveToStmt((MoveStmt){
+        pushIRStmt(compiler, &block->stmts, moveToStmt((MoveStmt){
             .dest = (IRName){maybeCalleeMove.dest.index},
             .src = (IRName){maybeCalleeMove.src.index}
         }));
@@ -308,14 +308,14 @@ static IRName regAllocCallee(RegEnv* env, IRBlock* block, IRName callee) {
     return (IRName){reg.index};
 }
 
-static void regAllocArgs(RegEnv* env, IRBlock* block, Args* args) {
+static void regAllocArgs(Compiler* compiler, RegEnv* env, IRBlock* block, Args* args) {
     size_t const arity = args->count;
     for (size_t i = 0; i < arity; ++i) {
         Reg const reg = (Reg){(uint8_t)(2 + i)};
 
         MaybeMove const maybeMove = allocTransferArgReg(env, args->names[i], reg);
         if (maybeMove.hasVal) {
-            pushIRStmt(&block->stmts, moveToStmt((MoveStmt){
+            pushIRStmt(compiler, &block->stmts, moveToStmt((MoveStmt){
                 .dest = (IRName){maybeMove.dest.index},
                 .src = (IRName){maybeMove.src.index}
             }));
@@ -326,7 +326,7 @@ static void regAllocArgs(RegEnv* env, IRBlock* block, Args* args) {
 }
 
 static RegEnv regAllocTransfer(
-    Compiler const* compiler, SavedRegEnvs* savedEnvs, BitSet* visited, IRFn* fn, IRBlock* block,
+    Compiler* compiler, SavedRegEnvs* savedEnvs, BitSet* visited, IRFn* fn, IRBlock* block,
     IRTransfer* transfer
 ) {
     // Transfers pass arguments "in parallel" so we can go forwards. This generates any moves in
@@ -341,9 +341,9 @@ static RegEnv regAllocTransfer(
 
         RegEnv env = newRegEnv(compiler);
 
-        transfer->call.callee = regAllocCallee(&env, block, transfer->call.callee);
+        transfer->call.callee = regAllocCallee(compiler, &env, block, transfer->call.callee);
 
-        regAllocArgs(&env, block, &transfer->call.args);
+        regAllocArgs(compiler, &env, block, &transfer->call.args);
 
         // FIXME: Clovers should be in register order:
         for (size_t i = transfer->call.closes.count; i-- > 0;) {
@@ -357,7 +357,8 @@ static RegEnv regAllocTransfer(
     case TRANSFER_TAILCALL: {
         RegEnv env = newRegEnv(compiler);
 
-        transfer->tailcall.callee = regAllocCallee(&env, block, transfer->tailcall.callee);
+        transfer->tailcall.callee =
+            regAllocCallee(compiler, &env, block, transfer->tailcall.callee);
 
         Reg const contReg = (Reg){retContReg};
         [[maybe_unused]] MaybeMove const maybeContMove =
@@ -365,7 +366,7 @@ static RegEnv regAllocTransfer(
         assert(!maybeContMove.hasVal);
         transfer->tailcall.retFrame = (IRName){contReg.index};
 
-        regAllocArgs(&env, block, &transfer->tailcall.args);
+        regAllocArgs(compiler, &env, block, &transfer->tailcall.args);
 
         return env;
     }; break;
@@ -380,7 +381,7 @@ static RegEnv regAllocTransfer(
         IRBlock* altBlock = fn->blocks[altLabel.blockIndex];
         regAllocBlock(compiler, savedEnvs, visited, fn, altBlock);
 
-        RegEnv env = regAllocIfSuccession(savedEnvs, fn, transfer->iff.conseq, altLabel);
+        RegEnv env = regAllocIfSuccession(compiler, savedEnvs, fn, transfer->iff.conseq, altLabel);
 
         transfer->iff.cond = (IRName){getVarReg(&env, transfer->iff.cond).index};
 
@@ -431,9 +432,9 @@ static RegEnv regAllocTransfer(
     }
 }
 
-static void regAllocFn(Compiler const* compiler, IRFn* fn);
+static void regAllocFn(Compiler* compiler, IRFn* fn);
 
-static void regAllocStmt(Compiler const* compiler, RegEnv* env, IRStmt* stmt) {
+static void regAllocStmt(Compiler* compiler, RegEnv* env, IRStmt* stmt) {
     switch (stmt->type) {
     case STMT_GLOBAL_DEF: {
         stmt->globalDef.val = (IRName){getVarReg(env, stmt->globalDef.val).index};
@@ -469,7 +470,7 @@ static void regAllocStmt(Compiler const* compiler, RegEnv* env, IRStmt* stmt) {
     }
 }
 
-static void regAllocParams(Compiler const* compiler, RegEnv* env, IRBlock* block) {
+static void regAllocParams(Compiler* compiler, RegEnv* env, IRBlock* block) {
     if (block->callers.count == 0) {
         RegEnv goal = newRegEnv(compiler);
 
@@ -501,7 +502,7 @@ static void regAllocParams(Compiler const* compiler, RegEnv* env, IRBlock* block
             *param = (IRName){regIdx};
         }
 
-        shuffleRegs(env, &goal, block);
+        shuffleRegs(compiler, env, &goal, block);
 
         freeRegEnv(&goal);
     } else {
@@ -516,11 +517,11 @@ static void regAllocParams(Compiler const* compiler, RegEnv* env, IRBlock* block
 }
 
 static void regAllocBlock(
-    Compiler const* compiler, SavedRegEnvs* savedEnvs, BitSet* visited, IRFn* fn, IRBlock* block
+    Compiler* compiler, SavedRegEnvs* savedEnvs, BitSet* visited, IRFn* fn, IRBlock* block
 ) {
     IRLabel const label = block->label;
     if (bitSetContains(visited, label.blockIndex)) { return; }
-    bitSetSet(visited, label.blockIndex);
+    bitSetSet(&compiler->arena, visited, label.blockIndex);
 
     RegEnv env = regAllocTransfer(compiler, savedEnvs, visited, fn, block, &block->transfer);
 
@@ -537,15 +538,14 @@ static void regAllocBlock(
     }
 }
 
-static void regAllocFn(Compiler const* compiler, IRFn* fn) {
+static void regAllocFn(Compiler* compiler, IRFn* fn) {
     assert(fn->blockCount > 0);
 
     size_t const blockCount = fn->blockCount;
     SavedRegEnvs savedEnvs = newSavedRegEnvs(blockCount);
-    BitSet visited = createBitSet(blockCount);
+    BitSet visited = createBitSet(&compiler->arena, blockCount);
 
     regAllocBlock(compiler, &savedEnvs, &visited, fn, fn->blocks[0]);
 
-    freeBitSet(&visited);
     freeSavedRegEnvs(&savedEnvs);
 }

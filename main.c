@@ -69,7 +69,7 @@ int main(int /*argc*/, char** /*argv*/) {
 
                 puts("\n");
 
-                enlivenFn(&irFn);
+                enlivenFn(&compiler, &irFn);
                 puts(";; # Enlivened IR:");
                 printIRFn(&state, stdout, &compiler, printIRName, &irFn);
 
@@ -98,7 +98,6 @@ int main(int /*argc*/, char** /*argv*/) {
                 disassemble(&state, stdout, method);
                 puts("");
 
-                freeIRFn(&irFn);
                 freeCompiler(&compiler);
             }
 

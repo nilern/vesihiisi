@@ -116,7 +116,6 @@ static void arenaGrow(Arena* arena) {
     arena->start = newStart;
 }
 
-[[maybe_unused]]
 static void* amalloc(Arena* arena, size_t size) {
     for (;/*ever*/;) {
         uintptr_t address = (uintptr_t)arena->free;
@@ -136,6 +135,16 @@ static void* amalloc(Arena* arena, size_t size) {
         arena->free = newFree;
         return (void*)address;
     }
+}
+
+static void* arealloc(Arena* arena, void* ptr, size_t oldSize, size_t size) {
+    void* const obj = amalloc(arena, size);
+
+    if (ptr) {
+        memcpy(obj, ptr, oldSize);
+    }
+
+    return obj;
 }
 
 static void* acalloc(Arena* arena, size_t count, size_t size) {

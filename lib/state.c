@@ -496,9 +496,11 @@ inline static bool isContinuation(State const* state, ORef v) {
 }
 
 static StringRef createString(State* state, Str str) {
-    char* const stringPtr =
+    char* stringPtr =
         tryAllocFlex(&state->heap.tospace, typeToPtr(state->stringType), tagInt((intptr_t)str.len));
     if (!stringPtr) { assert(false); } // TODO: Collect garbage here
+    stringPtr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->stringType),
+                               tagInt((intptr_t)str.len));
     
     memcpy(stringPtr, str.data, str.len);
     
@@ -506,23 +508,27 @@ static StringRef createString(State* state, Str str) {
 }
 
 static ArrayRef createArray(State* state, Fixnum count) {
-    ORef* const ptr = tryAllocFlex(&state->heap.tospace, typeToPtr(state->arrayType), count);
+    ORef* ptr = tryAllocFlex(&state->heap.tospace, typeToPtr(state->arrayType), count);
     if (!ptr) { assert(false); } // TODO: Collect garbage here
+    ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->arrayType), count);
     
     return tagArray(ptr);
 }
 
 static ByteArrayRef createByteArray(State* state, Fixnum count) {
-    uint8_t* const ptr = tryAllocFlex(&state->heap.tospace, typeToPtr(state->byteArrayType), count);
+    uint8_t* ptr = tryAllocFlex(&state->heap.tospace, typeToPtr(state->byteArrayType), count);
     if (!ptr) { assert(false); } // TODO: Collect garbage here
+    ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->byteArrayType), count);
 
     return tagByteArray(ptr);
 }
 
 static SymbolRef createUninternedSymbol(State* state, Fixnum hash, Str name) {
-    Symbol* const ptr = tryAllocFlex(
+    Symbol* ptr = tryAllocFlex(
         &state->heap.tospace, typeToPtr(state->symbolType), tagInt((intptr_t)name.len));
     if (!ptr) { assert(false); } // TODO: Collect garbage here
+    ptr = allocFlexOrDie(
+        &state->heap.tospace, typeToPtr(state->symbolType), tagInt((intptr_t)name.len));
     
     ptr->hash = hash;
     memcpy(ptr->name, name.data, name.len);
@@ -606,15 +612,17 @@ static SymbolRef intern(State* state, Str name) {
 }
 
 static PairRef allocPair(State* state) {
-    Pair* const ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->pairType));
+    Pair* ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->pairType));
     if (!ptr) { assert(false); } // TODO: Collect garbage here
+    ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->pairType));
     
     return tagPair(ptr);
 }
 
 static MethodRef createBytecodeMethod(State* state, ByteArrayRef code, ArrayRef consts) {
-    Method* const ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->methodType));
+    Method* ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->methodType));
     if (!ptr) { assert(false); } // TODO: Collect garbage here
+    ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->methodType));
 
     *ptr = (Method){
         .nativeCode = callBytecode,
@@ -626,8 +634,9 @@ static MethodRef createBytecodeMethod(State* state, ByteArrayRef code, ArrayRef 
 }
 
 static MethodRef createPrimopMethod(State* state, MethodCode nativeCode) {
-    Method* const ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->methodType));
+    Method* ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->methodType));
     if (!ptr) { assert(false); } // TODO: Collect garbage here
+    ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->methodType));
 
     *ptr = (Method){
         .nativeCode = nativeCode,
@@ -639,9 +648,9 @@ static MethodRef createPrimopMethod(State* state, MethodCode nativeCode) {
 }
 
 static ClosureRef allocClosure(State* state, MethodRef method, Fixnum cloverCount) {
-    Closure* const ptr =
-        tryAllocFlex(&state->heap.tospace, typeToPtr(state->closureType), cloverCount);
+    Closure* ptr = tryAllocFlex(&state->heap.tospace, typeToPtr(state->closureType), cloverCount);
     if (!ptr) { assert(false); } // TODO: Collect garbage here
+    ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->closureType), cloverCount);
 
     ptr->method = methodToORef(method);
 
@@ -651,9 +660,10 @@ static ClosureRef allocClosure(State* state, MethodRef method, Fixnum cloverCoun
 static ContinuationRef allocContinuation(
     State* state, MethodRef method, Fixnum pc, Fixnum cloverCount
 ) {
-    Continuation* const ptr =
+    Continuation* ptr =
         tryAllocFlex(&state->heap.tospace, typeToPtr(state->continuationType), cloverCount);
     if (!ptr) { assert(false); } // TODO: Collect garbage here
+    ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->continuationType), cloverCount);
 
     ptr->method = methodToORef(method);
     ptr->pc = pc;

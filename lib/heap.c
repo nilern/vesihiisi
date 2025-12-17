@@ -69,6 +69,12 @@ static void* tryAlloc(Semispace* semispace, Type const* type) {
     return ptr;
 }
 
+static void* allocOrDie(Semispace* semispace, Type const* type) {
+    void* const res = tryAlloc(semispace, type);
+    if (!res) { exit(EXIT_FAILURE); } // OOM
+    return res;
+}
+
 static void* tryAllocFlex(Semispace* semispace, Type const* type, Fixnum length) {
     assert(semispaceIsValid(semispace));
     assert(unwrapBool(type->isFlex));
@@ -96,3 +102,8 @@ static void* tryAllocFlex(Semispace* semispace, Type const* type, Fixnum length)
     return ptr;
 }
 
+static void* allocFlexOrDie(Semispace* semispace, Type const* type, Fixnum length) {
+    void* const res = tryAllocFlex(semispace, type, length);
+    if (!res) { exit(EXIT_FAILURE); } // OOM
+    return res;
+}

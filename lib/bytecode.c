@@ -23,8 +23,8 @@ typedef enum Opcode : uint8_t {
 } Opcode;
 
 // Calling convention:
-static const uint8_t calleeReg = 0;
-static const uint8_t retContReg = 1;
+static const uint8_t calleeReg = 1;
+static const uint8_t retContReg = 0;
 static const uint8_t firstArgReg = 2;
 static const uint8_t retReg = firstArgReg;
 

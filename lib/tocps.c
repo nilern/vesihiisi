@@ -536,5 +536,6 @@ static IRFn topLevelExprToIR(State const* state, Compiler* compiler, ORef expr) 
     ToCpsCont const retK = {{.ret = {.cont = ret}}, TO_CPS_CONT_RETURN};
     exprToIR(state, compiler, &fn, &env, &entryBlock, expr, retK);
 
+    freeToCpsEnv(&env);
     return fn;
 }

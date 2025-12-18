@@ -1,4 +1,4 @@
-TEST_FLAGS := -std=c2x -Wall -Wextra -Wpedantic -Wconversion
+TEST_FLAGS := -std=c2x -Wall -Wextra -Wpedantic -Wconversion -fno-strict-aliasing
 BASE_FLAGS := $(TEST_FLAGS) -Werror
 DEBUG_FLAGS := -g -fsanitize=address -fsanitize=leak
 OPT_FLAGS := -O2 -DNDEBUG

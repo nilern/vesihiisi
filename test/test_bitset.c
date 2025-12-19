@@ -1,101 +1,102 @@
+#include <stddef.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 #include <assert.h>
 
 #include "../lib/util.c"
+#include "../lib/arena.c"
 #include "../lib/bitset.c"
 
 static const size_t wordBitSize = sizeof(uintptr_t) * 8;
 
 static void test_lifecycle(void) {
-    BitSet bits = createBitSet(0);
+    Arena arena = newArena(4 * (1 << 10));
+    createBitSet(&arena, 0);
 
-    freeBitSet(&bits);
+    freeArena(&arena);
 }
 
 static void test_empty(void) {
-    BitSet bits = createBitSet(0);
+    Arena arena = newArena(4 * (1 << 10));
+    BitSet bits = createBitSet(&arena, 0);
 
     for (size_t b = 1; b < 1000; b *= 10) {
         assert(!bitSetContains(&bits, b));
     }
 
-    freeBitSet(&bits);
+    freeArena(&arena);
 }
 
 static void test_one_word(void) {
-    BitSet bits = createBitSet(0);
+    Arena arena = newArena(4 * (1 << 10));
+    BitSet bits = createBitSet(&arena, 0);
 
     for (size_t i = 0; i < wordBitSize; ++i) {
         assert(!bitSetContains(&bits, i));
-        bitSetSet(&bits, i);
+        bitSetSet(&arena, &bits, i);
         assert(bitSetContains(&bits, i));
         bitSetRemove(&bits, i);
         assert(!bitSetContains(&bits, i));
     }
 
-    freeBitSet(&bits);
+    freeArena(&arena);
 }
 
 static void test_geometric(void) {
-    BitSet bits = createBitSet(0);
+    Arena arena = newArena(4 * (1 << 10));
+    BitSet bits = createBitSet(&arena, 0);
 
     for (size_t b = 1; b < 1000; b *= 10) {
         assert(!bitSetContains(&bits, b));
-        bitSetSet(&bits, b);
+        bitSetSet(&arena, &bits, b);
         assert(bitSetContains(&bits, b));
         bitSetRemove(&bits, b);
         assert(!bitSetContains(&bits, b));
     }
 
-    freeBitSet(&bits);
+    freeArena(&arena);
 }
 
 static void test_union_into(void) {
-    {
-        BitSet dest = createBitSet(0);
-        for (size_t i = 0; i < 1000; i += 10) { bitSetSet(&dest, i); }
-        BitSet src = createBitSet(0);
-        for (size_t i = 0; i < 1000; i += 5) { bitSetSet(&src, i); }
+    Arena arena = newArena(4 * (1 << 10));
 
-        bitSetUnionInto(&dest, &src);
+    {
+        BitSet dest = createBitSet(&arena, 0);
+        for (size_t i = 0; i < 1000; i += 10) { bitSetSet(&arena, &dest, i); }
+        BitSet src = createBitSet(&arena, 0);
+        for (size_t i = 0; i < 1000; i += 5) { bitSetSet(&arena, &src, i); }
+
+        bitSetUnionInto(&arena, &dest, &src);
 
         for (size_t i = 0; i < 1000; ++i) { assert(bitSetContains(&dest, i) == (i % 5 == 0)); }
-
-        freeBitSet(&dest);
-        freeBitSet(&src);
     }
 
     {
-        BitSet dest = createBitSet(0);
-        for (size_t i = 0; i < 500; i += 5) { bitSetSet(&dest, i); }
-        BitSet src = createBitSet(0);
-        for (size_t i = 0; i < 1000; i += 10) { bitSetSet(&src, i); }
+        BitSet dest = createBitSet(&arena, 0);
+        for (size_t i = 0; i < 500; i += 5) { bitSetSet(&arena, &dest, i); }
+        BitSet src = createBitSet(&arena, 0);
+        for (size_t i = 0; i < 1000; i += 10) { bitSetSet(&arena, &src, i); }
 
-        bitSetUnionInto(&dest, &src);
+        bitSetUnionInto(&arena, &dest, &src);
 
         for (size_t i = 0; i < 500; ++i) { assert(bitSetContains(&dest, i) == (i % 5 == 0)); }
         for (size_t i = 500; i < 1000; ++i) { assert(bitSetContains(&dest, i) == (i % 10 == 0)); }
-
-        freeBitSet(&dest);
-        freeBitSet(&src);
     }
 
     {
-        BitSet dest = createBitSet(0);
-        for (size_t i = 0; i < 1000; i += 10) { bitSetSet(&dest, i); }
-        BitSet src = createBitSet(0);
-        for (size_t i = 0; i < 500; i += 5) { bitSetSet(&src, i); }
+        BitSet dest = createBitSet(&arena, 0);
+        for (size_t i = 0; i < 1000; i += 10) { bitSetSet(&arena, &dest, i); }
+        BitSet src = createBitSet(&arena, 0);
+        for (size_t i = 0; i < 500; i += 5) { bitSetSet(&arena, &src, i); }
 
-        bitSetUnionInto(&dest, &src);
+        bitSetUnionInto(&arena, &dest, &src);
 
         for (size_t i = 0; i < 500; ++i) { assert(bitSetContains(&dest, i) == (i % 5 == 0)); }
         for (size_t i = 500; i < 1000; ++i) { assert(bitSetContains(&dest, i) == (i % 10 == 0)); }
-
-        freeBitSet(&dest);
-        freeBitSet(&src);
     }
+
+    freeArena(&arena);
 }
 
 int main(int /*argc*/, char** /*argv*/) {

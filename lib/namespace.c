@@ -1,7 +1,9 @@
 static VarRef createUnboundVar(State* state) {
     Var* ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->varType));
-    if (mustCollect(ptr)) { assert(false); } // TODO: Collect garbage here
-    ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->varType));
+    if (mustCollect(ptr)) {
+        collect(state);
+        ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->varType));
+    }
 
     *ptr = (Var){.val = unboundToORef(state->unbound)};
 
@@ -39,15 +41,14 @@ static FindVarRes findVar(NamespaceRef nsRef, SymbolRef name) {
 static void rehashNamespace(State* state, NamespaceRef const* nsHandle) {
     size_t const oldCap = (uintptr_t)fixnumToInt(arrayCount(namespaceToPtr(*nsHandle)->keys));
     size_t const newCap = oldCap << 1;
-    ArrayRef const* newKeysHandle =
-        (ArrayRef*)pushTmp(state, arrayToORef(createArray(state, tagInt((intptr_t)newCap))));
-    ArrayRef const newValsRef = createArray(state, tagInt((intptr_t)newCap));
-    popTmp(state);
+    ArrayRef newKeysRef = createArray(state, tagInt((intptr_t)newCap)); // May GC
+    pushStackRoot(state, (ORef*)&newKeysRef);
+    ArrayRef const newValsRef = createArray(state, tagInt((intptr_t)newCap)); // May GC
+    popStackRoots(state, 1);
 
     Namespace* const ns = namespaceToPtr(*nsHandle);
     ORef* const oldKeys = arrayToPtr(ns->keys);
     ORef* const oldVals = arrayToPtr(ns->vals);
-    ArrayRef const newKeysRef = *newKeysHandle;
     ORef* const newKeys = arrayToPtr(newKeysRef);
     ORef* const newVals = arrayToPtr(newValsRef);
     for (size_t i = 0; i < oldCap; ++i) {
@@ -83,19 +84,18 @@ static VarRef getVar(State* state, NamespaceRef nsRef, SymbolRef name) {
         size_t const newCount = (uintptr_t)fixnumToInt(ns->count) + 1;
         size_t const cap = (uintptr_t)fixnumToInt(arrayCount(ns->keys));
 
-        NamespaceRef const* const nsHandle = (NamespaceRef*)pushTmp(state, namespaceToORef(nsRef));
-        SymbolRef const* const nameHandle = (SymbolRef*)pushTmp(state, symbolToORef(name));
+        pushStackRoot(state, (ORef*)&nsRef);
+        pushStackRoot(state, (ORef*)&name);
 
         if (newCount > cap >> 1) {
-            rehashNamespace(state, nsHandle); // May GC
+            rehashNamespace(state, &nsRef); // May GC
         }
 
         VarRef const var = createUnboundVar(state); // May GC
 
-        nsRef = *nsHandle;
+        popStackRoots(state, 2);
+
         ns = namespaceToPtr(nsRef);
-        name = *nameHandle;
-        popTmps(state, 2);
         findRes = findVar(nsRef, name);
         assert(findRes.type == NS_FOUND_VAR_DEST_IDX);
         arrayToPtr(ns->keys)[findRes.destIndex] = symbolToORef(name);

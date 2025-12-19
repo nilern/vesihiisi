@@ -1,11 +1,12 @@
 static_assert(sizeof(void*) == sizeof(uint64_t)); // Only 64-bit supported (for now)
 
-typedef enum Tag {
+typedef enum Tag : uintptr_t {
     TAG_FIXNUM = 0b000,
     TAG_FLONUM = 0b100,
     TAG_CHAR = 0b010,
     TAG_BOOL = 0b110,
-    TAG_HEAPED = 0b001
+    TAG_HEAPED = 0b001,
+    TAG_BROKEN_HEART = 0b011
 } Tag;
 
 typedef struct ORef { uintptr_t bits; } ORef;
@@ -18,6 +19,8 @@ typedef struct Bool { uintptr_t bits; } Bool;
 
 static uintptr_t const tag_width = 3;
 static uintptr_t const tag_bits = (1 << tag_width) - 1; // `tag_width` ones
+
+static uintptr_t const markBit = 0b10;
 
 inline static Tag getTag(ORef v) { return (Tag)(v.bits & tag_bits); }
 
@@ -35,6 +38,8 @@ static Fixnum const Zero = {0};
 
 static Bool const True = {((uintptr_t)true << tag_width) | (uintptr_t)TAG_BOOL};
 static Bool const False = {((uintptr_t)false << tag_width) | (uintptr_t)TAG_BOOL};
+
+static ORef const AlignmentHole = {(uintptr_t)(void*)nullptr | (uintptr_t)TAG_HEAPED};
 
 inline static ORef boolToORef(Bool b) { return (ORef){b.bits}; }
 
@@ -63,6 +68,8 @@ inline static Bool tagBool(bool b) {
 
 inline static bool unwrapBool(Bool b) { return (bool)(b.bits >> tag_width); }
 
+inline static ORef tagHeaped(void* ptr) { return (ORef){(uintptr_t)ptr | (uintptr_t)TAG_HEAPED}; }
+
 inline static void* uncheckedORefToPtr(ORef oref) { return (void*)(oref.bits & ~tag_bits); }
 
 inline static void* tryORefToPtr(ORef oref) {
@@ -73,6 +80,7 @@ typedef struct Type {
     Fixnum minSize;
     Fixnum align;
     Bool isBytes;
+    Bool hasCodePtr;
     Bool isFlex;
 } Type;
 
@@ -92,6 +100,19 @@ typedef struct Header { uintptr_t bits; } Header;
 
 inline static Header fixedHeader(Type const* type) {
     return (Header){(uintptr_t)(void*)type | (uintptr_t)TAG_HEAPED};
+}
+
+inline static Header relocationHeader(void* copy) {
+    return (Header){(uintptr_t)copy | (uintptr_t)TAG_BROKEN_HEART};
+}
+
+static void* tryForwarded(void* obj) {
+    Header const header = *((Header*)obj - 1);
+    return header.bits & markBit ? (void*)(header.bits & ~tag_bits) : nullptr;
+}
+
+inline static void forwardTo(void* obj, void* copy) {
+    *((Header*)obj - 1) = relocationHeader(copy);
 }
 
 inline static TypeRef headerType(Header header) {
@@ -313,6 +334,8 @@ inline static NamespaceRef tagNamespace(Namespace* ptr) {
 }
 
 inline static ORef namespaceToORef(NamespaceRef v) { return (ORef){v.bits}; }
+
+inline static NamespaceRef uncheckedORefToNamespace(ORef v) { return (NamespaceRef){v.bits}; }
 
 inline static Namespace* namespaceToPtr(NamespaceRef v) {
     return (Namespace*)(void*)(v.bits & ~tag_bits);

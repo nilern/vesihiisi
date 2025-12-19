@@ -62,6 +62,8 @@ static void print(State const* state, FILE* dest, ORef v) {
             assert(false); // FIXME
         }
         break;
+
+    case TAG_BROKEN_HEART: assert(false); break; // Unreachable
     }
 }
 

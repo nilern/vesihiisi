@@ -93,7 +93,7 @@ int main(int /*argc*/, char** /*argv*/) {
 
                 puts("\n");
 
-                method = emitMethod(&state, &irFn);
+                method = emitToplevelMethod(&state, &irFn);
                 puts(";; # Bytecode:");
                 disassemble(&state, stdout, method);
                 puts("");

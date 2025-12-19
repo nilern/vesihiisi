@@ -29,39 +29,50 @@ static bool read(State* state, ORef* dest, Parser* parser) {
             return true;
         }
         
-        PairRef const firstPair = allocPair(state);
-        PairRef* const pairHandle = (PairRef*)pushTmp(state, pairToORef(firstPair));
-        pushTmp(state, pairToORef(firstPair));
+        PairRef firstPair = allocPair(state);
+        pushStackRoot(state, (ORef*)&firstPair);
+        PairRef pair = firstPair;
+        pushStackRoot(state, (ORef*)&pair);
         
         // <expr>
         ORef car;
         if (!read(state, &car, parser)) { return false;}
-        pairToPtr(*pairHandle)->car = car;
+        pairToPtr(pair)->car = car;
         
         while (isspace(*parser->curr)) { ++parser->curr; } // Skip whitespace
         
         while (*parser->curr != ')') {
             if (*parser->curr != '.') {
                 PairRef const newPair = allocPair(state);
-                pairToPtr(*pairHandle)->cdr = pairToORef(newPair);
-                *pairHandle = newPair;
+                pairToPtr(pair)->cdr = pairToORef(newPair);
+                pair = newPair;
                 
                 // <expr>
                 ORef car;
-                if (!read(state, &car, parser)) { return false;}
-                pairToPtr(*pairHandle)->car = car;
+                if (!read(state, &car, parser)) {
+                    popStackRoots(state, 2);
+                    return false;
+                }
+                pairToPtr(pair)->car = car;
             } else { // '.' <expr>
                 ++parser->curr; // Discard '.'
                 
                 ORef cdr;
-                if (!read(state, &cdr, parser)) { return false;}
-                pairToPtr(*pairHandle)->cdr = cdr;
+                if (!read(state, &cdr, parser)) {
+                    popStackRoots(state, 2);
+                    return false;
+                }
+                pairToPtr(pair)->cdr = cdr;
         
                 while (isspace(*parser->curr)) { ++parser->curr; } // Skip whitespace
                 
-                if (*parser->curr != ')') { return false; }
+                if (*parser->curr != ')') {
+                    popStackRoots(state, 2);
+                    return false;
+                }
                 ++parser->curr; // Discard ')'
-                *dest = popTmp(state);
+                *dest = pairToORef(firstPair);
+                popStackRoots(state, 2);
                 return true;
             }
             
@@ -70,9 +81,9 @@ static bool read(State* state, ORef* dest, Parser* parser) {
         
         ++parser->curr; // Discard ')'
         
-        pairToPtr(*pairHandle)->cdr = emptyListToORef(state->emptyList);
-        *dest = popTmp(state);
-        popTmp(state);
+        pairToPtr(pair)->cdr = emptyListToORef(state->emptyList);
+        *dest = pairToORef(firstPair);
+        popStackRoots(state, 2);
         return true;
     } else if (isSymbolChar(c)) {
         StringBuilder builder = createStringBuilder();

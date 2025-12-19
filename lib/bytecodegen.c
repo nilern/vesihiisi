@@ -1,3 +1,5 @@
+// TODO: Delay const index allocation to here, especially when we get dead code elimination.
+
 typedef struct LabelIdxs {
     size_t* idxs;
 } LabelIdxs;
@@ -24,21 +26,48 @@ typedef struct MethodBuilder {
     LabelIdxs labelIdxs;
 } MethodBuilder;
 
-// FIXME: Will break horribly when some allocation causes a GC here:
-static MethodRef buildMethod(State* state, MethodBuilder builder, IRFn const* fn) {
-    ByteArrayRef const code = createByteArray(state, tagInt((intptr_t)builder.codeCount));
-    uint8_t* codePtr = byteArrayToPtr(code);
-    for (size_t i = builder.codeCount; i-- > 0; ++codePtr) {
-        *codePtr = builder.code[i];
+static MethodRef buildMethod(
+    State* state, IRFn* toplevelFn, MethodBuilder builder, IRFn const* fn
+) {
+    // Allocate method code:
+    Fixnum const codeCount = tagInt((intptr_t)builder.codeCount);
+    uint8_t* maybeCode = tryAllocByteArray(state, codeCount);
+    if (mustCollect(maybeCode)) {
+        collectTracingIR(state, toplevelFn);
+        maybeCode = allocByteArrayOrDie(state, codeCount);
+    }
+    ByteArrayRef code = tagByteArray(maybeCode);
+    pushStackRoot(state, (ORef*)&code);
+
+    { // Initialize method:
+        uint8_t* codePtr = maybeCode;
+        for (size_t i = builder.codeCount; i-- > 0; ++codePtr) {
+            *codePtr = builder.code[i];
+        }
     }
 
-    ArrayRef const consts = createArray(state, tagInt((intptr_t)fn->constCount));
-    memcpy(arrayToPtr(consts), fn->consts, fn->constCount * sizeof *fn->consts);
+    // Create method consts:
+    Fixnum const constCount = tagInt((intptr_t)fn->constCount);
+    ORef* maybeConsts = tryAllocArray(state, constCount);
+    if (mustCollect(maybeConsts)) {
+        collectTracingIR(state, toplevelFn);
+        maybeConsts = allocArrayOrDie(state, constCount);
+    }
+    ArrayRef consts = tagArray(maybeConsts);
+    pushStackRoot(state, (ORef*)&consts);
+    memcpy(maybeConsts, fn->consts, fn->constCount * sizeof *fn->consts); // Initialize
 
-    MethodRef const method = createBytecodeMethod(state, code, consts);
+    Method* maybeMethod = tryCreateBytecodeMethod(state, code, consts);
+    if (mustCollect(maybeMethod)) {
+        collectTracingIR(state, toplevelFn);
+        maybeMethod = createBytecodeMethodOrDie(state, code, consts);
+    }
+    MethodRef const method = tagMethod(maybeMethod);
 
     free(builder.code);
     freeLabelIdxs(&builder.labelIdxs);
+
+    popStackRoots(state, 2);
     return method;
 }
 
@@ -94,9 +123,11 @@ static void emitClose(MethodBuilder* builder, Args const* args) {
     freeBytefulBitSet(&bits);
 }
 
-static MethodRef emitMethod(State* state, IRFn* fn);
+static MethodRef emitMethod(State* state, IRFn* toplevelFn, IRFn* fn);
 
-static void emitStmt(State* state, MethodBuilder* builder, IRFn* fn, IRStmt* stmt) {
+static void emitStmt(
+    State* state, IRFn* toplevelFn, MethodBuilder* builder, IRFn* fn, IRStmt* stmt
+) {
     switch (stmt->type) {
     case STMT_GLOBAL_DEF: {
         pushReg(builder, stmt->globalDef.val);
@@ -119,7 +150,7 @@ static void emitStmt(State* state, MethodBuilder* builder, IRFn* fn, IRStmt* stm
     case STMT_FN_DEF: {
         // FIXME: Makes GC issues in `buildMethod` even worse (need to treat whole compilation
         // unit as GC roots, not just the fn `buildMethod` is consuming):
-        MethodRef const method = emitMethod(state, &stmt->fnDef.fn);
+        MethodRef const method = emitMethod(state, toplevelFn, &stmt->fnDef.fn);
         setFnConst(fn, stmt->fnDef.v, methodToORef(method));
 
         emitClose(builder, &stmt->fnDef.closes);
@@ -198,25 +229,31 @@ static void emitTransfer(MethodBuilder* builder, IRTransfer const* transfer) {
     }
 }
 
-static void emitBlock(State* state, MethodBuilder* builder, IRFn* fn, IRBlock const* block) {
+static void emitBlock(
+    State* state, IRFn* toplevelFn, MethodBuilder* builder, IRFn* fn, IRBlock const* block
+) {
     emitTransfer(builder, &block->transfer);
 
     for (size_t i = block->stmts.count; i-- > 0;) {
-        emitStmt(state, builder, fn, &block->stmts.vals[i]);
+        emitStmt(state, toplevelFn, builder, fn, &block->stmts.vals[i]);
     }
 
-    // TODO: Handle block params?
+    // TODO: Handle block params? At least call entry block, for encoding arity (& domain?) into fn.
 
     setLabelIndex(&builder->labelIdxs, block->label, builder->codeCount - 1);
 }
 
-static MethodRef emitMethod(State* state, IRFn* fn) {
+static MethodRef emitMethod(State* state, IRFn* toplevelFn, IRFn* fn) {
     MethodBuilder builder = createMethodBuilder(fn->blockCount);
 
     // Thanks to previous passes, CFG DAG blocks are conveniently in reverse post-order:
     for (size_t i = fn->blockCount; i-- > 0;) {
-        emitBlock(state, &builder, fn, fn->blocks[i]);
+        emitBlock(state, toplevelFn, &builder, fn, fn->blocks[i]);
     }
 
-    return buildMethod(state, builder, fn);
+    return buildMethod(state, toplevelFn, builder, fn);
+}
+
+inline static MethodRef emitToplevelMethod(State* state, IRFn* fn) {
+    return emitMethod(state, fn, fn);
 }

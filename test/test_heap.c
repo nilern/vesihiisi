@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,6 +13,10 @@
 #include "../lib/print.c"
 #include "../lib/bytecode.c"
 #include "../lib/primops.c"
+// To avoid linker error for `collectTracingIR`:
+#include "../lib/arena.c"
+#include "../lib/bitset.c"
+#include "../lib/compiler.c"
 
 static void testBootstrap(void) {
     State state;
@@ -62,4 +67,3 @@ int main(int /*argc*/, char** /*argv*/) {
     
     return EXIT_SUCCESS;
 }
-

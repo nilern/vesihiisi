@@ -1,16 +1,20 @@
 typedef struct SymbolTable {
-    ArrayRef entries;
-    Fixnum count;
+    ORef* entries;
+    size_t count;
+    size_t cap;
 } SymbolTable;
 
-static bool tryCreateSymbolTable(SymbolTable* dest, Heap* heap, Type const* arrayType) {
-    Fixnum const count = tagInt(2);
-    ORef* const entries = tryAllocFlex(&heap->tospace, arrayType, count);
-    if (!entries) { return false; }
-    
-    *dest = (SymbolTable){tagArray(entries), count};
-    return true;
+static ORef const SymbolTableTombstone = {((uintptr_t)false << tag_width) | (uintptr_t)TAG_BOOL};
+
+inline static void freeSymbols(SymbolTable* symbols) { free(symbols->entries); }
+
+static SymbolTable newSymbolTable(void) {
+    size_t const cap = 2;
+    ORef* const entries = calloc(cap, sizeof *entries);
+    return (SymbolTable){.entries = entries, .count = 0, .cap = cap};
 }
+
+static void pruneSymbols(SymbolTable* symbols);
 
 static bool tryCreateNamespace(
     Semispace* semispace, NamespaceRef* dest, Type const* nsType, Type const* arrayType
@@ -33,7 +37,26 @@ static bool tryCreateNamespace(
     return true;
 }
 
+typedef struct Shadowstack {
+    ORef** vals;
+    size_t count;
+    size_t cap;
+} Shadowstack;
+
+inline static void freeShadowstack(Shadowstack* shadowstack) {
+    free(shadowstack->vals);
+}
+
+static Shadowstack newShadowstack(void) {
+    size_t const cap = 2;
+    ORef** const vals = malloc(cap * sizeof *vals);
+    return (Shadowstack){.vals = vals, .count = 0, .cap = cap};
+}
+
 #define REG_COUNT 256
+
+#define BOOTSTRAP_TYPE_COUNT 21
+#define BOOTSTRAP_SINGLETON_COUNT 3
 
 typedef struct State {
     ORef method;
@@ -42,23 +65,9 @@ typedef struct State {
     ORef regs[REG_COUNT];
     ORef const* consts;
     NamespaceRef ns;
-    uint8_t scratchCount;
 
     Heap heap;
 
-    TypeRef typeType;
-    TypeRef stringType;
-    TypeRef arrayType;
-    TypeRef byteArrayType;
-    TypeRef symbolType;
-    TypeRef pairType;
-    TypeRef emptyListType;
-    TypeRef unboundType;
-    TypeRef methodType;
-    TypeRef closureType;
-    TypeRef continuationType;
-    TypeRef varType;
-    TypeRef nsType;
     union {
         struct {
             TypeRef fixnumType; // TAG_FIXNUM = 0b000 = 0
@@ -69,36 +78,91 @@ typedef struct State {
             ORef immTypesPadding3;
             TypeRef boolType; // TAG_BOOL = 0b110 = 6
             ORef immTypesPadding4;
+
+            TypeRef typeType;
+            TypeRef stringType;
+            TypeRef arrayType;
+            TypeRef byteArrayType;
+            TypeRef symbolType;
+            TypeRef pairType;
+            TypeRef emptyListType;
+            TypeRef unboundType;
+            TypeRef methodType;
+            TypeRef closureType;
+            TypeRef continuationType;
+            TypeRef varType;
+            TypeRef nsType;
         };
-        ORef immTypes[8];
+        ORef types[BOOTSTRAP_TYPE_COUNT];
     };
     
     SymbolTable symbols;
-    EmptyListRef emptyList;
-    UnboundRef unbound;
-    ClosureRef exit;
+
+    union {
+        struct {
+            EmptyListRef emptyList;
+            UnboundRef unbound;
+            ClosureRef exit;
+        };
+        ORef singletons[BOOTSTRAP_SINGLETON_COUNT];
+    };
+
+    Shadowstack shadowstack;
 } State;
 
-// Returns handle
-inline static ORef* pushTmp(State* state, ORef v) {
-    assert(state->scratchCount < REG_COUNT);
-    
-    ORef* const handle = &state->regs[state->scratchCount];
-    *handle = v;
-    ++state->scratchCount;
-    return handle;
+static void freeState(State* state) {
+    freeHeap(&state->heap);
+    freeSymbols(&state->symbols);
+    freeShadowstack(&state->shadowstack);
 }
 
-inline static void popTmps(State* state, uint8_t count) {
-    assert(state->scratchCount >= count);
+static void pushStackRoot(State* state, ORef* stackLoc) {
+    if (state->shadowstack.count == state->shadowstack.cap) {
+        size_t const newCap = state->shadowstack.cap + state->shadowstack.cap / 2;
+        state->shadowstack.vals =
+            realloc(state->shadowstack.vals, newCap * sizeof * state->shadowstack.vals);
+        state->shadowstack.cap = newCap;
+    }
 
-    state->scratchCount -= count;
+    state->shadowstack.vals[state->shadowstack.count++] = stackLoc;
 }
 
-inline static ORef popTmp(State* state) {
-    assert(state->scratchCount > 0);
+inline static void popStackRoots(State* state, size_t count) { state->shadowstack.count -= count; }
 
-    return state->regs[--state->scratchCount];
+static void markRoots(State* state) {
+    state->method = mark(&state->heap, state->method);
+
+    for (size_t i = 0; i < REG_COUNT; ++i) {
+        state->regs[i] = mark(&state->heap, state->regs[i]);
+    }
+
+    state->ns = uncheckedORefToNamespace(mark(&state->heap, namespaceToORef(state->ns)));
+
+    for (size_t i = 0; i < BOOTSTRAP_TYPE_COUNT; ++i) {
+        state->types[i] = mark(&state->heap, state->types[i]);
+    }
+
+    for (size_t i = 0; i < BOOTSTRAP_SINGLETON_COUNT; ++i) {
+        state->singletons[i] = mark(&state->heap, state->singletons[i]);
+    }
+
+    {
+        size_t const stackRootCount = state->shadowstack.count;
+        for (size_t i = 0; i < stackRootCount; ++i) {
+            *state->shadowstack.vals[i] = mark(&state->heap, *state->shadowstack.vals[i]);
+        }
+    }
+}
+
+inline static void updateWeakRefs(State* state) { pruneSymbols(&state->symbols); }
+
+static void initSpecialPurposeRegs(State* state) {
+    ORef const anyMethod = state->method;
+    if (isHeaped(anyMethod)) {
+        Method* const methodPtr = methodToPtr(uncheckedORefToMethod(anyMethod));
+        state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
+        state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
+    }
 }
 
 static Type* tryCreateTypeType(Semispace* semispace) {
@@ -128,6 +192,7 @@ static Type* tryCreateStringType(Semispace* semispace, Type const* typeType) {
         .minSize = tagInt(0),
         .align = tagInt((intptr_t)objectMinAlign),
         .isBytes = True,
+        .hasCodePtr = False,
         .isFlex = True
     };
     
@@ -143,6 +208,7 @@ static Type* tryCreateSymbolType(Semispace* semispace, Type const* typeType) {
         .minSize = tagInt((intptr_t)sizeof(Symbol)),
         .align = tagInt((intptr_t)alignof(Symbol)),
         .isBytes = True,
+        .hasCodePtr = False,
         .isFlex = True
     };
     
@@ -158,6 +224,7 @@ static Type* tryCreateArrayType(Semispace* semispace, Type const* typeType) {
         .minSize = tagInt(0),
         .align = tagInt((intptr_t)alignof(ORef)),
         .isBytes = False,
+        .hasCodePtr = False,
         .isFlex = True
     };
     
@@ -173,6 +240,7 @@ static Type* tryCreateByteArrayType(Semispace* semispace, Type const* typeType) 
         .minSize = tagInt(0),
         .align = tagInt((intptr_t)objectMinAlign),
         .isBytes = True,
+        .hasCodePtr = False,
         .isFlex = True
     };
 
@@ -188,6 +256,7 @@ static Type* tryCreatePairType(Semispace* semispace, Type const* typeType) {
         .minSize = tagInt(sizeof(Pair)),
         .align = tagInt(alignof(Pair)),
         .isBytes = False,
+        .hasCodePtr = False,
         .isFlex = False
     };
     
@@ -203,6 +272,7 @@ static Type* tryCreateEmptyListType(Semispace* semispace, Type const* typeType) 
         .minSize = tagInt(0),
         .align = tagInt((intptr_t)objectMinAlign),
         .isBytes = True,
+        .hasCodePtr = False,
         .isFlex = False
     };
     
@@ -218,6 +288,7 @@ static Type* tryCreateUnboundType(Semispace* semispace, Type const* typeType) {
         .minSize = tagInt(0),
         .align = tagInt((intptr_t)objectMinAlign),
         .isBytes = True,
+        .hasCodePtr = False,
         .isFlex = False
     };
 
@@ -233,6 +304,7 @@ static Type* tryCreateMethodType(Semispace* semispace, Type const* typeType) {
         .minSize = tagInt(sizeof(Method)),
         .align = tagInt(alignof(Method)),
         .isBytes = False,
+        .hasCodePtr = True,
         .isFlex = False
     };
 
@@ -248,6 +320,7 @@ static Type* tryCreateClosureType(Semispace* semispace, Type const* typeType) {
         .minSize = tagInt(sizeof(Closure)),
         .align = tagInt(alignof(Closure)),
         .isBytes = False,
+        .hasCodePtr = False,
         .isFlex = True
     };
 
@@ -263,6 +336,7 @@ static Type* tryCreateContinuationType(Semispace* semispace, Type const* typeTyp
         .minSize = tagInt(sizeof(Continuation)),
         .align = tagInt(alignof(Continuation)),
         .isBytes = False,
+        .hasCodePtr = False,
         .isFlex = True
     };
 
@@ -278,6 +352,7 @@ static Type* tryCreateVarType(Semispace* semispace, Type const* typeType) {
         .minSize = tagInt(sizeof(Var)),
         .align = tagInt(alignof(Var)),
         .isBytes = False,
+        .hasCodePtr = False,
         .isFlex = False
     };
 
@@ -293,6 +368,7 @@ static Type* tryCreateNamespaceType(Semispace* semispace, Type const* typeType) 
         .minSize = tagInt(sizeof(Namespace)),
         .align = tagInt(alignof(Namespace)),
         .isBytes = False,
+        .hasCodePtr = False,
         .isFlex = False
     };
 
@@ -308,6 +384,7 @@ static Type* tryCreateImmType(Semispace* semispace, Type const* typeType) {
         .minSize = tagInt(0),
         .align = tagInt((intptr_t)objectMinAlign),
         .isBytes = True,
+        .hasCodePtr = False,
         .isFlex = False
     };
     
@@ -345,14 +422,20 @@ static SymbolRef intern(State* state, Str name);
 static VarRef getVar(State* state, NamespaceRef nsRef, SymbolRef name);
 
 static void installPrimop(State* state, Str name, MethodCode nativeCode) {
-    MethodRef* const method =
-        (MethodRef*)pushTmp(state, methodToORef(createPrimopMethod(state, nativeCode)));
-    ClosureRef* const closure =
-        (ClosureRef*)pushTmp(state, closureToORef(allocClosure(state, *method, Zero)));
-    SymbolRef* const symbol = (SymbolRef*)pushTmp(state, symbolToORef(intern(state, name)));
-    VarRef const var = getVar(state, state->ns, *symbol);
-    varToPtr(var)->val = closureToORef(*closure);
-    popTmps(state, 3);
+    MethodRef method = createPrimopMethod(state, nativeCode);
+    pushStackRoot(state, (ORef*)&method);
+
+    ClosureRef closure = allocClosure(state, method, Zero);
+    pushStackRoot(state, (ORef*)&closure);
+
+    SymbolRef symbol = intern(state, name);
+    pushStackRoot(state, (ORef*)&symbol);
+
+    VarRef const var = getVar(state, state->ns, symbol);
+
+    varToPtr(var)->val = closureToORef(closure);
+
+    popStackRoots(state, 3);
 }
 
 static bool tryCreateState(State* dest, size_t heapSize) {
@@ -395,8 +478,6 @@ static bool tryCreateState(State* dest, size_t heapSize) {
     Type const* const boolType = tryCreateBoolType(&heap.tospace, typeTypePtr);
     if (!boolType) { return false; }
     
-    SymbolTable symbols;
-    if (!tryCreateSymbolTable(&symbols, &heap, arrayTypePtr)) { return false; }
     void const* const emptyListPtr = tryAlloc(&heap.tospace, emptyListTypePtr);
     if (!emptyListPtr) { return false; }
     void const* const unbound = tryAlloc(&heap.tospace, unboundType);
@@ -413,7 +494,6 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         .pc = 0,
         .consts = nullptr,
         .ns = ns,
-        .scratchCount = 128, // FIXME: Reserves 128 regs for VM, should use register windows instead
 
         .heap = heap,
         
@@ -436,10 +516,12 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         .flonumType = tagType(flonumType),
         .boolType = tagType(boolType),
         
-        .symbols = symbols,
+        .symbols = newSymbolTable(),
         .emptyList = tagEmptyList(emptyListPtr),
         .unbound = tagUnbound(unbound),
-        .exit = tagClosure(exitPtr)
+        .exit = tagClosure(exitPtr),
+
+        .shadowstack = newShadowstack()
     };
 
     installPrimop(dest, (Str){"identical?", /*FIXME:*/ 10}, primopIdentical);
@@ -450,13 +532,11 @@ static bool tryCreateState(State* dest, size_t heapSize) {
     return true;
 }
 
-inline static void freeState(State* state) { freeHeap(&state->heap); }
-
 static TypeRef typeOf(State const* state, ORef v) {
     Tag const tag = getTag(v);
     return tag == TAG_HEAPED
         ? headerType(*((Header*)uncheckedORefToPtr(v) - 1))
-        : uncheckedORefToTypeRef(state->immTypes[tag]);
+        : uncheckedORefToTypeRef(state->types[tag]);
 }
 
 // OPTMIZE: If we already know that `isHeaped(v)`, the calls `typeOf` recheck that redundantly:
@@ -495,41 +575,144 @@ inline static bool isContinuation(State const* state, ORef v) {
         && eq(typeToORef(typeOf(state, v)), typeToORef(state->continuationType));
 }
 
+[[maybe_unused]]
+static void assertStateInTospace(State const* state) {
+    if (isHeaped(state->method)) {
+        assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(state->method)));
+        assert(allocatedInSemispace(&state->heap.tospace, state->code));
+        assert(allocatedInSemispace(&state->heap.tospace, state->consts));
+    }
+
+
+    for (size_t i = 0; i < REG_COUNT; ++i) {
+        ORef const reg = state->regs[i];
+        if (isHeaped(reg)) {
+            assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(reg)));
+        }
+    }
+
+    assert(allocatedInSemispace(&state->heap.tospace, namespaceToPtr(state->ns)));
+
+    for (size_t i = 0; i < BOOTSTRAP_TYPE_COUNT; ++i) {
+        ORef const v = state->types[i];
+        if (isHeaped(v)) {
+            assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(v)));
+        }
+    }
+
+    for (size_t i = 0; i < state->symbols.cap; ++i) {
+        ORef const v = state->symbols.entries[i];
+        if (isHeaped(v)) {
+            assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(v)));
+        }
+    }
+
+    for (size_t i = 0; i < BOOTSTRAP_SINGLETON_COUNT; ++i) {
+        ORef const v = state->singletons[i];
+        if (isHeaped(v)) {
+            assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(v)));
+        }
+    }
+
+    {
+        size_t const stackRootCount = state->shadowstack.count;
+        for (size_t i = 0; i < stackRootCount; ++i) {
+            ORef const v = *state->shadowstack.vals[i];
+            if (isHeaped(v)) {
+                assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(v)));
+            }
+        }
+    }
+}
+
+static void defaultPrepCollection(State* state) {
+    flipSemispaces(&state->heap);
+    markRoots(state);
+}
+
+static void completeCollection(State* state) {
+    collectHeap(&state->heap);
+
+    updateWeakRefs(state);
+
+    refurbishSemispace(&state->heap.fromspace, &state->heap.tospace);
+    initSpecialPurposeRegs(state);
+
+#ifndef NDEBUG
+    assertStateInTospace(state);
+#endif
+}
+
+static void collect(State* state) {
+    defaultPrepCollection(state);
+
+    completeCollection(state);
+}
+
+struct IRFn;
+static void markIRFn(State* state, struct IRFn* fn);
+static void assertIRFnInTospace(State const* state, struct IRFn const* fn);
+
+static void collectTracingIR(State* state, struct IRFn* fn) {
+    defaultPrepCollection(state);
+    markIRFn(state, fn);
+
+    completeCollection(state);
+
+#ifndef NDEBUG
+    assertIRFnInTospace(state, fn);
+#endif
+}
+
 static StringRef createString(State* state, Str str) {
     char* stringPtr =
         tryAllocFlex(&state->heap.tospace, typeToPtr(state->stringType), tagInt((intptr_t)str.len));
-    if (mustCollect(stringPtr)) { assert(false); } // TODO: Collect garbage here
-    stringPtr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->stringType),
-                               tagInt((intptr_t)str.len));
+    if (mustCollect(stringPtr)) {
+        collect(state);
+        stringPtr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->stringType),
+                                tagInt((intptr_t)str.len));
+    }
     
     memcpy(stringPtr, str.data, str.len);
     
     return tagString(stringPtr);
 }
 
+inline static ORef* tryAllocArray(State* state, Fixnum count) {
+    return (ORef*)tryAllocFlex(&state->heap.tospace, typeToPtr(state->arrayType), count);
+}
+
+inline static ORef* allocArrayOrDie(State* state, Fixnum count) {
+    return (ORef*)allocFlexOrDie(&state->heap.tospace, typeToPtr(state->arrayType), count);
+}
+
 static ArrayRef createArray(State* state, Fixnum count) {
-    ORef* ptr = tryAllocFlex(&state->heap.tospace, typeToPtr(state->arrayType), count);
-    if (mustCollect(ptr)) { assert(false); } // TODO: Collect garbage here
-    ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->arrayType), count);
+    ORef* ptr = tryAllocArray(state, count);
+    if (mustCollect(ptr)) {
+        collect(state);
+        ptr = allocArrayOrDie(state, count);
+    }
     
     return tagArray(ptr);
 }
 
-static ByteArrayRef createByteArray(State* state, Fixnum count) {
-    uint8_t* ptr = tryAllocFlex(&state->heap.tospace, typeToPtr(state->byteArrayType), count);
-    if (mustCollect(ptr)) { assert(false); } // TODO: Collect garbage here
-    ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->byteArrayType), count);
+inline static uint8_t* tryAllocByteArray(State* state, Fixnum count) {
+    return (uint8_t*)tryAllocFlex(&state->heap.tospace, typeToPtr(state->byteArrayType), count);
+}
 
-    return tagByteArray(ptr);
+inline static uint8_t* allocByteArrayOrDie(State* state, Fixnum count) {
+    return (uint8_t*)allocFlexOrDie(&state->heap.tospace, typeToPtr(state->byteArrayType), count);
 }
 
 static SymbolRef createUninternedSymbol(State* state, Fixnum hash, Str name) {
     Symbol* ptr = tryAllocFlex(
         &state->heap.tospace, typeToPtr(state->symbolType), tagInt((intptr_t)name.len));
-    if (mustCollect(ptr)) { assert(false); } // TODO: Collect garbage here
-    ptr = allocFlexOrDie(
-        &state->heap.tospace, typeToPtr(state->symbolType), tagInt((intptr_t)name.len));
-    
+    if (mustCollect(ptr)) {
+        collect(state);
+        ptr = allocFlexOrDie(
+            &state->heap.tospace, typeToPtr(state->symbolType), tagInt((intptr_t)name.len));
+    }
+
     ptr->hash = hash;
     memcpy(ptr->name, name.data, name.len);
     
@@ -546,47 +729,54 @@ typedef struct IndexOfSymbolRes {
 static IndexOfSymbolRes indexOfSymbol(SymbolTable const* symbols, Fixnum hash, Str name) {
     uintptr_t const h = (uintptr_t)fixnumToInt(hash);
     
-    size_t const maxIndex = (uintptr_t)fixnumToInt(arrayCount(symbols->entries)) - 1;
+    size_t const maxIndex = symbols->cap - 1;
     for (size_t collisions = 0, i = h & maxIndex;; ++collisions, i = (i + collisions) & maxIndex) {
-        ORef* const entry = arrayToPtr(symbols->entries) + i;
+        ORef* const entry = symbols->entries + i;
         
         if (eq(*entry, fixnumToORef(Zero))) { return (IndexOfSymbolRes){i, false}; }
-        SymbolRef const symbol = uncheckedORefToSymbol(*entry);
-        
-        Symbol const* const symbolPtr = symbolToPtr(symbol);
-        if (eq(fixnumToORef(symbolPtr->hash), fixnumToORef(hash))
-            && strEq(symbolName(symbol), name)
-        ) {
-            return (IndexOfSymbolRes){i, true};
+
+        if (isHeaped(*entry)) {
+            SymbolRef const symbol = uncheckedORefToSymbol(*entry);
+            Symbol const* const symbolPtr = symbolToPtr(symbol);
+            if (eq(fixnumToORef(symbolPtr->hash), fixnumToORef(hash))
+                && strEq(symbolName(symbol), name)
+            ) {
+                return (IndexOfSymbolRes){i, true};
+            }
         }
     }
 }
 
+// OPTMIZE: Do not grow if load factor is largely due to tombstones:
 static void rehashSymbols(State* state) {
-    Fixnum const oldCapRef = arrayCount(state->symbols.entries);
-    size_t const oldCap = (uintptr_t)fixnumToInt(oldCapRef);
-    size_t const newCap = oldCap << 1;
-    ArrayRef const newEntries = createArray(state, tagInt((intptr_t)newCap));
+    size_t const oldCap = state->symbols.cap;
+    size_t const newCap = oldCap * 2;
+    ORef* const newEntries = calloc(newCap, sizeof *newEntries);
+    size_t newCount = 0;
 
     for (size_t i = 0; i < oldCap; ++i) {
-        ORef const v = arrayToPtr(state->symbols.entries)[i];
-        if (!eq(v, fixnumToORef(Zero))) {
+        ORef const v = state->symbols.entries[i];
+        if (isHeaped(v)) {
             size_t const h = (uintptr_t)fixnumToInt(symbolToPtr(uncheckedORefToSymbol(v))->hash);
         
             size_t const maxIndex = newCap - 1;
             for (size_t collisions = 0, j = h & maxIndex;;
                 ++collisions, j = (j + collisions) & maxIndex
             ) {
-                ORef* const entry = arrayToPtr(newEntries) + j;
+                ORef* const entry = newEntries + j;
                 if (eq(*entry, fixnumToORef(Zero))) {
                     *entry = v;
+                    ++newCount;
                     break;
                 }
             }
         }
     }
     
+    free(state->symbols.entries);
     state->symbols.entries = newEntries;
+    state->symbols.count = newCount;
+    state->symbols.cap = newCap;
 }
 
 // `name` must not point into GC heap:
@@ -595,34 +785,46 @@ static SymbolRef intern(State* state, Str name) {
     
     IndexOfSymbolRes ires = indexOfSymbol(&state->symbols, hash, name);
     if (ires.exists) {
-        return uncheckedORefToSymbol(arrayToPtr(state->symbols.entries)[ires.index]);;
+        return uncheckedORefToSymbol(state->symbols.entries[ires.index]);;
     } else {
-        size_t const newCount = (uintptr_t)fixnumToInt(state->symbols.count) + 1;
-        size_t const capacity = (uintptr_t)fixnumToInt(arrayCount(state->symbols.entries));
-        if (capacity >> 1 < newCount) {
+        size_t const newCount = state->symbols.count + 1;
+        size_t const capacity = state->symbols.cap;
+        if (capacity / 2 < newCount) {
             rehashSymbols(state);
             ires = indexOfSymbol(&state->symbols, hash, name);
         }
         
         SymbolRef const symbol = createUninternedSymbol(state, hash, name);
-        arrayToPtr(state->symbols.entries)[ires.index] = symbolToORef(symbol);
-        state->symbols.count = tagInt((intptr_t)newCount);
+        state->symbols.entries[ires.index] = symbolToORef(symbol);
+        state->symbols.count = newCount;
         return symbol;
+    }
+}
+
+static void pruneSymbols(SymbolTable* symbols) {
+    size_t const cap = symbols->cap;
+    for (size_t i = 0; i < cap; ++i) {
+        ORef* const v = &symbols->entries[i];
+        if (isHeaped(*v)) {
+            void* const fwdPtr = tryForwarded(uncheckedORefToPtr(*v));
+            *v = fwdPtr ? tagHeaped(fwdPtr) : SymbolTableTombstone;
+        }
     }
 }
 
 static PairRef allocPair(State* state) {
     Pair* ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->pairType));
-    if (mustCollect(ptr)) { assert(false); } // TODO: Collect garbage here
-    ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->pairType));
+    if (mustCollect(ptr)) {
+        collect(state);
+        ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->pairType));
+    }
     
     return tagPair(ptr);
 }
 
-static MethodRef createBytecodeMethod(State* state, ByteArrayRef code, ArrayRef consts) {
+static Method* tryCreateBytecodeMethod(State* state, ByteArrayRef code, ArrayRef consts) {
     Method* ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->methodType));
-    if (mustCollect(ptr)) { assert(false); } // TODO: Collect garbage here
-    ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->methodType));
+    if (!ptr) { return ptr; }
 
     *ptr = (Method){
         .nativeCode = callBytecode,
@@ -630,13 +832,27 @@ static MethodRef createBytecodeMethod(State* state, ByteArrayRef code, ArrayRef 
         .consts = arrayToORef(consts)
     };
 
-    return tagMethod(ptr);
+    return ptr;
+}
+
+static Method* createBytecodeMethodOrDie(State* state, ByteArrayRef code, ArrayRef consts) {
+    Method* ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->methodType));
+
+    *ptr = (Method){
+        .nativeCode = callBytecode,
+        .code = byteArrayToORef(code),
+        .consts = arrayToORef(consts)
+    };
+
+    return ptr;
 }
 
 static MethodRef createPrimopMethod(State* state, MethodCode nativeCode) {
     Method* ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->methodType));
-    if (mustCollect(ptr)) { assert(false); } // TODO: Collect garbage here
-    ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->methodType));
+    if (mustCollect(ptr)) {
+        collect(state);
+        ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->methodType));
+    }
 
     *ptr = (Method){
         .nativeCode = nativeCode,
@@ -649,8 +865,12 @@ static MethodRef createPrimopMethod(State* state, MethodCode nativeCode) {
 
 static ClosureRef allocClosure(State* state, MethodRef method, Fixnum cloverCount) {
     Closure* ptr = tryAllocFlex(&state->heap.tospace, typeToPtr(state->closureType), cloverCount);
-    if (mustCollect(ptr)) { assert(false); } // TODO: Collect garbage here
-    ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->closureType), cloverCount);
+    if (mustCollect(ptr)) {
+        pushStackRoot(state, (ORef*)&method);
+        collect(state);
+        popStackRoots(state, 1);
+        ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->closureType), cloverCount);
+    }
 
     ptr->method = methodToORef(method);
 
@@ -662,8 +882,12 @@ static ContinuationRef allocContinuation(
 ) {
     Continuation* ptr =
         tryAllocFlex(&state->heap.tospace, typeToPtr(state->continuationType), cloverCount);
-    if (mustCollect(ptr)) { assert(false); } // TODO: Collect garbage here
-    ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->continuationType), cloverCount);
+    if (mustCollect(ptr)) {
+        pushStackRoot(state, (ORef*)&method);
+        collect(state);
+        popStackRoots(state, 1);
+        ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->continuationType), cloverCount);
+    }
 
     ptr->method = methodToORef(method);
     ptr->pc = pc;

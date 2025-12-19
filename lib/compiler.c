@@ -65,6 +65,8 @@ inline static IRName renameIRName(Compiler* compiler, IRName name) {
     return renameSymbolImpl(compiler, compiler->nameSyms[name.index]);
 }
 
+struct IRBlock;
+
 typedef struct IRFn {
     struct IRBlock** blocks; // OPTIMIZE: `IRBlock* blocks`
     size_t blockCount;
@@ -74,6 +76,45 @@ typedef struct IRFn {
     uint8_t constCount;
     uint8_t constCap;
 } IRFn;
+
+static void markIRBlock(State* state, struct IRBlock* block);
+
+static void markIRFn(State* state, IRFn* fn) {
+    {
+        size_t const blockCount = fn->blockCount;
+        for (size_t i = 0; i < blockCount; ++i) {
+            markIRBlock(state, fn->blocks[i]);
+        }
+    }
+
+    {
+        size_t const constCount = fn->constCount;
+        for (size_t i = 0; i < constCount; ++i) {
+            fn->consts[i] = mark(&state->heap, fn->consts[i]);
+        }
+    }
+}
+
+static void assertIRBlockInTospace(State const* state, struct IRBlock const* block);
+
+static void assertIRFnInTospace(State const* state, IRFn const* fn) {
+    {
+        size_t const blockCount = fn->blockCount;
+        for (size_t i = 0; i < blockCount; ++i) {
+            assertIRBlockInTospace(state, fn->blocks[i]);
+        }
+    }
+
+    {
+        size_t const constCount = fn->constCount;
+        for (size_t i = 0; i < constCount; ++i) {
+            ORef const v = fn->consts[i];
+            if (isHeaped(v)) {
+                assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(v)));
+            }
+        }
+    }
+}
 
 typedef struct Args {
     IRName* names;
@@ -158,6 +199,26 @@ typedef struct IRStmt {
         STMT_SWAP
     } type;
 } IRStmt;
+
+static void markIRStmt(State* state, IRStmt* stmt) {
+    switch (stmt->type) {
+    case STMT_GLOBAL_DEF: case STMT_GLOBAL: case STMT_CONST_DEF: case STMT_CLOVER: break;
+
+    case STMT_FN_DEF: markIRFn(state, &stmt->fnDef.fn); break;
+
+    case STMT_MOVE: case STMT_SWAP: break;
+    }
+}
+
+static void assertIRStmtInTospace(State const* state, IRStmt const* stmt) {
+    switch (stmt->type) {
+    case STMT_GLOBAL_DEF: case STMT_GLOBAL: case STMT_CONST_DEF: case STMT_CLOVER: break;
+
+    case STMT_FN_DEF: assertIRFnInTospace(state, &stmt->fnDef.fn); break;
+
+    case STMT_MOVE: case STMT_SWAP: break;
+    }
+}
 
 inline static IRStmt globalDefToStmt(GlobalDef globalDef) {
     return (IRStmt){{.globalDef = globalDef}, STMT_GLOBAL_DEF};
@@ -273,6 +334,20 @@ typedef struct IRBlock {
     
     IRTransfer transfer;
 } IRBlock;
+
+static void markIRBlock(State* state, IRBlock* block) {
+    size_t stmtCount = block->stmts.count;
+    for (size_t i = 0; i < stmtCount; ++i) {
+        markIRStmt(state, &block->stmts.vals[i]);
+    }
+}
+
+static void assertIRBlockInTospace(State const* state, IRBlock const* block) {
+    size_t stmtCount = block->stmts.count;
+    for (size_t i = 0; i < stmtCount; ++i) {
+        assertIRStmtInTospace(state, &block->stmts.vals[i]);
+    }
+}
 
 inline static void pushCaller(IRBlock* block, IRLabel caller) {
     block->callers.vals[block->callers.count++] = caller;

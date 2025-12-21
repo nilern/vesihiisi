@@ -8,16 +8,46 @@ static ORef getErrorHandler(State const* state) {
 }
 
 [[nodiscard]]
-static PrimopRes primopTypeError(State* state, TypeRef type, ORef v) {
+static PrimopRes primopError(State* state, ORef err) {
     state->regs[calleeReg] = getErrorHandler(state);
-    state->regs[firstArgReg] = typeErrorToORef(createTypeError(state, type, v));
+    state->regs[firstArgReg] = err;
     state->entryRegc = 3;
     return PRIMOP_RES_TAILCALL;
+}
+
+// OPTIMIZE: We know the domain of primops at VM compile time so going through this is suboptimal:
+[[nodiscard]]
+static ORef checkDomain(State* state) {
+    assert(isClosure(state, state->regs[calleeReg]));
+    ClosureRef const calleeRef = uncheckedORefToClosure(state->regs[calleeReg]);
+    Closure const* const callee = closureToPtr(calleeRef);
+    assert(isMethod(state, callee->method));
+    MethodRef const methodRef = uncheckedORefToMethod(callee->method);
+    Method const* const method = methodToPtr(methodRef);
+    size_t const arity = (uintptr_t)fixnumToInt(flexLength(methodToORef(methodRef)));
+
+    uint8_t const callArity = state->entryRegc - firstArgReg;
+    if (callArity != arity) {
+        return arityErrorToORef(createArityError(state, calleeRef, tagInt(callArity)));
+    }
+
+    for (size_t i = 0; i < arity; ++i) {
+        TypeRef const type = method->domain[i];
+        ORef const v = state->regs[firstArgReg + i];
+        if (!isa(state, type, v)) {
+            return typeErrorToORef(createTypeError(state, type, v));
+        }
+    }
+
+    return fixnumToORef(Zero);
 }
 
 static PrimopRes callBytecode(State* /*state*/) { return PRIMOP_RES_TAILCALL; }
 
 static PrimopRes primopAbort(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
     ORef const error = state->regs[firstArgReg];
 
     fputs("Runtime error: ", stderr);
@@ -28,6 +58,9 @@ static PrimopRes primopAbort(State* state) {
 }
 
 static PrimopRes primopIdentical(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
     ORef const x = state->regs[firstArgReg];
     ORef const y = state->regs[firstArgReg + 1];
 
@@ -37,13 +70,11 @@ static PrimopRes primopIdentical(State* state) {
 }
 
 static PrimopRes primopFxAdd(State* state) {
-    ORef const xRef = state->regs[firstArgReg];
-    ORef const yRef = state->regs[firstArgReg + 1];
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
 
-    if (!isFixnum(xRef)) { return primopTypeError(state, state->fixnumType, xRef); }
-    intptr_t const x = uncheckedFixnumToInt(xRef);
-    if (!isFixnum(yRef)) { return primopTypeError(state, state->fixnumType, yRef); }
-    intptr_t const y = uncheckedFixnumToInt(yRef);
+    intptr_t const x = uncheckedFixnumToInt(state->regs[firstArgReg]);
+    intptr_t const y = uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
 
     state->regs[retReg] = fixnumToORef(tagInt(x + y)); // TODO: Overflow check
 
@@ -51,13 +82,11 @@ static PrimopRes primopFxAdd(State* state) {
 }
 
 static PrimopRes primopFxSub(State* state) {
-    ORef const xRef = state->regs[firstArgReg];
-    ORef const yRef = state->regs[firstArgReg + 1];
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
 
-    if (!isFixnum(xRef)) { return primopTypeError(state, state->fixnumType, xRef); }
-    intptr_t const x = uncheckedFixnumToInt(xRef);
-    if (!isFixnum(yRef)) { return primopTypeError(state, state->fixnumType, yRef); }
-    intptr_t const y = uncheckedFixnumToInt(yRef);
+    intptr_t const x = uncheckedFixnumToInt(state->regs[firstArgReg]);
+    intptr_t const y = uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
 
     state->regs[retReg] = fixnumToORef(tagInt(x - y)); // TODO: Underflow check
 
@@ -65,13 +94,11 @@ static PrimopRes primopFxSub(State* state) {
 }
 
 static PrimopRes primopFxMul(State* state) {
-    ORef const xRef = state->regs[firstArgReg];
-    ORef const yRef = state->regs[firstArgReg + 1];
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
 
-    if (!isFixnum(xRef)) { return primopTypeError(state, state->fixnumType, xRef); }
-    intptr_t const x = uncheckedFixnumToInt(xRef);
-    if (!isFixnum(yRef)) { return primopTypeError(state, state->fixnumType, yRef); }
-    intptr_t const y = uncheckedFixnumToInt(yRef);
+    intptr_t const x = uncheckedFixnumToInt(state->regs[firstArgReg]);
+    intptr_t const y = uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
 
     state->regs[retReg] = fixnumToORef(tagInt(x * y)); // TODO: Overflow check
 
@@ -79,13 +106,11 @@ static PrimopRes primopFxMul(State* state) {
 }
 
 static PrimopRes primopFxDiv(State* state) {
-    ORef const xRef = state->regs[firstArgReg];
-    ORef const yRef = state->regs[firstArgReg + 1];
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
 
-    if (!isFixnum(xRef)) { return primopTypeError(state, state->fixnumType, xRef); }
-    intptr_t const x = uncheckedFixnumToInt(xRef);
-    if (!isFixnum(yRef)) { return primopTypeError(state, state->fixnumType, yRef); }
-    intptr_t const y = uncheckedFixnumToInt(yRef);
+    intptr_t const x = uncheckedFixnumToInt(state->regs[firstArgReg]);
+    intptr_t const y = uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
 
     if (y == 0) { assert(false); } // TODO: Proper error
     state->regs[retReg] = fixnumToORef(tagInt(x / y));

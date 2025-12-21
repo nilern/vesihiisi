@@ -159,13 +159,25 @@ static size_t disassembleInstr(State const* state, FILE* dest, MethodRef methodR
 // TODO: Print labels for BR(F) and their targets:
 static void disassembleNested(State const* state, FILE* dest, MethodRef methodRef, size_t nesting) {
     Method const* const method = methodToPtr(methodRef);
-    assert(method->nativeCode == callBytecode);
-    uintptr_t const codeCount =
-        (uintptr_t)fixnumToInt(byteArrayCount(uncheckedORefToByteArray(method->code)));
 
-    for (size_t pc = 0; pc < codeCount;) {
-        pc = disassembleNestedInstr(state, dest, methodRef, pc, nesting);
-        fputc('\n', dest);
+    for (size_t j = 0; j < nesting; ++j) { putc('\t', dest); }
+    putc('(', dest);
+    size_t const arity = (uintptr_t)fixnumToInt(flexLength(methodToORef(methodRef)));
+    for (size_t i = 0; i < arity; ++i) {
+        if (i > 0) { putc(' ', dest); }
+        print(state, dest, typeToORef(method->domain[i]));
+    }
+    fputs(")\n", dest);
+
+    if (method->nativeCode == callBytecode) {
+        size_t const codeCount =
+            (uintptr_t)fixnumToInt(byteArrayCount(uncheckedORefToByteArray(method->code)));
+        for (size_t pc = 0; pc < codeCount;) {
+            pc = disassembleNestedInstr(state, dest, methodRef, pc, nesting);
+            fputc('\n', dest);
+        }
+    } else {
+        fprintf(dest, "#primop\n");
     }
 }
 

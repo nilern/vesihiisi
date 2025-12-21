@@ -57,10 +57,15 @@ static MethodRef buildMethod(
     pushStackRoot(state, (ORef*)&consts);
     memcpy(maybeConsts, fn->consts, fn->constCount * sizeof *fn->consts); // Initialize
 
-    Method* maybeMethod = tryCreateBytecodeMethod(state, code, consts);
+    size_t const arity = fn->blocks[0]->paramCount - 2;
+    Fixnum const fxArity = tagInt((intptr_t)arity);
+    Method* maybeMethod = tryAllocBytecodeMethod(state, code, consts, fxArity);
     if (mustCollect(maybeMethod)) {
         collectTracingIR(state, toplevelFn);
-        maybeMethod = createBytecodeMethodOrDie(state, code, consts);
+        maybeMethod = allocBytecodeMethodOrDie(state, code, consts, fxArity);
+    }
+    for (size_t i = 0; i < arity; ++i) {
+        maybeMethod->domain[i] = state->anyType; // TODO: Parameter types from source (when given)
     }
     MethodRef const method = tagMethod(maybeMethod);
 

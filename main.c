@@ -8,6 +8,7 @@
 #include <ctype.h>
 #include <string.h>
 #include <stdbit.h>
+#include <stdarg.h>
 
 #include "lib/util.c"
 #include "lib/arena.c"

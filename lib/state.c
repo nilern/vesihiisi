@@ -55,7 +55,7 @@ static Shadowstack newShadowstack(void) {
 
 #define REG_COUNT 256
 
-#define BOOTSTRAP_TYPE_COUNT 22
+#define BOOTSTRAP_TYPE_COUNT 24
 #define BOOTSTRAP_SINGLETON_COUNT 3
 
 typedef struct State {
@@ -65,7 +65,7 @@ typedef struct State {
     ORef regs[REG_COUNT];
     ORef const* consts;
     NamespaceRef ns;
-    size_t entryRegc;
+    uint8_t entryRegc;
 
     Heap heap;
 
@@ -80,6 +80,7 @@ typedef struct State {
             TypeRef boolType; // TAG_BOOL = 0b110 = 6
             ORef immTypesPadding4;
 
+            TypeRef anyType;
             TypeRef typeType;
             TypeRef stringType;
             TypeRef arrayType;
@@ -94,6 +95,7 @@ typedef struct State {
             TypeRef varType;
             TypeRef nsType;
             TypeRef typeErrorType;
+            TypeRef arityErrorType;
         };
         ORef types[BOOTSTRAP_TYPE_COUNT];
     };
@@ -187,6 +189,22 @@ static Type* tryCreateTypeType(Semispace* semispace) {
     *typeType = bootstrapTypeType; // Init data
     
     return typeType;
+}
+
+static Type* tryCreateAnyType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = tryAlloc(semispace, typeType);
+    if (!maybeType) { return nullptr; }
+
+    Type* const type = (Type*)maybeType;
+    *type = (Type){ // TODO: Avoid requiring some nonsensical values like this:
+        .minSize = tagInt(0),
+        .align = tagInt((intptr_t)objectMinAlign),
+        .isBytes = True,
+        .hasCodePtr = False,
+        .isFlex = False
+    };
+
+    return type;
 }
 
 static Type* tryCreateStringType(Semispace* semispace, Type const* typeType) {
@@ -311,7 +329,7 @@ static Type* tryCreateMethodType(Semispace* semispace, Type const* typeType) {
         .align = tagInt(alignof(Method)),
         .isBytes = False,
         .hasCodePtr = True,
-        .isFlex = False
+        .isFlex = True
     };
 
     return type;
@@ -397,12 +415,28 @@ static Type* tryCreateTypeErrorType(Semispace* semispace, Type const* typeType) 
     return type;
 }
 
+static Type* tryCreateArityErrorType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = tryAlloc(semispace, typeType);
+    if (!maybeType) { return nullptr; }
+
+    Type* const type = (Type*)maybeType;
+    *type = (Type){
+        .minSize = tagInt(sizeof(ArityError)),
+        .align = tagInt(alignof(ArityError)),
+        .isBytes = False,
+        .hasCodePtr = False,
+        .isFlex = False
+    };
+
+    return type;
+}
+
 static Type* tryCreateImmType(Semispace* semispace, Type const* typeType) {
     void* const maybeType = tryAlloc(semispace, typeType);
     if (!maybeType) { return nullptr; }
     
     Type* const type = (Type*)maybeType;
-    *type = (Type){
+    *type = (Type){ // TODO: Avoid requiring some nonsensical values like this:
         .minSize = tagInt(0),
         .align = tagInt((intptr_t)objectMinAlign),
         .isBytes = True,
@@ -437,7 +471,10 @@ static PrimopRes primopFxSub(State* state);
 static PrimopRes primopFxMul(State* state);
 static PrimopRes primopFxDiv(State* state);
 
-static MethodRef createPrimopMethod(State* state, MethodCode nativeCode);
+static MethodRef vcreatePrimopMethod(
+    State* state, MethodCode nativeCode, Fixnum arity, va_list domain
+);
+static MethodRef createPrimopMethod(State* state, MethodCode nativeCode, Fixnum arity, ...);
 
 static ClosureRef allocClosure(State* state, MethodRef method, Fixnum cloverCount);
 
@@ -456,8 +493,11 @@ static void installPrimopClosure(State* state, Str name, ClosureRef closure) {
     popStackRoots(state, 1);
 }
 
-static void installPrimop(State* state, Str name, MethodCode nativeCode) {
-    MethodRef const method = createPrimopMethod(state, nativeCode);
+static void installPrimop(State* state, Str name, MethodCode nativeCode, Fixnum arity, ...) {
+    va_list domain;
+    va_start(domain, arity);
+    MethodRef const method = vcreatePrimopMethod(state, nativeCode, arity, domain);
+    va_end(domain);
     ClosureRef const closure = allocClosure(state, method, Zero);
     installPrimopClosure(state, name, closure);
 }
@@ -470,6 +510,8 @@ static bool tryCreateState(State* dest, size_t heapSize) {
     
     Type const* const typeTypePtr = tryCreateTypeType(&heap.tospace);
     if (!typeTypePtr) { return false; }
+    Type const* const anyType = tryCreateAnyType(&heap.tospace, typeTypePtr);
+    if (!anyType) { return false; }
     Type const* const stringTypePtr = tryCreateStringType(&heap.tospace, typeTypePtr);
     if (!stringTypePtr) { return false; }
     Type const* const arrayTypePtr = tryCreateArrayType(&heap.tospace, typeTypePtr);
@@ -496,6 +538,8 @@ static bool tryCreateState(State* dest, size_t heapSize) {
     if (!nsType) { return false; }
     Type const* const typeErrorType = tryCreateTypeErrorType(&heap.tospace, typeTypePtr);
     if (!nsType) { return false; }
+    Type const* const arityErrorType = tryCreateArityErrorType(&heap.tospace, typeTypePtr);
+    if (!arityErrorType) { return false; }
     
     Type const* const fixnumType = tryCreateFixnumType(&heap.tospace, typeTypePtr);
     if (!fixnumType) { return false; }
@@ -529,6 +573,7 @@ static bool tryCreateState(State* dest, size_t heapSize) {
 
         .heap = heap,
         
+        .anyType = tagType(anyType),
         .typeType = tagType(typeTypePtr),
         .stringType = tagType(stringTypePtr),
         .arrayType = tagType(arrayTypePtr),
@@ -543,6 +588,7 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         .varType = tagType(varType),
         .nsType = tagType(nsType),
         .typeErrorType = tagType(typeErrorType),
+        .arityErrorType = tagType(arityErrorType),
         
         .fixnumType = tagType(fixnumType),
         .charType = tagType(charType),
@@ -559,19 +605,26 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         .shadowstack = newShadowstack()
     };
 
-    MethodRef const abortMethod = createPrimopMethod(dest, primopAbort);
+    MethodRef const abortMethod = createPrimopMethod(dest, primopAbort, One, dest->anyType);
     ClosureRef const abortClosure = allocClosure(dest, abortMethod, Zero);
     varToPtr(dest->errorHandler)->val = closureToORef(abortClosure);
 
     installPrimopClosure(dest, (Str){"abort", /*FIXME:*/ 5}, abortClosure);
-    installPrimop(dest, (Str){"identical?", /*FIXME:*/ 10}, primopIdentical);
-    installPrimop(dest, (Str){"fx+", /*FIXME:*/ 3}, primopFxAdd);
-    installPrimop(dest, (Str){"fx-", /*FIXME:*/ 3}, primopFxSub);
-    installPrimop(dest, (Str){"fx*", /*FIXME:*/ 3}, primopFxMul);
-    installPrimop(dest, (Str){"fx-quot", /*FIXME:*/ 7}, primopFxDiv);
+    installPrimop(dest, (Str){"identical?", /*FIXME:*/ 10}, primopIdentical,
+                  tagInt(2), dest->anyType, dest->anyType);
+    installPrimop(dest, (Str){"fx+", /*FIXME:*/ 3}, primopFxAdd,
+                  tagInt(2), dest->fixnumType, dest->fixnumType);
+    installPrimop(dest, (Str){"fx-", /*FIXME:*/ 3}, primopFxSub,
+                  tagInt(2), dest->fixnumType, dest->fixnumType);
+    installPrimop(dest, (Str){"fx*", /*FIXME:*/ 3}, primopFxMul,
+                  tagInt(2), dest->fixnumType, dest->fixnumType);
+    installPrimop(dest, (Str){"fx-quot", /*FIXME:*/ 7}, primopFxDiv,
+                  tagInt(2), dest->fixnumType, dest->fixnumType);
 
     return true;
 }
+
+inline static bool typeEq(TypeRef type1, TypeRef type2) { return type1.bits == type2.bits; }
 
 static TypeRef typeOf(State const* state, ORef v) {
     Tag const tag = getTag(v);
@@ -580,21 +633,25 @@ static TypeRef typeOf(State const* state, ORef v) {
         : uncheckedORefToTypeRef(state->types[tag]);
 }
 
-// OPTMIZE: If we already know that `isHeaped(v)`, the calls `typeOf` recheck that redundantly:
+static bool isa(State const* state, TypeRef type, ORef v) {
+    if (typeEq(type, state->anyType)) { return true; }
+
+    return typeEq(typeOf(state, v), type);
+}
+
+// OPTIMIZE: If we already know that `isHeaped(v)`, the calls to `isa` -> `typeOf` recheck that
+// redundantly:
 
 inline static bool isString(State const* state, ORef v) {
-    return isHeaped(v)
-        && eq(typeToORef(typeOf(state, v)), typeToORef(state->stringType));
+    return isHeaped(v) && isa(state, state->stringType, v);
 }
 
 inline static bool isSymbol(State const* state, ORef v) {
-    return isHeaped(v)
-        && eq(typeToORef(typeOf(state, v)), typeToORef(state->symbolType));
+    return isHeaped(v) && isa(state, state->symbolType, v);
 }
 
 inline static bool isPair(State const* state, ORef v) {
-    return isHeaped(v)
-        && eq(typeToORef(typeOf(state, v)), typeToORef(state->pairType));
+    return isHeaped(v) && isa(state, state->pairType, v);
 }
 
 inline static bool isEmptyList(State const* state, ORef v) {
@@ -602,28 +659,23 @@ inline static bool isEmptyList(State const* state, ORef v) {
 }
 
 inline static bool isMethod(State const* state, ORef v) {
-    return isHeaped(v)
-        && eq(typeToORef(typeOf(state, v)), typeToORef(state->methodType));
+    return isHeaped(v) && isa(state, state->methodType, v);
 }
 
 inline static bool isClosure(State const* state, ORef v) {
-    return isHeaped(v)
-        && eq(typeToORef(typeOf(state, v)), typeToORef(state->closureType));
+    return isHeaped(v) && isa(state, state->closureType, v);
 }
 
 inline static bool isContinuation(State const* state, ORef v) {
-    return isHeaped(v)
-        && eq(typeToORef(typeOf(state, v)), typeToORef(state->continuationType));
+    return isHeaped(v) && isa(state, state->continuationType, v);
 }
 
 inline static bool isType(State const* state, ORef v) {
-    return isHeaped(v)
-        && eq(typeToORef(typeOf(state, v)), typeToORef(state->typeType));
+    return isHeaped(v) && isa(state, state->typeType, v);
 }
 
 inline static bool isTypeError(State const* state, ORef v) {
-    return isHeaped(v)
-        && eq(typeToORef(typeOf(state, v)), typeToORef(state->typeErrorType));
+    return isHeaped(v) && isa(state, state->typeErrorType, v);
 }
 
 [[maybe_unused]]
@@ -875,8 +927,10 @@ static PairRef allocPair(State* state) {
     return tagPair(ptr);
 }
 
-static Method* tryCreateBytecodeMethod(State* state, ByteArrayRef code, ArrayRef consts) {
-    Method* ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->methodType));
+static Method* tryAllocBytecodeMethod(
+    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity
+) {
+    Method* ptr = tryAllocFlex(&state->heap.tospace, typeToPtr(state->methodType), arity);
     if (!ptr) { return ptr; }
 
     *ptr = (Method){
@@ -888,8 +942,10 @@ static Method* tryCreateBytecodeMethod(State* state, ByteArrayRef code, ArrayRef
     return ptr;
 }
 
-static Method* createBytecodeMethodOrDie(State* state, ByteArrayRef code, ArrayRef consts) {
-    Method* ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->methodType));
+static Method* allocBytecodeMethodOrDie(
+    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity
+) {
+    Method* ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->methodType), arity);
 
     *ptr = (Method){
         .nativeCode = callBytecode,
@@ -900,11 +956,26 @@ static Method* createBytecodeMethodOrDie(State* state, ByteArrayRef code, ArrayR
     return ptr;
 }
 
-static MethodRef createPrimopMethod(State* state, MethodCode nativeCode) {
-    Method* ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->methodType));
+static MethodRef vcreatePrimopMethod(
+    State* state, MethodCode nativeCode, Fixnum fxArity, va_list va_domain
+) {
+    size_t const arity = (uintptr_t)fixnumToInt(fxArity);
+
+    // Taking address of `va_arg(va_domain, TypeRef)` seems questionable so copy into fixed array to
+    // allow GC:
+    TypeRef* const domain = malloc(arity * sizeof *domain);
+    for (size_t i = 0; i < arity; ++i) {
+        domain[i] = va_arg(va_domain, TypeRef);
+    }
+
+    Method* ptr = tryAllocFlex(&state->heap.tospace, typeToPtr(state->methodType), fxArity);
     if (mustCollect(ptr)) {
+        for (size_t i = 0; i < arity; ++i) {
+            pushStackRoot(state, (ORef*)&domain[i]); // Not on stack but will not move either
+        }
         collect(state);
-        ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->methodType));
+        popStackRoots(state, arity);
+        ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->methodType), fxArity);
     }
 
     *ptr = (Method){
@@ -912,8 +983,19 @@ static MethodRef createPrimopMethod(State* state, MethodCode nativeCode) {
         .code = fixnumToORef(Zero),
         .consts = fixnumToORef(Zero)
     };
+    memcpy(ptr->domain, domain, arity * sizeof *domain); // Side benefit of the array: `memcpy`
 
+    free(domain);
     return tagMethod(ptr);
+}
+
+static MethodRef createPrimopMethod(State* state, MethodCode nativeCode, Fixnum arity, ...) {
+    va_list domain;
+    va_start(domain, arity);
+    MethodRef method = vcreatePrimopMethod(state, nativeCode, arity, domain);
+    va_end(domain);
+
+    return method;
 }
 
 static ClosureRef allocClosure(State* state, MethodRef method, Fixnum cloverCount) {
@@ -961,4 +1043,18 @@ static TypeErrorRef createTypeError(State* state, TypeRef type, ORef val) {
     *ptr = (TypeError){.type = type, .val = val};
 
     return tagTypeError(ptr);
+}
+
+static ArityErrorRef createArityError(State* state, ClosureRef callee, Fixnum callArgc) {
+    ArityError* ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->arityErrorType));
+    if (mustCollect(ptr)) {
+        pushStackRoot(state, (ORef*)&callee);
+        collect(state);
+        popStackRoots(state, 1);
+        ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->arityErrorType));
+    }
+
+    *ptr = (ArityError){.callee = callee, .callArgc = callArgc};
+
+    return tagArityError(ptr);
 }

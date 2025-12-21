@@ -233,6 +233,15 @@ static VMRes run(State* state, ClosureRef selfRef) {
                 state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
                 state->pc = 0;
                 state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
+
+                ORef const maybeErr = checkDomain(state);
+                if (isHeaped(maybeErr)) {
+                    state->regs[calleeReg] = getErrorHandler(state);
+                    state->regs[firstArgReg] = maybeErr;
+                    state->entryRegc = 3;
+                    continue;
+                }
+
                 trampoline = false;
             } else {
                 switch (methodPtr->nativeCode(state)) {

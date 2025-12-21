@@ -67,6 +67,13 @@ static void print(State const* state, FILE* dest, ORef v) {
             putc(' ', dest);
             print(state, dest, err->val);
             putc('>', dest);
+        } else if (isa(state, state->arityErrorType, v)) {
+            ArityError const* const err = arityErrorToPtr(uncheckedORefToArityError(v));
+            fputs("#<arity-error ", dest);
+            print(state, dest, closureToORef(err->callee));
+            putc(' ', dest);
+            print(state, dest, fixnumToORef(err->callArgc));
+            putc('>', dest);
         } else  {
             assert(false); // FIXME
         }

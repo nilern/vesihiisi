@@ -35,6 +35,7 @@ inline static bool isBool(ORef v) { return getTag(v) == TAG_BOOL; }
 inline static bool isHeaped(ORef v) { return getTag(v) == TAG_HEAPED; }
 
 static Fixnum const Zero = {0};
+static Fixnum const One = {(uintptr_t)1 << tag_width | (uintptr_t)TAG_FIXNUM};
 
 static Bool const True = {((uintptr_t)true << tag_width) | (uintptr_t)TAG_BOOL};
 static Bool const False = {((uintptr_t)false << tag_width) | (uintptr_t)TAG_BOOL};
@@ -131,6 +132,8 @@ inline static FlexHeader flexHeader(Fixnum length, Type const* type) {
 static const size_t objectMinAlign = alignof(Header);
 
 inline static Fixnum flexLength(ORef v) {
+    assert(isHeaped(v)
+        && unwrapBool(typeToPtr(headerType(*((Header*)uncheckedORefToPtr(v) - 1)))->isFlex));
     void* const ptr = uncheckedORefToPtr(v);
     return ((FlexHeader*)ptr - 1)->length;
 }
@@ -242,9 +245,10 @@ struct State;
 typedef PrimopRes (*MethodCode)(struct State*);
 
 typedef struct Method {
-    MethodCode nativeCode; // TODO: GC must treat this specially (like CHICKEN's SPECIALBLOCK_BIT)
+    MethodCode nativeCode;
     ORef code;
     ORef consts;
+    TypeRef domain[];
 } Method;
 
 typedef struct MethodRef { uintptr_t bits; } MethodRef;
@@ -359,4 +363,23 @@ inline static TypeErrorRef uncheckedORefToTypeError(ORef v) { return (TypeErrorR
 
 inline static TypeError* typeErrorToPtr(TypeErrorRef v) {
     return (TypeError*)(void*)(v.bits & ~tag_bits);
+}
+
+typedef struct ArityError {
+    ClosureRef callee;
+    Fixnum callArgc;
+} ArityError;
+
+typedef struct ArityErrorRef { uintptr_t bits; } ArityErrorRef;
+
+inline static ArityErrorRef tagArityError(ArityError* ptr) {
+    return (ArityErrorRef){(uintptr_t)(void*)ptr | (uintptr_t)TAG_HEAPED};
+}
+
+inline static ORef arityErrorToORef(ArityErrorRef v) { return (ORef){v.bits}; }
+
+inline static ArityErrorRef uncheckedORefToArityError(ORef v) { return (ArityErrorRef){v.bits}; }
+
+inline static ArityError* arityErrorToPtr(ArityErrorRef v) {
+    return (ArityError*)(void*)(v.bits & ~tag_bits);
 }

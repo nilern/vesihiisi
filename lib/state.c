@@ -434,6 +434,7 @@ static PrimopRes primopIdentical(State* state);
 static PrimopRes primopFxAdd(State* state);
 static PrimopRes primopFxSub(State* state);
 static PrimopRes primopFxMul(State* state);
+static PrimopRes primopFxDiv(State* state);
 
 static MethodRef createPrimopMethod(State* state, MethodCode nativeCode);
 
@@ -565,6 +566,7 @@ static bool tryCreateState(State* dest, size_t heapSize) {
     installPrimop(dest, (Str){"fx+", /*FIXME:*/ 3}, primopFxAdd);
     installPrimop(dest, (Str){"fx-", /*FIXME:*/ 3}, primopFxSub);
     installPrimop(dest, (Str){"fx*", /*FIXME:*/ 3}, primopFxMul);
+    installPrimop(dest, (Str){"fx-quot", /*FIXME:*/ 7}, primopFxDiv);
 
     return true;
 }

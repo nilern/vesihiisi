@@ -76,3 +76,18 @@ static PrimopRes primopFxMul(State* state) {
 
     return PRIMOP_RES_CONTINUE;
 }
+
+static PrimopRes primopFxDiv(State* state) {
+    ORef const xRef = state->regs[firstArgReg];
+    ORef const yRef = state->regs[firstArgReg + 1];
+
+    if (!isFixnum(xRef)) { return primopTypeError(state, state->fixnumType, xRef); }
+    intptr_t const x = uncheckedFixnumToInt(xRef);
+    if (!isFixnum(yRef)) { return primopTypeError(state, state->fixnumType, yRef); }
+    intptr_t const y = uncheckedFixnumToInt(yRef);
+
+    if (y == 0) { assert(false); } // TODO: Proper error
+    state->regs[retReg] = fixnumToORef(tagInt(x / y));
+
+    return PRIMOP_RES_CONTINUE;
+}

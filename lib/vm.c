@@ -16,6 +16,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
     state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
     state->regs[calleeReg] = closureToORef(selfRef);
     state->regs[retContReg] = closureToORef(state->exit); // Return continuation
+    state->entryRegc = 2;
 
     for (;/*ever*/;) {
         switch ((Opcode)state->code[state->pc++]) {
@@ -24,7 +25,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
             uint8_t const srcReg = state->code[state->pc++];
 
             state->regs[destReg] = state->regs[srcReg];
-        }; break;
+        }; continue;
 
         case OP_SWAP: {
             uint8_t const reg1 = state->code[state->pc++];
@@ -33,7 +34,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
             ORef const tmp = state->regs[reg1];
             state->regs[reg1] = state->regs[reg2];
             state->regs[reg2] = tmp;
-        }; break;
+        }; continue;
 
         case OP_DEF: {
             uint8_t const constIdx = state->code[state->pc++];
@@ -49,7 +50,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
             }
 
             varToPtr(var)->val = state->regs[srcReg];
-        }; break;
+        }; continue;
 
         case OP_GLOBAL: {
             uint8_t const destReg = state->code[state->pc++];
@@ -75,20 +76,20 @@ static VMRes run(State* state, ClosureRef selfRef) {
                 assert(false); // FIXME: use of unbound var
             }
             state->regs[destReg] = v;
-        }; break;
+        }; continue;
 
         case OP_CONST: {
             uint8_t const destReg = state->code[state->pc++];
             uint8_t const constIdx = state->code[state->pc++];
 
             state->regs[destReg] = state->consts[constIdx];
-        }; break;
+        }; continue;
 
         case OP_BR: {
             uint8_t const displacement = state->code[state->pc++];
 
             state->pc += displacement;
-        }; break;
+        }; continue;
 
         case OP_BRF: {
             uint8_t const condReg = state->code[state->pc++];
@@ -97,7 +98,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
             if (eq(state->regs[condReg], boolToORef(False))) {
                 state->pc += displacement;
             }
-        }; break;
+        }; continue;
 
         case OP_RET: {
             assert(eq(typeToORef(typeOf(state, state->regs[retContReg])),
@@ -115,7 +116,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
             } else { // Exit
                 return (VMRes){.success = true, .val = state->regs[retReg]};
             }
-        }; break;
+        }; continue;
 
         case OP_CLOSURE: {
             uint8_t const destReg = state->code[state->pc++];
@@ -148,7 +149,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
             }
 
             state->regs[destReg] = closureToORef(closure);
-        }; break;
+        }; continue;
 
         case OP_CLOVER: {
             uint8_t const destReg = state->code[state->pc++];
@@ -165,10 +166,10 @@ static VMRes run(State* state, ClosureRef selfRef) {
                 Closure const* const closure = closureToPtr(uncheckedORefToClosure(anyClosure));
                 state->regs[destReg] = closure->clovers[cloverIdx];
             }
-        }; break;
+        }; continue;
 
         case OP_CALL: {
-            uint8_t regCount /*FIXME:*/ [[maybe_unused]] = state->code[state->pc++];
+            uint8_t const regCount  = state->code[state->pc++];
             uint8_t const cloverSetByteCount = state->code[state->pc++];
             size_t cloverCount = 0;
             // OPTIMIZE:
@@ -200,112 +201,67 @@ static VMRes run(State* state, ClosureRef selfRef) {
 
             state->regs[retContReg] = continuationToORef(cont);
 
-            // TODO: DRY wrt. OP_TAILCALL:
-            bool trampoline = true;
-            while (trampoline) {
-                ORef callee = state->regs[calleeReg];
-                if (!isClosure(state, callee)) {
-                    state->regs[calleeReg] = getErrorHandler(state);
-                    state->regs[firstArgReg] =
-                        typeErrorToORef(createTypeError(state, state->closureType, callee));
-                    callee = state->regs[calleeReg];
-                    regCount = 3;
-                }
-                Closure const* const closure = closureToPtr(uncheckedORefToClosure(callee));
-                ORef const method = closure->method;
-                assert(isMethod(state, method));
-                Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
-                if (methodPtr->nativeCode == callBytecode) {
-                    state->method = method;
-                    state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
-                    state->pc = 0;
-                    state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
-                    trampoline = false;
-                } else {
-                    switch (methodPtr->nativeCode(state)) {
-                    case PRIMOP_RES_CONTINUE: { // TODO: DRY wrt. OP_RET:
-                        assert(eq(typeToORef(typeOf(state, state->regs[retContReg])),
-                                typeToORef(state->continuationType)));
-                        ContinuationRef const retRef =
-                            uncheckedORefToContinuation(state->regs[retContReg]);
-                        Continuation const* const ret = continuationToPtr(retRef);
-                        ORef const method = ret->method;
-                        if (!eq(method, fixnumToORef(Zero))) {
-                            assert(isMethod(state, method));
-                            Method const* const methodPtr =
-                                methodToPtr(uncheckedORefToMethod(method));
-                            state->method = method;
-                            state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
-                            state->pc = (size_t)fixnumToInt(ret->pc);
-                            state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
-                            trampoline = false;
-                        } else { // Exit
-                            return (VMRes){.val = state->regs[retReg], .success = true};
-                        }
-                    }; break;
-
-                    case PRIMOP_RES_TAILCALL: break; // All is in place, just keep trampolining
-
-                    case PRIMOP_RES_ABORT: return (VMRes){};
-                    }
-                }
-            }
-        }; break;
+            state->entryRegc = regCount;
+            goto apply;
+        }; continue;
 
         case OP_TAILCALL: {
-            uint8_t regCount /*FIXME:*/ [[maybe_unused]] = state->code[state->pc++];
+            uint8_t const regCount = state->code[state->pc++];
 
-            // TODO: DRY wrt. OP_CALL:
-            bool trampoline = true;
-            while (trampoline) {
-                ORef callee = state->regs[calleeReg];
-                if (!isClosure(state, callee)) {
-                    state->regs[calleeReg] = getErrorHandler(state);
-                    state->regs[firstArgReg] =
-                        typeErrorToORef(createTypeError(state, state->closureType, callee));
-                    callee = state->regs[calleeReg];
-                    regCount = 3;
-                }
-                Closure const* const closure = closureToPtr(uncheckedORefToClosure(callee));
-                ORef const method = closure->method;
-                assert(isMethod(state, method));
-                Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
-                if (methodPtr->nativeCode == callBytecode) {
-                    state->method = method;
-                    state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
-                    state->pc = 0;
-                    state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
-                    trampoline = false;
-                } else {
-                    switch (methodPtr->nativeCode(state)) {
-                    case PRIMOP_RES_CONTINUE: { // TODO: DRY wrt. OP_RET:
-                        assert(eq(typeToORef(typeOf(state, state->regs[retContReg])),
-                                typeToORef(state->continuationType)));
-                        ContinuationRef const retRef =
-                            uncheckedORefToContinuation(state->regs[retContReg]);
-                        Continuation const* const ret = continuationToPtr(retRef);
-                        ORef const method = ret->method;
-                        if (!eq(method, fixnumToORef(Zero))) {
-                            assert(isMethod(state, method));
-                            Method const* const methodPtr =
-                                methodToPtr(uncheckedORefToMethod(method));
-                            state->method = method;
-                            state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
-                            state->pc = (size_t)fixnumToInt(ret->pc);
-                            state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
-                            trampoline = false;
-                        } else { // Exit
-                            return (VMRes){.val = state->regs[retReg], .success = true};
-                        }
-                    }; break;
+            state->entryRegc = regCount;
+            goto apply;
+        }; continue;
+        }
 
-                    case PRIMOP_RES_TAILCALL: break; // All is in place, just keep trampolining
-
-                    case PRIMOP_RES_ABORT: return (VMRes){};
+        apply: // FIXME: Arity check:
+        bool trampoline = true;
+        while (trampoline) {
+            ORef callee = state->regs[calleeReg];
+            if (!isClosure(state, callee)) {
+                state->regs[calleeReg] = getErrorHandler(state);
+                state->regs[firstArgReg] =
+                    typeErrorToORef(createTypeError(state, state->closureType, callee));
+                callee = state->regs[calleeReg];
+                state->entryRegc = 3;
+            }
+            Closure const* const closure = closureToPtr(uncheckedORefToClosure(callee));
+            ORef const method = closure->method;
+            assert(isMethod(state, method));
+            Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
+            if (methodPtr->nativeCode == callBytecode) {
+                state->method = method;
+                state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
+                state->pc = 0;
+                state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
+                trampoline = false;
+            } else {
+                switch (methodPtr->nativeCode(state)) {
+                case PRIMOP_RES_CONTINUE: { // TODO: DRY wrt. OP_RET:
+                    assert(eq(typeToORef(typeOf(state, state->regs[retContReg])),
+                            typeToORef(state->continuationType)));
+                    ContinuationRef const retRef =
+                        uncheckedORefToContinuation(state->regs[retContReg]);
+                    Continuation const* const ret = continuationToPtr(retRef);
+                    ORef const method = ret->method;
+                    if (!eq(method, fixnumToORef(Zero))) {
+                        assert(isMethod(state, method));
+                        Method const* const methodPtr =
+                            methodToPtr(uncheckedORefToMethod(method));
+                        state->method = method;
+                        state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
+                        state->pc = (size_t)fixnumToInt(ret->pc);
+                        state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
+                        trampoline = false;
+                    } else { // Exit
+                        return (VMRes){.val = state->regs[retReg], .success = true};
                     }
+                }; break;
+
+                case PRIMOP_RES_TAILCALL: break; // All is in place, just keep trampolining
+
+                case PRIMOP_RES_ABORT: return (VMRes){};
                 }
             }
-        }; break;
         }
     }
 }

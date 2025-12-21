@@ -65,6 +65,7 @@ typedef struct State {
     ORef regs[REG_COUNT];
     ORef const* consts;
     NamespaceRef ns;
+    size_t entryRegc;
 
     Heap heap;
 
@@ -524,6 +525,7 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         .pc = 0,
         .consts = nullptr,
         .ns = ns,
+        .entryRegc = 0, // Intentionally invalid
 
         .heap = heap,
         

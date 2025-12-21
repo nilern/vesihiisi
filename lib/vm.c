@@ -1,4 +1,9 @@
-static ORef run(State* state, ClosureRef selfRef) {
+typedef struct VMRes {
+    ORef val;
+    bool success;
+} VMRes;
+
+static VMRes run(State* state, ClosureRef selfRef) {
     // TODO: Debug index & type checks & bytecode verifier
 
     Closure const* const self = closureToPtr(selfRef);
@@ -108,7 +113,7 @@ static ORef run(State* state, ClosureRef selfRef) {
                 state->pc = (size_t)fixnumToInt(ret->pc);
                 state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
             } else { // Exit
-                return state->regs[retReg];
+                return (VMRes){.success = true, .val = state->regs[retReg]};
             }
         }; break;
 
@@ -163,7 +168,7 @@ static ORef run(State* state, ClosureRef selfRef) {
         }; break;
 
         case OP_CALL: {
-            uint8_t const regCount /*FIXME:*/ [[maybe_unused]] = state->code[state->pc++];
+            uint8_t regCount /*FIXME:*/ [[maybe_unused]] = state->code[state->pc++];
             uint8_t const cloverSetByteCount = state->code[state->pc++];
             size_t cloverCount = 0;
             // OPTIMIZE:
@@ -198,9 +203,15 @@ static ORef run(State* state, ClosureRef selfRef) {
             // TODO: DRY wrt. OP_TAILCALL:
             bool trampoline = true;
             while (trampoline) {
-                assert(isClosure(state, state->regs[calleeReg]));
-                Closure const* const closure =
-                    closureToPtr(uncheckedORefToClosure(state->regs[calleeReg]));
+                ORef callee = state->regs[calleeReg];
+                if (!isClosure(state, callee)) {
+                    state->regs[calleeReg] = getErrorHandler(state);
+                    state->regs[firstArgReg] =
+                        typeErrorToORef(createTypeError(state, state->closureType, callee));
+                    callee = state->regs[calleeReg];
+                    regCount = 3;
+                }
+                Closure const* const closure = closureToPtr(uncheckedORefToClosure(callee));
                 ORef const method = closure->method;
                 assert(isMethod(state, method));
                 Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
@@ -229,25 +240,33 @@ static ORef run(State* state, ClosureRef selfRef) {
                             state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
                             trampoline = false;
                         } else { // Exit
-                            return state->regs[retReg];
+                            return (VMRes){.val = state->regs[retReg], .success = true};
                         }
                     }; break;
 
                     case PRIMOP_RES_TAILCALL: break; // All is in place, just keep trampolining
+
+                    case PRIMOP_RES_ABORT: return (VMRes){};
                     }
                 }
             }
         }; break;
 
         case OP_TAILCALL: {
-            uint8_t const regCount /*FIXME:*/ [[maybe_unused]] = state->code[state->pc++];
+            uint8_t regCount /*FIXME:*/ [[maybe_unused]] = state->code[state->pc++];
 
             // TODO: DRY wrt. OP_CALL:
             bool trampoline = true;
             while (trampoline) {
-                assert(isClosure(state, state->regs[calleeReg]));
-                Closure const* const closure =
-                    closureToPtr(uncheckedORefToClosure(state->regs[calleeReg]));
+                ORef callee = state->regs[calleeReg];
+                if (!isClosure(state, callee)) {
+                    state->regs[calleeReg] = getErrorHandler(state);
+                    state->regs[firstArgReg] =
+                        typeErrorToORef(createTypeError(state, state->closureType, callee));
+                    callee = state->regs[calleeReg];
+                    regCount = 3;
+                }
+                Closure const* const closure = closureToPtr(uncheckedORefToClosure(callee));
                 ORef const method = closure->method;
                 assert(isMethod(state, method));
                 Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
@@ -276,11 +295,13 @@ static ORef run(State* state, ClosureRef selfRef) {
                             state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
                             trampoline = false;
                         } else { // Exit
-                            return state->regs[retReg];
+                            return (VMRes){.val = state->regs[retReg], .success = true};
                         }
                     }; break;
 
                     case PRIMOP_RES_TAILCALL: break; // All is in place, just keep trampolining
+
+                    case PRIMOP_RES_ABORT: return (VMRes){};
                     }
                 }
             }

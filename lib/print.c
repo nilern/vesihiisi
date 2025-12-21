@@ -58,6 +58,15 @@ static void print(State const* state, FILE* dest, ORef v) {
             fprintf(dest, "#<fn>");
         } else if (isContinuation(state, v)) {
             fprintf(dest, "#<continuation>");
+        } else if (isType(state, v)) {
+            fprintf(dest, "#<type>");
+        } else if (isTypeError(state, v)) {
+            TypeError const* const err = typeErrorToPtr(uncheckedORefToTypeError(v));
+            fputs("#<type-error ", dest);
+            print(state, dest, typeToORef(err->type));
+            putc(' ', dest);
+            print(state, dest, err->val);
+            putc('>', dest);
         } else  {
             assert(false); // FIXME
         }

@@ -55,7 +55,7 @@ static Shadowstack newShadowstack(void) {
 
 #define REG_COUNT 256
 
-#define BOOTSTRAP_TYPE_COUNT 21
+#define BOOTSTRAP_TYPE_COUNT 22
 #define BOOTSTRAP_SINGLETON_COUNT 3
 
 typedef struct State {
@@ -92,6 +92,7 @@ typedef struct State {
             TypeRef continuationType;
             TypeRef varType;
             TypeRef nsType;
+            TypeRef typeErrorType;
         };
         ORef types[BOOTSTRAP_TYPE_COUNT];
     };
@@ -106,6 +107,8 @@ typedef struct State {
         };
         ORef singletons[BOOTSTRAP_SINGLETON_COUNT];
     };
+
+    VarRef errorHandler;
 
     Shadowstack shadowstack;
 } State;
@@ -145,6 +148,8 @@ static void markRoots(State* state) {
     for (size_t i = 0; i < BOOTSTRAP_SINGLETON_COUNT; ++i) {
         state->singletons[i] = mark(&state->heap, state->singletons[i]);
     }
+
+    state->errorHandler = uncheckedORefToVar(mark(&state->heap, varToORef(state->errorHandler)));
 
     {
         size_t const stackRootCount = state->shadowstack.count;
@@ -375,6 +380,22 @@ static Type* tryCreateNamespaceType(Semispace* semispace, Type const* typeType) 
     return type;
 }
 
+static Type* tryCreateTypeErrorType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = tryAlloc(semispace, typeType);
+    if (!maybeType) { return nullptr; }
+
+    Type* const type = (Type*)maybeType;
+    *type = (Type){
+        .minSize = tagInt(sizeof(TypeError)),
+        .align = tagInt(alignof(TypeError)),
+        .isBytes = False,
+        .hasCodePtr = False,
+        .isFlex = False
+    };
+
+    return type;
+}
+
 static Type* tryCreateImmType(Semispace* semispace, Type const* typeType) {
     void* const maybeType = tryAlloc(semispace, typeType);
     if (!maybeType) { return nullptr; }
@@ -408,6 +429,7 @@ inline static Type* tryCreateBoolType(Semispace* semispace, Type const* typeType
 }
 
 static PrimopRes callBytecode(State* state);
+static PrimopRes primopAbort(State* state);
 static PrimopRes primopIdentical(State* state);
 static PrimopRes primopFxAdd(State* state);
 static PrimopRes primopFxSub(State* state);
@@ -421,22 +443,24 @@ static SymbolRef intern(State* state, Str name);
 
 static VarRef getVar(State* state, NamespaceRef nsRef, SymbolRef name);
 
-static void installPrimop(State* state, Str name, MethodCode nativeCode) {
-    MethodRef method = createPrimopMethod(state, nativeCode);
-    pushStackRoot(state, (ORef*)&method);
-
-    ClosureRef closure = allocClosure(state, method, Zero);
+static void installPrimopClosure(State* state, Str name, ClosureRef closure) {
     pushStackRoot(state, (ORef*)&closure);
 
-    SymbolRef symbol = intern(state, name);
-    pushStackRoot(state, (ORef*)&symbol);
-
+    SymbolRef const symbol = intern(state, name);
     VarRef const var = getVar(state, state->ns, symbol);
 
     varToPtr(var)->val = closureToORef(closure);
 
-    popStackRoots(state, 3);
+    popStackRoots(state, 1);
 }
+
+static void installPrimop(State* state, Str name, MethodCode nativeCode) {
+    MethodRef const method = createPrimopMethod(state, nativeCode);
+    ClosureRef const closure = allocClosure(state, method, Zero);
+    installPrimopClosure(state, name, closure);
+}
+
+static Var* tryCreateUnboundVar(Semispace* semispace, Type const* unboundType, UnboundRef unbound);
 
 static bool tryCreateState(State* dest, size_t heapSize) {
     Heap heap = tryCreateHeap(heapSize);
@@ -468,6 +492,8 @@ static bool tryCreateState(State* dest, size_t heapSize) {
     if (!varType) { return false; }
     Type const* const nsType = tryCreateNamespaceType(&heap.tospace, typeTypePtr);
     if (!nsType) { return false; }
+    Type const* const typeErrorType = tryCreateTypeErrorType(&heap.tospace, typeTypePtr);
+    if (!nsType) { return false; }
     
     Type const* const fixnumType = tryCreateFixnumType(&heap.tospace, typeTypePtr);
     if (!fixnumType) { return false; }
@@ -484,6 +510,9 @@ static bool tryCreateState(State* dest, size_t heapSize) {
     if (!unbound) { return false; }
     void* const exitPtr = tryAllocFlex(&heap.tospace, continuationType, Zero);
     if (!exitPtr) { return false; }
+
+    Var* const errorHandler = tryCreateUnboundVar(&heap.tospace, varType, tagUnbound(unbound));
+    if (!errorHandler) { return false; }
 
     NamespaceRef ns;
     if (!tryCreateNamespace(&heap.tospace, &ns, nsType, arrayTypePtr)) { return false; }
@@ -510,6 +539,7 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         .unboundType = tagType(unboundType),
         .varType = tagType(varType),
         .nsType = tagType(nsType),
+        .typeErrorType = tagType(typeErrorType),
         
         .fixnumType = tagType(fixnumType),
         .charType = tagType(charType),
@@ -521,9 +551,16 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         .unbound = tagUnbound(unbound),
         .exit = tagClosure(exitPtr),
 
+        .errorHandler = tagVar(errorHandler),
+
         .shadowstack = newShadowstack()
     };
 
+    MethodRef const abortMethod = createPrimopMethod(dest, primopAbort);
+    ClosureRef const abortClosure = allocClosure(dest, abortMethod, Zero);
+    varToPtr(dest->errorHandler)->val = closureToORef(abortClosure);
+
+    installPrimopClosure(dest, (Str){"abort", /*FIXME:*/ 5}, abortClosure);
     installPrimop(dest, (Str){"identical?", /*FIXME:*/ 10}, primopIdentical);
     installPrimop(dest, (Str){"fx+", /*FIXME:*/ 3}, primopFxAdd);
     installPrimop(dest, (Str){"fx-", /*FIXME:*/ 3}, primopFxSub);
@@ -575,6 +612,16 @@ inline static bool isContinuation(State const* state, ORef v) {
         && eq(typeToORef(typeOf(state, v)), typeToORef(state->continuationType));
 }
 
+inline static bool isType(State const* state, ORef v) {
+    return isHeaped(v)
+        && eq(typeToORef(typeOf(state, v)), typeToORef(state->typeType));
+}
+
+inline static bool isTypeError(State const* state, ORef v) {
+    return isHeaped(v)
+        && eq(typeToORef(typeOf(state, v)), typeToORef(state->typeErrorType));
+}
+
 [[maybe_unused]]
 static void assertStateInTospace(State const* state) {
     if (isHeaped(state->method)) {
@@ -613,6 +660,8 @@ static void assertStateInTospace(State const* state) {
             assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(v)));
         }
     }
+
+    assert(allocatedInSemispace(&state->heap.tospace, varToPtr(state->errorHandler)));
 
     {
         size_t const stackRootCount = state->shadowstack.count;
@@ -893,4 +942,19 @@ static ContinuationRef allocContinuation(
     ptr->pc = pc;
 
     return tagContinuation(ptr);
+}
+
+static TypeErrorRef createTypeError(State* state, TypeRef type, ORef val) {
+    TypeError* ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->typeErrorType));
+    if (mustCollect(ptr)) {
+        pushStackRoot(state, (ORef*)&type);
+        pushStackRoot(state, &val);
+        collect(state);
+        popStackRoots(state, 2);
+        ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->typeErrorType));
+    }
+
+    *ptr = (TypeError){.type = type, .val = val};
+
+    return tagTypeError(ptr);
 }

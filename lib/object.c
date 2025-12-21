@@ -233,7 +233,8 @@ inline static ORef emptyListToORef(EmptyListRef v) { return (ORef){v.bits}; }
 
 typedef enum PrimopRes {
     PRIMOP_RES_CONTINUE,
-    PRIMOP_RES_TAILCALL
+    PRIMOP_RES_TAILCALL,
+    PRIMOP_RES_ABORT
 } PrimopRes;
 
 struct State;
@@ -339,4 +340,23 @@ inline static NamespaceRef uncheckedORefToNamespace(ORef v) { return (NamespaceR
 
 inline static Namespace* namespaceToPtr(NamespaceRef v) {
     return (Namespace*)(void*)(v.bits & ~tag_bits);
+}
+
+typedef struct TypeError {
+    TypeRef type;
+    ORef val;
+} TypeError;
+
+typedef struct TypeErrorRef { uintptr_t bits; } TypeErrorRef;
+
+inline static TypeErrorRef tagTypeError(TypeError* ptr) {
+    return (TypeErrorRef){(uintptr_t)(void*)ptr | (uintptr_t)TAG_HEAPED};
+}
+
+inline static ORef typeErrorToORef(TypeErrorRef v) { return (ORef){v.bits}; }
+
+inline static TypeErrorRef uncheckedORefToTypeError(ORef v) { return (TypeErrorRef){v.bits}; }
+
+inline static TypeError* typeErrorToPtr(TypeErrorRef v) {
+    return (TypeError*)(void*)(v.bits & ~tag_bits);
 }

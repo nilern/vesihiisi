@@ -102,9 +102,11 @@ int main(int /*argc*/, char** /*argv*/) {
             }
 
             ClosureRef const closure = allocClosure(&state, method, Zero);
-            ORef const res = run(&state, closure);
-            print(&state, stdout, res);
-            puts("");
+            VMRes const res = run(&state, closure);
+            if (res.success) {
+                print(&state, stdout, res.val);
+                putc('\n', stdout);
+            }
 
             free(line);
         } else {

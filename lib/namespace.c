@@ -1,3 +1,12 @@
+static Var* tryCreateUnboundVar(Semispace* semispace, Type const* varType, UnboundRef unbound) {
+    Var* ptr = tryAlloc(semispace, varType);
+    if (!ptr) { return ptr; }
+
+    *ptr = (Var){.val = unboundToORef(unbound)};
+
+    return ptr;
+}
+
 static VarRef createUnboundVar(State* state) {
     Var* ptr = tryAlloc(&state->heap.tospace, typeToPtr(state->varType));
     if (mustCollect(ptr)) {

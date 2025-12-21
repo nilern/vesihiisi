@@ -242,8 +242,17 @@ static IRName exprToIR(
                             params = paramsPair->cdr;
                         } else if (isEmptyList(state, params)) {
                             break;
+                        } else if (isa(state, state->symbolType, params)) {
+                            SymbolRef const paramSym = uncheckedORefToSymbol(params);
+
+                            IRName const paramName = renameSymbol(compiler, paramSym);
+                            pushIRParam(compiler, entryBlock, paramName);
+                            defSymbolIRName(&fnEnv, paramSym, paramName, BINDINGS_PAR);
+                            innerFn.hasVarArg = true;
+
+                            break;
                         } else {
-                            assert(false); // TODO: Varargs (or error)
+                            assert(false); // TODO: Proper improper params error
                         }
                     }
 

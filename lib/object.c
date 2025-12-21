@@ -248,6 +248,7 @@ typedef struct Method {
     MethodCode nativeCode;
     ORef code;
     ORef consts;
+    Bool hasVarArg;
     TypeRef domain[];
 } Method;
 

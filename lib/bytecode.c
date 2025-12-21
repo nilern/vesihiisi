@@ -165,6 +165,9 @@ static void disassembleNested(State const* state, FILE* dest, MethodRef methodRe
     size_t const arity = (uintptr_t)fixnumToInt(flexLength(methodToORef(methodRef)));
     for (size_t i = 0; i < arity; ++i) {
         if (i > 0) { putc(' ', dest); }
+        if (i == arity - 1 && eq(boolToORef(method->hasVarArg), boolToORef(True))) {
+            fputs(". ", dest);
+        }
         print(state, dest, typeToORef(method->domain[i]));
     }
     fputs(")\n", dest);

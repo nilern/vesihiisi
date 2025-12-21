@@ -928,7 +928,7 @@ static PairRef allocPair(State* state) {
 }
 
 static Method* tryAllocBytecodeMethod(
-    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity
+    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg
 ) {
     Method* ptr = tryAllocFlex(&state->heap.tospace, typeToPtr(state->methodType), arity);
     if (!ptr) { return ptr; }
@@ -936,21 +936,23 @@ static Method* tryAllocBytecodeMethod(
     *ptr = (Method){
         .nativeCode = callBytecode,
         .code = byteArrayToORef(code),
-        .consts = arrayToORef(consts)
+        .consts = arrayToORef(consts),
+        .hasVarArg = hasVarArg
     };
 
     return ptr;
 }
 
 static Method* allocBytecodeMethodOrDie(
-    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity
+    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg
 ) {
     Method* ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->methodType), arity);
 
     *ptr = (Method){
         .nativeCode = callBytecode,
         .code = byteArrayToORef(code),
-        .consts = arrayToORef(consts)
+        .consts = arrayToORef(consts),
+        .hasVarArg = hasVarArg
     };
 
     return ptr;
@@ -981,7 +983,8 @@ static MethodRef vcreatePrimopMethod(
     *ptr = (Method){
         .nativeCode = nativeCode,
         .code = fixnumToORef(Zero),
-        .consts = fixnumToORef(Zero)
+        .consts = fixnumToORef(Zero),
+        .hasVarArg = False // Varargs primops not needed (at least for now)
     };
     memcpy(ptr->domain, domain, arity * sizeof *domain); // Side benefit of the array: `memcpy`
 

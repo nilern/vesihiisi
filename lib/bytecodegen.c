@@ -59,10 +59,11 @@ static MethodRef buildMethod(
 
     size_t const arity = fn->blocks[0]->paramCount - 2;
     Fixnum const fxArity = tagInt((intptr_t)arity);
-    Method* maybeMethod = tryAllocBytecodeMethod(state, code, consts, fxArity);
+    Bool const hasVarArg = tagBool(fn->hasVarArg);
+    Method* maybeMethod = tryAllocBytecodeMethod(state, code, consts, fxArity, hasVarArg);
     if (mustCollect(maybeMethod)) {
         collectTracingIR(state, toplevelFn);
-        maybeMethod = allocBytecodeMethodOrDie(state, code, consts, fxArity);
+        maybeMethod = allocBytecodeMethodOrDie(state, code, consts, fxArity, hasVarArg);
     }
     for (size_t i = 0; i < arity; ++i) {
         maybeMethod->domain[i] = state->anyType; // TODO: Parameter types from source (when given)

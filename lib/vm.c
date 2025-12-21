@@ -242,6 +242,21 @@ static VMRes run(State* state, ClosureRef selfRef) {
                     continue;
                 }
 
+                if (eq(boolToORef(methodPtr->hasVarArg), boolToORef(True))) {
+                    size_t const arity = (uintptr_t)fixnumToInt(flexLength(method));
+                    size_t const minArity = arity - 1;
+                    uint8_t const callArgc = state->entryRegc - firstArgReg;
+                    size_t const varargCount = callArgc - minArity;
+
+                    ArrayRef const varargsRef = createArray(state, tagInt((intptr_t)varargCount));
+                    ORef* const varargs = arrayToPtr(varargsRef);
+                    for (size_t i = 0; i < varargCount; ++i) {
+                        varargs[i] = state->regs[firstArgReg + minArity + i];
+                    }
+
+                    state->regs[firstArgReg + minArity] = arrayToORef(varargsRef);
+                }
+
                 trampoline = false;
             } else {
                 switch (methodPtr->nativeCode(state)) {

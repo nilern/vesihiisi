@@ -28,14 +28,29 @@ static ORef checkDomain(State* state) {
 
     uint8_t const callArity = state->entryRegc - firstArgReg;
     if (callArity != arity) {
-        return arityErrorToORef(createArityError(state, calleeRef, tagInt(callArity)));
+        if (!(unwrapBool(method->hasVarArg) && callArity >= arity - 1)) {
+            return arityErrorToORef(createArityError(state, calleeRef, tagInt(callArity)));
+        }
     }
 
-    for (size_t i = 0; i < arity; ++i) {
+    bool const hasVarArg = unwrapBool(method->hasVarArg);
+    size_t const minArity = !hasVarArg ? arity : arity - 1;
+
+    for (size_t i = 0; i < minArity; ++i) {
         TypeRef const type = method->domain[i];
         ORef const v = state->regs[firstArgReg + i];
         if (!isa(state, type, v)) {
             return typeErrorToORef(createTypeError(state, type, v));
+        }
+    }
+
+    if (hasVarArg) {
+        TypeRef const type = method->domain[minArity];
+        for (size_t i = minArity; i < callArity; ++i) {
+            ORef const v = state->regs[firstArgReg + i];
+            if (!isa(state, type, v)) {
+                return typeErrorToORef(createTypeError(state, type, v));
+            }
         }
     }
 

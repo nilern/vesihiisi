@@ -75,6 +75,8 @@ typedef struct IRFn {
     ORef* consts;
     uint8_t constCount;
     uint8_t constCap;
+
+    bool hasVarArg;
 } IRFn;
 
 static void markIRBlock(State* state, struct IRBlock* block);
@@ -378,7 +380,9 @@ static IRFn createIRFn(Compiler* compiler) {
 
         .consts = consts,
         .constCount = 0,
-        .constCap = constCap
+        .constCap = constCap,
+
+        .hasVarArg = false
     };
 }
 
@@ -713,6 +717,9 @@ static void printBlock(
     size_t const paramCount = block->paramCount;
     for (size_t i = 0; i < paramCount; ++i) {
         if (i > 0) { fputc(' ', dest); }
+        if (i == paramCount - 1 && block == fn->blocks[0] && fn->hasVarArg) {
+            fputs(". ", dest);
+        }
         printName(state, dest, compiler, block->params[i]);
     }
     fputc(')', dest);

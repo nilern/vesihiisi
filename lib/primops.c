@@ -11,6 +11,7 @@ static ORef getErrorHandler(State const* state) {
 static PrimopRes primopTypeError(State* state, TypeRef type, ORef v) {
     state->regs[calleeReg] = getErrorHandler(state);
     state->regs[firstArgReg] = typeErrorToORef(createTypeError(state, type, v));
+    state->entryRegc = 3;
     return PRIMOP_RES_TAILCALL;
 }
 

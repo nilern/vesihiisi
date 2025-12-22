@@ -49,7 +49,6 @@ static void bitSetSet(Arena* arena, BitSet* bits, size_t n) {
 
         memcpy(newWords, bits->words, bits->wordCount * sizeof *newWords);
 
-        free(bits->words);
         bits->words = newWords;
         bits->wordCap = newCap;
     }
@@ -90,7 +89,6 @@ static void bitSetUnionInto(Arena* arena, BitSet* dest, BitSet const* src) {
             newWords[i] = dest->words[i] | src->words[i];
         }
 
-        free(dest->words);
         dest->words = newWords;
         dest->wordCap = newCap;
     } else {

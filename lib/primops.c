@@ -128,7 +128,7 @@ static PrimopRes primopFxDiv(State* state) {
     intptr_t const y = uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
 
     if (y == 0) { assert(false); } // TODO: Proper error
-    state->regs[retReg] = fixnumToORef(tagInt(x / y));
+    state->regs[retReg] = fixnumToORef(tagInt(x / y)); // TODO: Overflow check
 
     return PRIMOP_RES_CONTINUE;
 }

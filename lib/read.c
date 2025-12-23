@@ -14,7 +14,8 @@ inline static Parser createParser(Str src) {
 
 inline static bool isSymbolChar(char c) {
     return isalpha(c) || c == '!' || c == '?'
-        || c == '+' || c == '-' || c == '*' || c == '/';
+        || c == '+' || c == '-' || c == '*' || c == '/'
+        || c == '=' || c == '<' || c == '>';
 }
 
 static bool read(State* state, ORef* dest, Parser* parser) {

@@ -392,3 +392,7 @@ inline static ArityErrorRef uncheckedORefToArityError(ORef v) { return (ArityErr
 inline static ArityError* arityErrorToPtr(ArityErrorRef v) {
     return (ArityError*)(void*)(v.bits & ~tag_bits);
 }
+
+#define toORef(v) _Generic((v), \
+    TypeRef: (ORef){(v).bits}, \
+    ClosureRef: (ORef){(v).bits})

@@ -415,13 +415,13 @@ static SymbolRef intern(State* state, Str name);
 
 static VarRef getVar(State* state, NamespaceRef nsRef, SymbolRef name);
 
-static void installPrimopClosure(State* state, Str name, ClosureRef closure) {
-    pushStackRoot(state, (ORef*)&closure);
+static void installPrimordial(State* state, Str name, ORef v) {
+    pushStackRoot(state, &v);
 
     SymbolRef const symbol = intern(state, name);
     VarRef const var = getVar(state, state->ns, symbol);
 
-    varToPtr(var)->val = closureToORef(closure);
+    varToPtr(var)->val =v;
 
     popStackRoots(state, 1);
 }
@@ -432,7 +432,7 @@ static void installPrimop(State* state, Str name, MethodCode nativeCode, Fixnum 
     MethodRef const method = vcreatePrimopMethod(state, nativeCode, arity, domain);
     va_end(domain);
     ClosureRef const closure = allocClosure(state, method, Zero);
-    installPrimopClosure(state, name, closure);
+    installPrimordial(state, name, toORef(closure));
 }
 
 static Var* tryCreateUnboundVar(Semispace* semispace, Type const* unboundType, UnboundRef unbound);
@@ -542,7 +542,9 @@ static bool tryCreateState(State* dest, size_t heapSize) {
     ClosureRef const abortClosure = allocClosure(dest, abortMethod, Zero);
     varToPtr(dest->errorHandler)->val = closureToORef(abortClosure);
 
-    installPrimopClosure(dest, (Str){"abort", /*FIXME:*/ 5}, abortClosure);
+    installPrimordial(dest, (Str){"<fixnum>", /*FIXME:*/ 8}, toORef(dest->fixnumType));
+
+    installPrimordial(dest, (Str){"abort", /*FIXME:*/ 5}, toORef(abortClosure));
     installPrimop(dest, (Str){"identical?", /*FIXME:*/ 10}, primopIdentical,
                   tagInt(2), dest->anyType, dest->anyType);
     installPrimop(dest, (Str){"fx+", /*FIXME:*/ 3}, primopFxAdd,

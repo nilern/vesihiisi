@@ -67,13 +67,25 @@ static MethodRef buildMethod(
     size_t const arity = fn->blocks[0]->paramCount - 2;
     Fixnum const fxArity = tagInt((intptr_t)arity);
     Bool const hasVarArg = tagBool(fn->hasVarArg);
-    Method* maybeMethod = tryAllocBytecodeMethod(state, code, consts, fxArity, hasVarArg);
+    uintptr_t const hash =
+        fnv1aHash_n((char const*)toPtr(code), (uintptr_t)fixnumToInt(flexLength(toORef(code))));
+    Fixnum const fxHash = tagInt((intptr_t)hash);
+    Method* maybeMethod = tryAllocBytecodeMethod(state, code, consts, fxArity, hasVarArg, fxHash);
     if (mustCollect(maybeMethod)) {
         collectTracingIR(state, toplevelFn);
-        maybeMethod = allocBytecodeMethodOrDie(state, code, consts, fxArity, hasVarArg);
+        maybeMethod = allocBytecodeMethodOrDie(state, code, consts, fxArity, hasVarArg, fxHash);
     }
-    for (size_t i = 0; i < arity; ++i) {
-        maybeMethod->domain[i] = state->anyType; // TODO: Parameter types from source (when given)
+    if (fn->domain.count == 0) {
+        for (size_t i = 0; i < arity; ++i) {
+            maybeMethod->domain[i] = toORef(state->anyType);
+        }
+    } else {
+        for (size_t i = 0; i < arity; ++i) {
+            IRName const typeName = fn->domain.vals[i];
+            if (!irNameIsValid(typeName)) {
+                maybeMethod->domain[i] = toORef(state->anyType);
+            } // else leave zeroed for specialization to fill in
+        }
     }
     MethodRef const method = tagMethod(maybeMethod);
 
@@ -116,13 +128,17 @@ inline static void pushDisplacement(MethodBuilder* builder, size_t displacement)
     pushCodeByte(builder, (uint8_t)displacement); // FIXME: `displacement` may not fit in one byte
 }
 
-static void emitClose(MethodBuilder* builder, Args const* args) {
-    size_t const arity = args->count;
-    BytefulBitSet bits = newBytefulBitSet(arity); // Need at least `arity` bits, likely more
+static void emitRegBits(
+    MethodBuilder* builder, IRName const* names, size_t count, bool specializeHack
+) {
+    BytefulBitSet bits = newBytefulBitSet(count); // Need at least `count` bits, likely more
 
-    // Set bits for each arg:
-    for (size_t i = 0; i < arity; ++i) {
-        bytefulBitSetSet(&bits, args->names[i].index);
+    // Set bits for each register:
+    for (size_t i = 0; i < count; ++i) {
+        size_t const regIdx = names[i].index;
+        if (!specializeHack || regIdx != 0) { // FIXME: Hack for `specialize`, assumes that r0 cannot happen
+            bytefulBitSetSet(&bits, regIdx);
+        }
     }
 
     // Encode bitset backwards into `builder`:
@@ -134,6 +150,16 @@ static void emitClose(MethodBuilder* builder, Args const* args) {
     pushCodeByte(builder, (uint8_t)byteCount);
 
     freeBytefulBitSet(&bits);
+}
+
+static void emitClose(MethodBuilder* builder, Args const* args) {
+    emitRegBits(builder, args->names, args->count, false);
+}
+
+static void emitConst(MethodBuilder* builder, IRName name, IRConst c) {
+    pushCodeByte(builder, c.index);
+    pushReg(builder, name);
+    pushOp(builder, OP_CONST);
 }
 
 static MethodRef emitMethod(State* state, IRFn* toplevelFn, IRFn* fn);
@@ -154,21 +180,27 @@ static void emitStmt(
         pushOp(builder, OP_GLOBAL);
     }; break;
 
-    case STMT_CONST_DEF: {
-        pushCodeByte(builder, stmt->constDef.v.index);
-        pushReg(builder, stmt->constDef.name);
-        pushOp(builder, OP_CONST);
+    case STMT_CONST_DEF: emitConst(builder, stmt->constDef.name, stmt->constDef.v); break;
+
+    case STMT_METHOD_DEF: {
+        MethodRef const method = emitMethod(state, toplevelFn, &stmt->methodDef.fn);
+        setFnConst(fn, stmt->methodDef.v, methodToORef(method));
+
+        if (stmt->methodDef.fn.domain.count == 0) {
+            emitConst(builder, stmt->methodDef.name, stmt->methodDef.v);
+        } else {
+            emitRegBits(builder, stmt->methodDef.fn.domain.vals, stmt->methodDef.fn.domain.count,
+                        true);
+            pushCodeByte(builder, stmt->methodDef.v.index);
+            pushReg(builder, stmt->methodDef.name);
+            pushOp(builder, OP_SPECIALIZE);
+        }
     }; break;
 
-    case STMT_FN_DEF: {
-        // FIXME: Makes GC issues in `buildMethod` even worse (need to treat whole compilation
-        // unit as GC roots, not just the fn `buildMethod` is consuming):
-        MethodRef const method = emitMethod(state, toplevelFn, &stmt->fnDef.fn);
-        setFnConst(fn, stmt->fnDef.v, methodToORef(method));
-
-        emitClose(builder, &stmt->fnDef.closes);
-        pushCodeByte(builder, stmt->fnDef.v.index);
-        pushReg(builder, stmt->fnDef.name);
+    case STMT_CLOSURE: {
+        emitClose(builder, stmt->closure.closes);
+        pushReg(builder, stmt->closure.method);
+        pushReg(builder, stmt->closure.name);
         pushOp(builder, OP_CLOSURE);
     }; break;
 

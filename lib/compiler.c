@@ -114,9 +114,9 @@ static void markIRStmt(State* state, IRStmt* stmt) {
     switch (stmt->type) {
     case STMT_GLOBAL_DEF: case STMT_GLOBAL: case STMT_CONST_DEF: case STMT_CLOVER: break;
 
-    case STMT_FN_DEF: markIRFn(state, &stmt->fnDef.fn); break;
+    case STMT_METHOD_DEF: markIRFn(state, &stmt->methodDef.fn); break;
 
-    case STMT_MOVE: case STMT_SWAP: break;
+    case STMT_CLOSURE: case STMT_MOVE: case STMT_SWAP: break;
     }
 }
 
@@ -124,9 +124,9 @@ static void assertIRStmtInTospace(State const* state, IRStmt const* stmt) {
     switch (stmt->type) {
     case STMT_GLOBAL_DEF: case STMT_GLOBAL: case STMT_CONST_DEF: case STMT_CLOVER: break;
 
-    case STMT_FN_DEF: assertIRFnInTospace(state, &stmt->fnDef.fn); break;
+    case STMT_METHOD_DEF: assertIRFnInTospace(state, &stmt->methodDef.fn); break;
 
-    case STMT_MOVE: case STMT_SWAP: break;
+    case STMT_CLOSURE: case STMT_MOVE: case STMT_SWAP: break;
     }
 }
 
@@ -185,8 +185,48 @@ static IRFn createIRFn(Compiler* compiler) {
         .constCount = 0,
         .constCap = constCap,
 
+        .domain = (IRDomain){.vals = nullptr, .count = 0, .cap = 0},
         .hasVarArg = false
     };
+}
+
+static void setParamType(Compiler* compiler, IRDomain* domain, size_t idx, IRName typeName) {
+    if (!domain->vals) {
+        size_t cap = 2;
+        if (idx >= cap) { cap = idx + 1; }
+        domain->vals = amalloc(&compiler->arena, cap * sizeof *domain->vals);
+        domain->cap = cap;
+    } else if (idx >= domain->cap) {
+        size_t newCap = domain->cap + domain->cap / 2;
+        if (idx >= newCap) { newCap = idx + 1; }
+        domain->vals =
+            arealloc(&compiler->arena, domain->vals, domain->cap, newCap * sizeof *domain->vals);
+        domain->cap = newCap;
+    }
+
+    for (size_t i = domain->count; i < idx; ++i) {
+        domain->vals[i] = invalidIRName;
+    }
+
+    domain->vals[idx] = typeName;
+
+    domain->count = idx + 1;
+}
+
+
+void completeIRDomain(Compiler *compiler, IRDomain *domain, size_t arity) {
+    if (domain->vals) {
+        if (arity > domain->cap) {
+            domain->vals = arealloc(&compiler->arena, domain->vals, domain->cap, arity);
+            domain->cap = arity;
+        }
+
+        for (size_t i = domain->count; i < arity; ++i) {
+            domain->vals[i] = invalidIRName;
+        }
+
+        domain->count = arity;
+    }
 }
 
 static IRConst pushFnConst(Compiler* compiler, IRFn* fn, ORef c) {
@@ -391,16 +431,24 @@ static void printStmt(
         fprintf(dest, " %u))", clover.idx);
     }; break;
 
-    case STMT_FN_DEF: {
-        FnDef const* const fnDef = &stmt->fnDef;
+    case STMT_METHOD_DEF: {
+        MethodDef const* const methodDef = &stmt->methodDef;
         fprintf(dest, "(let ");
-        printName(state, dest, compiler, fnDef->name);
-        fprintf(dest, " (closure\n");
-        printNestedIRFn(state, dest, compiler, printName, &fnDef->fn, nesting + 2);
-        fputc('\n', dest);
-        for (size_t i = 0; i < nesting + 2; ++i) { fprintf(dest, "  "); }
-        printArgs(state, dest, compiler, printName, &fnDef->closes);
+        printName(state, dest, compiler, methodDef->name);
+        fprintf(dest, " (method\n");
+        printNestedIRFn(state, dest, compiler, printName, &methodDef->fn, nesting + 2);
         fprintf(dest, "))\n");
+    }; break;
+
+    case STMT_CLOSURE: {
+        IRClosure const* const closure = &stmt->closure;
+        fprintf(dest, "(let ");
+        printName(state, dest, compiler, closure->name);
+        fprintf(dest, " (closure ");
+        printName(state, dest, compiler, closure->method);
+        if (closure->closes->count > 0) { putc(' ', dest); }
+        printArgs(state, dest, compiler, printName, closure->closes);
+        fprintf(dest, "))");
     }; break;
 
     case STMT_MOVE: {
@@ -435,7 +483,7 @@ static void printTransfer(
         printName(state, dest, compiler, transfer->call.callee);
         fprintf(dest, " (");
         printIRLabel(dest, transfer->call.retLabel);
-        fputc(' ', dest);
+        if (transfer->call.closes.count > 0) { fputc(' ', dest); }
         printArgs(state, dest, compiler, printName, &transfer->call.closes);
         fprintf(dest, ") ");
         printArgs(state, dest, compiler, printName, &transfer->call.args);
@@ -543,15 +591,23 @@ static void printNestedIRFn(
     IRFn const* fn, size_t nesting
 ) {
     for (size_t i = 0; i < nesting; ++i) { fprintf(dest, "  "); }
-    fprintf(dest, "(fn\n");
+    fprintf(dest, "(fn (");
     
+    size_t const domainCount = fn->domain.count;
+    for (size_t i = 0; i < domainCount; ++i) {
+        if (i > 0) { putc(' ', dest); }
+        if (i == domainCount - 1 && fn->hasVarArg) { fprintf(dest, ". "); }
+        printName(state, dest, compiler, fn->domain.vals[i]);
+    }
+    fprintf(dest, ")\n");
+
     size_t const blockCount = fn->blockCount;
     for (size_t i = 0; i < blockCount; ++i) {
         if (i > 0) { fprintf(dest, "\n\n"); }
         printBlock(state, dest, compiler, printName, fn, nesting + 1, fn->blocks[i]);
     }
     
-    fprintf(dest, ")");
+    putc(')', dest);
 }
 
 static void printIRFn(
@@ -560,4 +616,3 @@ static void printIRFn(
 ) {
     printNestedIRFn(state, dest, compiler, printName, fn, 0);
 }
-

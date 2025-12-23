@@ -16,7 +16,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
     Closure const* const self = closureToPtr(selfRef);
     ORef const method = self->method;
     Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
-    assert(methodPtr->nativeCode == callBytecode);
+    assert(isHeaped(methodPtr->code));
     state->method = method;
     state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
     state->pc = 0;
@@ -92,6 +92,42 @@ static VMRes run(State* state, ClosureRef selfRef) {
             state->regs[destReg] = state->consts[constIdx];
         }; continue;
 
+        case OP_SPECIALIZE: {
+            uint8_t const destReg = state->code[state->pc++];
+            uint8_t const constIdx = state->code[state->pc++];
+            uint8_t const typeSetByteCount = state->code[state->pc++];
+            size_t typeCount = 0;
+            // OPTIMIZE:
+            for (size_t i = 0; i < typeSetByteCount; ++i) {
+                typeCount += stdc_count_ones(state->code[state->pc++]);
+            }
+
+            // OPTIMIZE:
+            ArrayRef const types = createArray(state, tagInt((intptr_t)typeCount));
+            {
+                size_t const end = state->pc;
+                size_t const start = end - typeSetByteCount;
+                for (size_t byteIdx = 0, typeIdx = 0; byteIdx < typeSetByteCount; ++byteIdx) {
+                    uint8_t const byte = state->code[start + byteIdx];
+                    for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
+                        if ((byte >> (UINT8_WIDTH - 1 - bitIdx)) & 1) {
+                            size_t const regIdx = byteIdx + bitIdx;
+                            ORef const maybeType = state->regs[regIdx];
+                            if (!isType(state, maybeType)) {
+                                return (VMRes){}; // TODO: Signal type error properly
+                            }
+                            toPtr(types)[typeIdx++] = maybeType;
+                        }
+                    }
+                }
+            }
+            assert(isMethod(state, state->consts[constIdx]));
+            MethodRef const generic = uncheckedORefToMethod(state->consts[constIdx]);
+            MethodRef const method = specialize(state, generic, types);
+
+            state->regs[destReg] = toORef(method);
+        }; continue;
+
         case OP_BR: {
             uint8_t const displacement = state->code[state->pc++];
 
@@ -127,7 +163,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
 
         case OP_CLOSURE: {
             uint8_t const destReg = state->code[state->pc++];
-            uint8_t const methodConstIdx = state->code[state->pc++];
+            uint8_t const methodReg = state->code[state->pc++];
             uint8_t const cloverSetByteCount = state->code[state->pc++];
             size_t cloverCount = 0;
             // OPTIMIZE:
@@ -135,7 +171,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
                 cloverCount += stdc_count_ones(state->code[state->pc++]);
             }
 
-            MethodRef const method = uncheckedORefToMethod(state->consts[methodConstIdx]);
+            MethodRef const method = uncheckedORefToMethod(state->regs[methodReg]);
             ClosureRef const closure = allocClosure(state, method, tagInt((intptr_t)cloverCount));
             // TODO: DRY wrt. OP_CALL:
             // OPTIMIZE:
@@ -235,7 +271,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
             ORef const method = closure->method;
             assert(isMethod(state, method));
             Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
-            if (methodPtr->nativeCode == callBytecode) {
+            if (isHeaped(methodPtr->code)) {
                 state->method = method;
                 state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
                 state->pc = 0;

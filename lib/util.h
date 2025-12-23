@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef struct MaybeSize {
     size_t val;
@@ -28,6 +29,9 @@ typedef struct Str {
     size_t len;
 } Str;
 
+// TODO: Enforce string literal `data`, incidentally avoiding `strlen`:
+inline static Str strLit(char const* data) { return (Str){.data = data, .len = strlen(data)}; }
+
 static bool strEq(Str s1, Str s2);
 
 typedef struct StringBuilder {
@@ -44,4 +48,8 @@ static void stringBuilderPush(StringBuilder* s, char c);
 
 inline static void freeStringBuilder(StringBuilder* s) { free(s->data); }
 
+static uint64_t fnv1aHash_n(char const* ptr, size_t count);
+
 static uint64_t fnv1aHash(Str s);
+
+static uint64_t hashCombine(uint64_t h1, uint64_t h2);

@@ -13,7 +13,7 @@ inline static Parser createParser(Str src) {
 }
 
 inline static bool isSymbolChar(char c) {
-    return isalpha(c) || c == '!' || c == '?'
+    return isalpha(c) || c == ':' || c == '!' || c == '?'
         || c == '+' || c == '-' || c == '*' || c == '/'
         || c == '=' || c == '<' || c == '>';
 }

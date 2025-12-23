@@ -44,7 +44,8 @@ static ORef checkDomain(State* state) {
     size_t const minArity = !hasVarArg ? arity : arity - 1;
 
     for (size_t i = 0; i < minArity; ++i) {
-        TypeRef const type = method->domain[i];
+        assert(isType(state, method->domain[i]));
+        TypeRef const type = uncheckedORefToTypeRef(method->domain[i]);
         ORef const v = state->regs[firstArgReg + i];
         if (!isa(state, type, v)) {
             return typeErrorToORef(createTypeError(state, type, v));
@@ -52,7 +53,8 @@ static ORef checkDomain(State* state) {
     }
 
     if (hasVarArg) {
-        TypeRef const type = method->domain[minArity];
+        assert(isType(state, method->domain[minArity]));
+        TypeRef const type = uncheckedORefToTypeRef(method->domain[minArity]);
         for (size_t i = minArity; i < callArity; ++i) {
             ORef const v = state->regs[firstArgReg + i];
             if (!isa(state, type, v)) {

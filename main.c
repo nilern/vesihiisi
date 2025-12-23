@@ -7,6 +7,7 @@
 #include "lib/object.c"
 #include "lib/heap.c"
 #include "lib/state.c"
+#include "lib/flyweights.c"
 #include "lib/read.c"
 #include "lib/print.c"
 #include "lib/bytecode.c"

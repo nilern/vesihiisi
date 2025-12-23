@@ -70,7 +70,11 @@ static void print(State const* state, FILE* dest, ORef v) {
         } else if (isContinuation(state, v)) {
             fprintf(dest, "#<continuation>");
         } else if (isType(state, v)) {
-            fprintf(dest, "#<type>");
+            Type const* const type = toPtr(uncheckedORefToTypeRef(v));
+
+            fprintf(dest, "#<type ");
+            print(state, dest, toORef(type->name));
+            putc('>', dest);
         } else if (isTypeError(state, v)) {
             TypeError const* const err = typeErrorToPtr(uncheckedORefToTypeError(v));
             fputs("#<type-error ", dest);

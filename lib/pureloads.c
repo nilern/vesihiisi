@@ -266,15 +266,27 @@ static IRStmt stmtWithPureLoads(
 
     case STMT_CLOVER: assert(false); break; // Should not exist yet
 
-    case STMT_FN_DEF: {
-        fnWithPureLoads(compiler, &stmt.fnDef.fn);
+    case STMT_METHOD_DEF: {
+        size_t const domainCount = stmt.methodDef.fn.domain.count;
+        for (size_t i = 0; i < domainCount; ++i) {
+            stmt.methodDef.fn.domain.vals[i] =
+                deepLexicalUse(compiler, env, newStmts, stmt.methodDef.fn.domain.vals[i]);
+        }
 
+        fnWithPureLoads(compiler, &stmt.methodDef.fn);
+        IRName const methodName = freshName(compiler);
+        IRName const closureName = stmt.methodDef.name;
+        stmt.methodDef.name = methodName;
+        pushIRStmt(compiler, newStmts, stmt);
+
+        IRClosure closure =
+            (IRClosure){.name = closureName, .method = methodName, .closes = stmt.methodDef.closes};
         linearizeCloses(
-            compiler, env, newStmts, &stmt.fnDef.closes, &stmt.fnDef.fn.blocks[0]->liveIns
-        );
+            compiler, env, newStmts, closure.closes, &stmt.methodDef.fn.blocks[0]->liveIns);
+        stmt = (IRStmt){.closure = closure, STMT_CLOSURE};
     }; break;
 
-    case STMT_MOVE: case STMT_SWAP: assert(false); break; // Should not exist yet
+    case STMT_CLOSURE: case STMT_MOVE: case STMT_SWAP: assert(false); break; // Should not exist yet
     }
 
     return stmt;

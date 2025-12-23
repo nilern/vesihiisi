@@ -85,15 +85,22 @@ static void enlivenStmt(Compiler* compiler, BitSet* liveOuts, IRStmt* stmt) {
 
     case STMT_CLOVER: assert(false); break; // Should not exist yet
 
-    case STMT_FN_DEF: {
-        rangeStart(liveOuts, stmt->fnDef.name);
+    case STMT_METHOD_DEF: {
+        rangeStart(liveOuts, stmt->methodDef.name);
 
-        IRFn* const innerFn = &stmt->fnDef.fn;
+        IRFn* const innerFn = &stmt->methodDef.fn;
         enlivenFn(compiler, innerFn);
         bitSetUnionInto(&compiler->arena, liveOuts, fnFreeVars(innerFn));
+
+        for (size_t i = innerFn->domain.count; i-- > 0;) {
+            IRName const type = innerFn->domain.vals[i];
+            if (irNameIsValid(type)) {
+                requireLive(compiler, liveOuts, type);
+            }
+        }
     }; break;
 
-    case STMT_MOVE: case STMT_SWAP: assert(false); break; // Should not exist yet
+    case STMT_CLOSURE: case STMT_MOVE: case STMT_SWAP: assert(false); break; // Should not exist yet
     }
 }
 

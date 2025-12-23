@@ -145,7 +145,7 @@ static MaybeMove allocTransferArgReg(RegEnv* env, IRName var, Reg reg) {
 }
 
 static Reg deallocVarReg(RegEnv* env, IRName var) {
-    assert(env->varRegs[var.index].hasVal);
+    assert(env->varRegs[var.index].hasVal); // FIXME: Triggers for dead variables
     Reg const reg = env->varRegs[var.index].val;
     env->varRegs[var.index] = (MaybeReg){};
     env->regVars[reg.index] = invalidIRName;
@@ -455,22 +455,33 @@ static void regAllocStmt(Compiler* compiler, RegEnv* env, IRStmt* stmt) {
         stmt->constDef.name = (IRName){deallocVarReg(env, stmt->constDef.name).index};
     }; break;
 
-    // FIXME: Clovers should be in register order:
     case STMT_CLOVER: {
         stmt->clover.name = (IRName){deallocVarReg(env, stmt->clover.name).index};
         stmt->clover.closure = (IRName){getVarReg(env, stmt->clover.closure).index};
     }; break;
 
-    case STMT_FN_DEF: {
-        stmt->fnDef.name = (IRName){deallocVarReg(env, stmt->fnDef.name).index};
+    case STMT_METHOD_DEF: {
+        stmt->methodDef.name = (IRName){deallocVarReg(env, stmt->methodDef.name).index};
 
-        // FIXME: Clovers should be in register order:
-        for (size_t i = stmt->fnDef.closes.count; i-- > 0;) {
-            stmt->fnDef.closes.names[i] =
-                (IRName){getVarReg(env, stmt->fnDef.closes.names[i]).index};
+        for (size_t i = stmt->methodDef.fn.domain.count; i-- > 0;) {
+            IRName const typeName = stmt->methodDef.fn.domain.vals[i];
+            if (irNameIsValid(typeName)) {
+                stmt->methodDef.fn.domain.vals[i] = (IRName){getVarReg(env, typeName).index};
+            }
         }
 
-        regAllocFn(compiler, &stmt->fnDef.fn);
+        regAllocFn(compiler, &stmt->methodDef.fn);
+    }; break;
+
+    case STMT_CLOSURE: {
+        stmt->closure.name = (IRName){deallocVarReg(env, stmt->closure.name).index};
+
+        for (size_t i = stmt->closure.closes->count; i-- > 0;) {
+            stmt->closure.closes->names[i] =
+                (IRName){getVarReg(env, stmt->closure.closes->names[i]).index};
+        }
+
+        stmt->closure.method = (IRName){getVarReg(env, stmt->closure.method).index};
     }; break;
 
     case STMT_MOVE: case STMT_SWAP: break; // Generated during this pass => no-op

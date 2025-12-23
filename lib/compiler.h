@@ -17,6 +17,12 @@ typedef struct IRLabel { size_t blockIndex; } IRLabel;
 
 typedef struct IRConst { uint8_t index; } IRConst;
 
+typedef struct IRDomain {
+    IRName* vals;
+    size_t count;
+    size_t cap;
+} IRDomain;
+
 struct IRBlock;
 
 typedef struct IRFn {
@@ -28,6 +34,7 @@ typedef struct IRFn {
     uint8_t constCount;
     uint8_t constCap;
 
+    IRDomain domain;
     bool hasVarArg;
 } IRFn;
 
@@ -59,12 +66,18 @@ typedef struct Clover {
     uint8_t idx;
 } Clover;
 
-typedef struct FnDef {
+typedef struct MethodDef {
     IRName name;
     IRFn fn;
     IRConst v;
-    Args closes;
-} FnDef;
+    Args* closes; // Shared with `IRClosure`
+} MethodDef;
+
+typedef struct IRClosure {
+    IRName name;
+    IRName method;
+    Args* closes; // Shared with `MethodDef`
+} IRClosure;
 
 typedef struct MoveStmt {
     IRName dest;
@@ -82,7 +95,8 @@ typedef struct IRStmt {
         IRGlobal global;
         ConstDef constDef;
         Clover clover;
-        FnDef fnDef;
+        MethodDef methodDef;
+        IRClosure closure;
         MoveStmt mov;
         SwapStmt swap;
     };
@@ -91,7 +105,8 @@ typedef struct IRStmt {
         STMT_GLOBAL,
         STMT_CONST_DEF,
         STMT_CLOVER,
-        STMT_FN_DEF,
+        STMT_METHOD_DEF,
+        STMT_CLOSURE,
         STMT_MOVE,
         STMT_SWAP
     } type;
@@ -185,6 +200,10 @@ static IRName renameIRName(Compiler* compiler, IRName name);
 
 static IRFn createIRFn(Compiler* compiler);
 
+static void setParamType(Compiler* compiler, IRDomain* domain, size_t idx, IRName typeName);
+
+static void completeIRDomain(Compiler* compiler, IRDomain* domain, size_t arity);
+
 static IRConst fnConst(Compiler* compiler, IRFn* fn, ORef c);
 
 static IRConst allocFnConst(Compiler* compiler, IRFn* fn);
@@ -226,8 +245,6 @@ inline static IRStmt globalToStmt(IRGlobal global) {
 inline static IRStmt constDefToStmt(ConstDef cdef) {
     return (IRStmt){{.constDef = cdef}, STMT_CONST_DEF};
 }
-
-inline static IRStmt fnDefToStmt(FnDef fnDef) { return (IRStmt){{.fnDef = fnDef}, STMT_FN_DEF}; }
 
 inline static IRStmt moveToStmt(MoveStmt mov) { return (IRStmt){{.mov = mov}, STMT_MOVE}; }
 

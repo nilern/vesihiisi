@@ -85,13 +85,14 @@ static void indexStmtClovers(Compiler* compiler, CloverIdxs const* env, IRStmt* 
         stmt->clover.idx = getCloverIdx(env, stmt->clover.origName);
     }; break;
 
-    case STMT_FN_DEF: {
-        IRBlock const* const entryBlock = stmt->fnDef.fn.blocks[0];
-        CloverIdxs innerEnv = closeCloverIdxs(compiler, &entryBlock->liveIns, &stmt->fnDef.closes);
-        indexFnClovers(compiler, &innerEnv, &stmt->fnDef.fn);
+    case STMT_METHOD_DEF: {
+        IRBlock const* const entryBlock = stmt->methodDef.fn.blocks[0];
+        CloverIdxs innerEnv =
+            closeCloverIdxs(compiler, &entryBlock->liveIns, stmt->methodDef.closes);
+        indexFnClovers(compiler, &innerEnv, &stmt->methodDef.fn);
     }; break;
 
-    case STMT_MOVE: case STMT_SWAP: break;
+    case STMT_CLOSURE: case STMT_MOVE: case STMT_SWAP: break;
     }
 }
 

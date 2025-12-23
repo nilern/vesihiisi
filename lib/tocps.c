@@ -208,16 +208,54 @@ static IRName exprToIR(
 
 [[nodiscard]]
 static bool paramToCPS(
-    State const* state, Compiler* compiler, ToCpsEnv* fnEnv, IRBlock* entryBlock, ORef param
+    State const* state, Compiler* compiler,
+    IRFn* outerFn, ToCpsEnv const* outerEnv, IRBlock** outerBlock,
+    IRFn* fn, ToCpsEnv* fnEnv, IRBlock* entryBlock,
+    size_t idx, ORef param
 ) {
-    if (!isSymbol(state, param)) { return false; }
-    SymbolRef const paramSym = uncheckedORefToSymbol(param);
+    if (isSymbol(state, param)) {
+        SymbolRef const paramSym = uncheckedORefToSymbol(param);
 
-    IRName const paramName = renameSymbol(compiler, paramSym);
-    pushIRParam(compiler, entryBlock, paramName);
-    defSymbolIRName(fnEnv, paramSym, paramName, BINDINGS_PAR);
+        IRName const paramName = renameSymbol(compiler, paramSym);
+        pushIRParam(compiler, entryBlock, paramName);
+        defSymbolIRName(fnEnv, paramSym, paramName, BINDINGS_PAR);
 
-    return true;
+        return true;
+    } else if (isPair(state, param)) {
+        Pair const* const paramPair = toPtr(uncheckedORefToPair(param));
+
+        ORef const op = paramPair->car;
+        if (!eq(op, toORef(state->ofType))) { return false; }
+
+        ORef anyArgs = paramPair->cdr;
+        if (!isPair(state, anyArgs)) { return false; }
+        Pair const* args = toPtr(uncheckedORefToPair(anyArgs));
+
+        ORef const maybeSym = args->car;
+        if (!isSymbol(state, maybeSym)) { return false; }
+        SymbolRef const sym = uncheckedORefToSymbol(maybeSym);
+
+        anyArgs = args->cdr;
+        if (!isPair(state, anyArgs)) { return false; }
+        args = toPtr(uncheckedORefToPair(anyArgs));
+
+        ORef const type = args->car;
+
+        if (!isEmptyList(state, args->cdr)) { return false; }
+
+        IRName const typeName = exprToIR(state, compiler, outerFn, outerEnv, outerBlock, type,
+            (ToCpsCont){.type = TO_CPS_CONT_VAL});
+
+        // TODO: DRY with symbol branch above:
+        IRName const paramName = renameSymbol(compiler, sym);
+        pushIRParam(compiler, entryBlock, paramName);
+        defSymbolIRName(fnEnv, sym, paramName, BINDINGS_PAR);
+        setParamType(compiler, &fn->domain, idx, typeName);
+
+        return true;
+    } else {
+        return false;
+    }
 }
 
 static IRName fnToCPS(
@@ -239,24 +277,34 @@ static IRName fnToCPS(
     }
     Pair const* argsPair = pairToPtr(uncheckedORefToPair(args));
 
-    for (ORef params = argsPair->car; !isEmptyList(state, params);) {
+    size_t arity = 0;
+
+    for (ORef params = argsPair->car; !isEmptyList(state, params); ++arity) {
+        // TODO: Is this just bad syntax design?:
+        // Has to be first because `(x y . (: zs <t>))` = `(x y : zs <t>)`:
+        if (paramToCPS(state, compiler, fn, env, block,
+                       &innerFn, &fnEnv, entryBlock, arity, params)
+        ) {
+            innerFn.hasVarArg = true;
+            break;
+        }
+
         if (isPair(state, params)) {
             Pair const* const paramsPair = pairToPtr(uncheckedORefToPair(params));
 
-            if (!paramToCPS(state, compiler, &fnEnv, entryBlock, paramsPair->car)) {
+            if (!paramToCPS(state, compiler, fn, env, block,
+                            &innerFn, &fnEnv, entryBlock, arity, paramsPair->car)
+            ) {
                 assert(false); // TODO: Proper param error
             }
             params = paramsPair->cdr;
             continue;
         }
 
-        if (paramToCPS(state, compiler, &fnEnv, entryBlock, params)) {
-            innerFn.hasVarArg = true;
-            break;
-        }
-
         assert(false); // TODO: Proper improper params error
     }
+
+    completeIRDomain(compiler, &innerFn.domain, arity);
 
     args = argsPair->cdr;
     if (!isPair(state, args)) {
@@ -274,12 +322,12 @@ static IRName fnToCPS(
     exprToIR(state, compiler, &innerFn, &fnEnv, &entryBlock, body, retK);
     freeToCpsEnv(&fnEnv);
 
-
     IRName const name = toCpsContDestName(compiler, k);
-    // Placeholder, will be replaced with `Method` in codegen:
     IRConst const constIdx = allocFnConst(compiler, fn);
+    Args* const closes = amalloc(&compiler->arena, sizeof *closes);
+    *closes = createArgs(compiler);
     pushIRStmt(compiler, &(*block)->stmts,
-               fnDefToStmt((FnDef){name, innerFn, constIdx, createArgs(compiler)}));
+               (IRStmt){.methodDef = {name, innerFn, constIdx, closes}, STMT_METHOD_DEF});
 
     if (k.type == TO_CPS_CONT_RETURN) {
         createIRReturn(*block, k.ret.cont, name);

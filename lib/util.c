@@ -46,15 +46,20 @@ static void stringBuilderPush(StringBuilder* s, char c) {
     s->data[s->len++] = c;
 }
 
-// FIXME: Replace with SipHash to prevent DoS attacks:
-static uint64_t fnv1aHash(Str s) {
+static uint64_t fnv1aHash_n(char const* ptr, size_t count) {
     uint64_t hash = 14695981039346656037u;
-    
-    for (size_t i = 0; i < s.len; ++i) {
-        hash ^= (uint8_t)s.data[i];
+
+    for (size_t i = 0; i < count; ++i) {
+        hash ^= (uint8_t)ptr[i];
         hash *= 1099511628211 ;
     }
-    
+
     return hash;
 }
+
+// FIXME: Replace with SipHash to prevent DoS attacks:
+static uint64_t fnv1aHash(Str s) { return fnv1aHash_n(s.data, s.len); }
+
+// OPTIMIZE: More sophisticated combination algorithm:
+static uint64_t hashCombine(uint64_t h1, uint64_t h2) { return 3 * h1 + h2; }
 

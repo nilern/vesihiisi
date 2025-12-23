@@ -7,6 +7,35 @@
 #include "util.h"
 #include "object.h"
 #include "heap.h"
+#include "flyweights.h"
+
+static char const* const typeNames[] = {
+    "<fixnum>",
+    "",
+    "<char>",
+    "",
+    "<flonum>",
+    "",
+    "<bool>",
+    "",
+    "<any>",
+    "<type>",
+    "<string>",
+    "<array!>",
+    "<byte-array!>",
+    "<symbol>",
+    "<pair>",
+    "<empty-list>",
+    "<unbound>",
+    "<method>",
+    "<fn>",
+    "<continuation>",
+    "<var>",
+    "<ns>",
+    "<type-error>",
+    "<arity-error>"
+};
+static_assert(sizeof(typeNames) / sizeof(*typeNames) == BOOTSTRAP_TYPE_COUNT);
 
 static ORef const SymbolTableTombstone = {((uintptr_t)false << tag_width) | (uintptr_t)TAG_BOOL};
 
@@ -54,6 +83,7 @@ static Shadowstack newShadowstack(void) {
 static void freeState(State* state) {
     freeHeap(&state->heap);
     freeSymbols(&state->symbols);
+    freeSpecializations(&state->specializations);
     freeShadowstack(&state->shadowstack);
 }
 
@@ -95,7 +125,10 @@ static void markRoots(State* state) {
     }
 }
 
-inline static void updateWeakRefs(State* state) { pruneSymbols(&state->symbols); }
+static void updateWeakRefs(State* state) {
+    pruneSymbols(&state->symbols);
+    pruneSpecializations(&state->specializations);
+}
 
 static void initSpecialPurposeRegs(State* state) {
     ORef const anyMethod = state->method;
@@ -405,9 +438,8 @@ static PrimopRes primopFxMul(State* state);
 static PrimopRes primopFxDiv(State* state);
 
 static MethodRef vcreatePrimopMethod(
-    State* state, MethodCode nativeCode, Fixnum arity, va_list domain
-);
-static MethodRef createPrimopMethod(State* state, MethodCode nativeCode, Fixnum arity, ...);
+    State* state, MethodCode nativeCode, Fixnum arity, va_list domain);
+static MethodRef createPrimopMethod(State* state, MethodCode nativeCode,Fixnum arity, ...);
 
 static ClosureRef allocClosure(State* state, MethodRef method, Fixnum cloverCount);
 
@@ -436,6 +468,16 @@ static void installPrimop(State* state, Str name, MethodCode nativeCode, Fixnum 
 }
 
 static Var* tryCreateUnboundVar(Semispace* semispace, Type const* unboundType, UnboundRef unbound);
+
+static void nameType(State* state, TypeRef typeRef, Str name) {
+    pushStackRoot(state, (ORef*)&typeRef);
+    SymbolRef const nameSym = intern(state, name);
+    popStackRoots(state, 1);
+
+    Type* const type = toPtr(typeRef);
+    type->hash = toPtr(nameSym)->hash;
+    type->name = nameSym;
+}
 
 static bool tryCreateState(State* dest, size_t heapSize) {
     Heap heap = tryCreateHeap(heapSize);
@@ -529,6 +571,7 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         .boolType = tagType(boolType),
         
         .symbols = newSymbolTable(),
+        .specializations = newSpecializations(),
         .emptyList = tagEmptyList(emptyListPtr),
         .unbound = tagUnbound(unbound),
         .exit = tagClosure(exitPtr),
@@ -538,22 +581,34 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         .shadowstack = newShadowstack()
     };
 
+    dest->ofType = intern(dest, strLit(":"));
+
+    for (size_t i = 0; i < BOOTSTRAP_TYPE_COUNT; ++i) {
+        char const* const name = typeNames[i];
+        size_t const nameLen = strlen(name);
+        if (nameLen > 0) {
+            nameType(dest, uncheckedORefToTypeRef(dest->types[i]), (Str){name, nameLen});
+        }
+    }
+
     MethodRef const abortMethod = createPrimopMethod(dest, primopAbort, One, dest->anyType);
-    ClosureRef const abortClosure = allocClosure(dest, abortMethod, Zero);
+    ClosureRef abortClosure = allocClosure(dest, abortMethod, Zero);
+    pushStackRoot(dest, (ORef*)&abortClosure);
     varToPtr(dest->errorHandler)->val = closureToORef(abortClosure);
 
-    installPrimordial(dest, (Str){"<fixnum>", /*FIXME:*/ 8}, toORef(dest->fixnumType));
+    installPrimordial(dest, strLit("<fixnum>"), toORef(dest->fixnumType));
 
-    installPrimordial(dest, (Str){"abort", /*FIXME:*/ 5}, toORef(abortClosure));
-    installPrimop(dest, (Str){"identical?", /*FIXME:*/ 10}, primopIdentical,
+    installPrimordial(dest, strLit("abort"), toORef(abortClosure));
+    popStackRoots(dest, 1);
+    installPrimop(dest, strLit("identical?"), primopIdentical,
                   tagInt(2), dest->anyType, dest->anyType);
-    installPrimop(dest, (Str){"fx+", /*FIXME:*/ 3}, primopFxAdd,
+    installPrimop(dest, strLit("fx+"), primopFxAdd,
                   tagInt(2), dest->fixnumType, dest->fixnumType);
-    installPrimop(dest, (Str){"fx-", /*FIXME:*/ 3}, primopFxSub,
+    installPrimop(dest, strLit("fx-"), primopFxSub,
                   tagInt(2), dest->fixnumType, dest->fixnumType);
-    installPrimop(dest, (Str){"fx*", /*FIXME:*/ 3}, primopFxMul,
+    installPrimop(dest, strLit("fx*"), primopFxMul,
                   tagInt(2), dest->fixnumType, dest->fixnumType);
-    installPrimop(dest, (Str){"fx-quot", /*FIXME:*/ 7}, primopFxDiv,
+    installPrimop(dest, strLit("fx-quot"), primopFxDiv,
                   tagInt(2), dest->fixnumType, dest->fixnumType);
 
     return true;
@@ -601,6 +656,13 @@ static void assertStateInTospace(State const* state) {
 
     for (size_t i = 0; i < state->symbols.cap; ++i) {
         ORef const v = state->symbols.entries[i];
+        if (isHeaped(v)) {
+            assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(v)));
+        }
+    }
+
+    for (size_t i = 0; i < state->specializations.cap; ++i) {
+        ORef const v = state->specializations.entries[i];
         if (isHeaped(v)) {
             assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(v)));
         }
@@ -807,7 +869,7 @@ static PairRef allocPair(State* state) {
 }
 
 static Method* tryAllocBytecodeMethod(
-    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg
+    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash
 ) {
     Method* ptr = tryAllocFlex(&state->heap.tospace, typeToPtr(state->methodType), arity);
     if (!ptr) { return ptr; }
@@ -816,14 +878,15 @@ static Method* tryAllocBytecodeMethod(
         .nativeCode = callBytecode,
         .code = byteArrayToORef(code),
         .consts = arrayToORef(consts),
-        .hasVarArg = hasVarArg
+        .hasVarArg = hasVarArg,
+        .hash = hash
     };
 
     return ptr;
 }
 
 static Method* allocBytecodeMethodOrDie(
-    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg
+    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash
 ) {
     Method* ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->methodType), arity);
 
@@ -831,10 +894,34 @@ static Method* allocBytecodeMethodOrDie(
         .nativeCode = callBytecode,
         .code = byteArrayToORef(code),
         .consts = arrayToORef(consts),
-        .hasVarArg = hasVarArg
+        .hasVarArg = hasVarArg,
+        .hash = hash
     };
 
     return ptr;
+}
+
+static MethodRef allocBytecodeMethod(
+    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash
+) {
+    Method* ptr = tryAllocFlex(&state->heap.tospace, typeToPtr(state->methodType), arity);
+    if (mustCollect(ptr)) {
+        pushStackRoot(state, (ORef*)&code);
+        pushStackRoot(state, (ORef*)&consts);
+        collect(state);
+        popStackRoots(state, 2);
+        ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->methodType), arity);
+    }
+
+    *ptr = (Method){
+        .nativeCode = callBytecode,
+        .code = byteArrayToORef(code),
+        .consts = arrayToORef(consts),
+        .hasVarArg = hasVarArg,
+        .hash = hash
+    };
+
+    return tagMethod(ptr);
 }
 
 static MethodRef vcreatePrimopMethod(
@@ -859,11 +946,14 @@ static MethodRef vcreatePrimopMethod(
         ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->methodType), fxArity);
     }
 
+    uintptr_t const hash = fnv1aHash_n((char*)&nativeCode, sizeof nativeCode); // HACK
+
     *ptr = (Method){
         .nativeCode = nativeCode,
         .code = fixnumToORef(Zero),
         .consts = fixnumToORef(Zero),
-        .hasVarArg = False // Varargs primops not needed (at least for now)
+        .hasVarArg = False, // Varargs primops not needed (at least for now)
+        .hash = tagInt((intptr_t)hash)
     };
     memcpy(ptr->domain, domain, arity * sizeof *domain); // Side benefit of the array: `memcpy`
 
@@ -871,7 +961,9 @@ static MethodRef vcreatePrimopMethod(
     return tagMethod(ptr);
 }
 
-static MethodRef createPrimopMethod(State* state, MethodCode nativeCode, Fixnum arity, ...) {
+static MethodRef createPrimopMethod(
+    State* state, MethodCode nativeCode, Fixnum arity, ...
+) {
     va_list domain;
     va_start(domain, arity);
     MethodRef method = vcreatePrimopMethod(state, nativeCode, arity, domain);

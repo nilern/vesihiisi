@@ -18,7 +18,7 @@ inline static void disassembleReg(FILE* dest, uint8_t reg) { fprintf(dest, "r%u"
 inline static void disassembleDisplacement(FILE* dest, uint8_t len) { fprintf(dest, "%u", len); }
 
 [[nodiscard]]
-static size_t disassembleCloses(FILE* dest, uint8_t const* code, size_t i) {
+static size_t disassembleRegBits(FILE* dest, uint8_t const* code, size_t i) {
     uint8_t const byteCount = code[i++];
     if (byteCount > 0) { fprintf(dest, "#b"); }
     for (size_t j = 0; j < byteCount; ++j) {
@@ -41,7 +41,7 @@ static size_t disassembleNestedInstr(
     State const* state, FILE* dest, MethodRef methodRef, size_t pc, size_t nesting
 ) {
     Method const* const method = methodToPtr(methodRef);
-    assert(method->nativeCode == callBytecode);
+    assert(isHeaped(method->code));
     uint8_t const* const code = byteArrayToPtr(uncheckedORefToByteArray(method->code));
     ORef const* const consts = arrayToPtr(uncheckedORefToArray(method->consts));
 
@@ -83,8 +83,35 @@ static size_t disassembleNestedInstr(
         disassembleReg(dest, code[pc++]);
         fprintf(dest, " = const ");
         uint8_t const constIdx = code[pc++];
-        fprintf(dest, "%u\t; ", constIdx);
-        print(state, dest, consts[constIdx]); // FIXME: Bounds check
+        fprintf(dest, "%u", constIdx);
+        ORef const c = consts[constIdx]; // FIXME: Bounds check
+
+        if (!isMethod(state, c)) {
+            fprintf(dest, "\t; ");
+            ORef const c = consts[constIdx]; // FIXME: Bounds check
+            print(state, dest, c);
+        } else {
+            MethodRef const innerMethod = uncheckedORefToMethod(c);
+
+            fputc('\n', dest);
+            disassembleNested(state, dest, innerMethod, nesting + 1);
+        }
+    }; break;
+
+    case OP_SPECIALIZE: {
+        disassembleReg(dest, code[pc++]);
+        fprintf(dest, " = specialize ");
+        uint8_t const constIdx = code[pc++];
+        fprintf(dest, "%u ", constIdx);
+        ORef const c = consts[constIdx]; // FIXME: Bounds check
+
+        pc = disassembleRegBits(dest, code, pc);
+
+        fputc('\n', dest);
+
+        assert(isMethod(state, c));
+        MethodRef const innerMethod = uncheckedORefToMethod(c);
+        disassembleNested(state, dest, innerMethod, nesting + 1);
     }; break;
 
     case OP_BRF: {
@@ -105,15 +132,10 @@ static size_t disassembleNestedInstr(
 
     case OP_CLOSURE: {
         disassembleReg(dest, code[pc++]);
-        uint8_t const methodConstIdx = code[pc++];
-        fprintf(dest, " = closure %u ", methodConstIdx);
-
-        pc = disassembleCloses(dest, code, pc);
-        fputc('\n', dest);
-
-        // TODO: Bounds & type check:
-        MethodRef const innerMethod = uncheckedORefToMethod(consts[methodConstIdx]);
-        disassembleNested(state, dest, innerMethod, nesting + 1);
+        fprintf(dest, " = closure ");
+        disassembleReg(dest, code[pc++]);
+        putc(' ', dest);
+        pc = disassembleRegBits(dest, code, pc);
     }; break;
 
     case OP_CLOVER: {
@@ -125,7 +147,7 @@ static size_t disassembleNestedInstr(
 
     case OP_CALL: {
         fprintf(dest, "call %u ", code[pc++]);
-        pc = disassembleCloses(dest, code, pc);
+        pc = disassembleRegBits(dest, code, pc);
     }; break;
 
     case OP_TAILCALL: {
@@ -153,11 +175,11 @@ static void disassembleNested(State const* state, FILE* dest, MethodRef methodRe
         if (i == arity - 1 && eq(boolToORef(method->hasVarArg), boolToORef(True))) {
             fputs(". ", dest);
         }
-        print(state, dest, typeToORef(method->domain[i]));
+        print(state, dest, method->domain[i]);
     }
     fputs(")\n", dest);
 
-    if (method->nativeCode == callBytecode) {
+    if (isHeaped(method->code)) {
         size_t const codeCount =
             (uintptr_t)fixnumToInt(byteArrayCount(uncheckedORefToByteArray(method->code)));
         for (size_t pc = 0; pc < codeCount;) {

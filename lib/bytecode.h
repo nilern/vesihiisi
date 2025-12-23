@@ -13,6 +13,7 @@ typedef enum Opcode : uint8_t {
     // TODO: OP_GLOBAL_SET
     OP_GLOBAL,
     OP_CONST,
+    OP_SPECIALIZE,
     // TODO: OP_BOX
     // TODO: OP_BOX_SET
     // TODO: OP_BOX_GET

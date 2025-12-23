@@ -85,12 +85,16 @@ inline static void* tryORefToPtr(ORef oref) {
     return isHeaped(oref) ? uncheckedORefToPtr(oref) : nullptr;
 }
 
+typedef struct SymbolRef { uintptr_t bits; } SymbolRef;
+
 typedef struct Type {
     Fixnum minSize;
     Fixnum align;
     Bool isBytes;
     Bool hasCodePtr;
     Bool isFlex;
+    Fixnum hash;
+    SymbolRef name;
 } Type;
 
 typedef struct TypeRef { uintptr_t bits; } TypeRef;
@@ -167,8 +171,6 @@ typedef struct Symbol {
     Fixnum hash;
     char name[];
 } Symbol;
-
-typedef struct SymbolRef { uintptr_t bits; } SymbolRef;
 
 inline static SymbolRef tagSymbol(Symbol* ptr) {
     return (SymbolRef){(uintptr_t)(void*)ptr | (uintptr_t)TAG_HEAPED};
@@ -257,7 +259,8 @@ typedef struct Method {
     ORef code;
     ORef consts;
     Bool hasVarArg;
-    TypeRef domain[];
+    Fixnum hash;
+    ORef domain[];
 } Method;
 
 typedef struct MethodRef { uintptr_t bits; } MethodRef;
@@ -393,6 +396,21 @@ inline static ArityError* arityErrorToPtr(ArityErrorRef v) {
     return (ArityError*)(void*)(v.bits & ~tag_bits);
 }
 
+#define uncheckedToORef(v) (ORef){(v).bits}
+
 #define toORef(v) _Generic((v), \
-    TypeRef: (ORef){(v).bits}, \
-    ClosureRef: (ORef){(v).bits})
+    TypeRef: uncheckedToORef(v), \
+    SymbolRef: uncheckedToORef(v), \
+    ArrayRef: uncheckedToORef(v), \
+    ByteArrayRef: uncheckedToORef(v), \
+    MethodRef: uncheckedToORef(v), \
+    ClosureRef: uncheckedToORef(v))
+
+#define toPtr(v) _Generic((v), \
+    TypeRef: typeToPtr, \
+    SymbolRef: symbolToPtr, \
+    ArrayRef: arrayToPtr, \
+    ByteArrayRef: byteArrayToPtr, \
+    PairRef: pairToPtr, \
+    MethodRef: methodToPtr \
+    )(v)

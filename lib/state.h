@@ -9,6 +9,14 @@ typedef struct SymbolTable {
     size_t cap;
 } SymbolTable;
 
+static ORef const SymbolTableTombstone;
+
+typedef struct Specializations {
+    ORef* entries;
+    size_t count;
+    size_t cap;
+} Specializations;
+
 typedef struct Shadowstack {
     ORef** vals;
     size_t count;
@@ -18,7 +26,7 @@ typedef struct Shadowstack {
 #define REG_COUNT 256
 
 #define BOOTSTRAP_TYPE_COUNT 24
-#define BOOTSTRAP_SINGLETON_COUNT 3
+#define BOOTSTRAP_SINGLETON_COUNT 4
 
 typedef struct State {
     ORef method;
@@ -63,12 +71,14 @@ typedef struct State {
     };
 
     SymbolTable symbols;
+    Specializations specializations;
 
     union {
         struct {
             EmptyListRef emptyList;
             UnboundRef unbound;
             ClosureRef exit;
+            SymbolRef ofType;
         };
         ORef singletons[BOOTSTRAP_SINGLETON_COUNT];
     };
@@ -151,10 +161,13 @@ inline static uint8_t* allocByteArrayOrDie(State* state, Fixnum count) {
 static PairRef allocPair(State* state);
 
 static Method* tryAllocBytecodeMethod(
-    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg);
+    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash);
 
 static Method* allocBytecodeMethodOrDie(
-    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg);
+    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash);
+
+static MethodRef allocBytecodeMethod(
+    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash);
 
 static ClosureRef allocClosure(State* state, MethodRef method, Fixnum cloverCount);
 

@@ -253,10 +253,8 @@ static void* scanObj(Heap* heap, void* const scan) {
 }
 
 static void collectHeap(Heap* heap) {
-    size_t n = 0;
     for (void* scan = heap->tospace.start; (char*)scan < heap->tospace.free;) {
         scan = nextGrey(scan);
         scan = scanObj(heap, scan);
-        ++n;
     }
 }

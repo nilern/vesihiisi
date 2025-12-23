@@ -1,3 +1,7 @@
+#include <string.h>
+
+#include "compiler.h"
+
 // OPTIMIZE: At this point bitsets are slow because we are usually iterating over them.
 
 typedef struct MaybeIRName {

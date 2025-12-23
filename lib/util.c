@@ -1,14 +1,7 @@
-typedef struct MaybeSize {
-    size_t val;
-    bool hasVal;
-} MaybeSize;
+#include "util.h"
 
-typedef struct MaybeUInt8 {
-    uint8_t val;
-    bool hasVal;
-} MaybeUInt8;
-
-typedef void (*SwapFn)(void* restrict x, void* restrict y);
+#include <stdlib.h>
+#include <string.h>
 
 static void reverse(void* arr, size_t count, size_t size, SwapFn swap) {
     if (count < 2) { return; }
@@ -21,26 +14,10 @@ static void reverse(void* arr, size_t count, size_t size, SwapFn swap) {
     }
 }
 
-typedef struct BucketIdx {
-    size_t idx;
-    bool occupied;
-} BucketIdx;
-
-typedef struct Str {
-    char const* data;
-    size_t len;
-} Str;
-
 static bool strEq(Str s1, Str s2) {
     return s1.len == s2.len
         && strncmp(s1.data, s2.data, s1.len) == 0;
 }
-
-typedef struct StringBuilder {
-    char* data;
-    size_t len;
-    size_t cap;
-} StringBuilder;
 
 static StringBuilder createStringBuilder(void) {
     size_t const cap = 2;
@@ -55,8 +32,6 @@ static StringBuilder createStringBuilder(void) {
     };
 }
 
-inline static Str stringBuilderStr(StringBuilder const* s) { return (Str){s->data, s->len}; }
-
 static void stringBuilderPush(StringBuilder* s, char c) {
     if (s->len == s->cap) {
         size_t const newCap = s->cap + (s->cap >> 1); // cap * 1.5
@@ -70,8 +45,6 @@ static void stringBuilderPush(StringBuilder* s, char c) {
     
     s->data[s->len++] = c;
 }
-
-inline static void freeStringBuilder(StringBuilder* s) { free(s->data); }
 
 // FIXME: Replace with SipHash to prevent DoS attacks:
 static uint64_t fnv1aHash(Str s) {

@@ -1,3 +1,7 @@
+#include "namespace.h"
+
+#include "state.h"
+
 static Var* tryCreateUnboundVar(Semispace* semispace, Type const* varType, UnboundRef unbound) {
     Var* ptr = tryAlloc(semispace, varType);
     if (!ptr) { return ptr; }
@@ -18,17 +22,6 @@ static VarRef createUnboundVar(State* state) {
 
     return tagVar(ptr);
 }
-
-typedef struct FindVarRes {
-    enum {
-        NS_FOUND_VAR,
-        NS_FOUND_VAR_DEST_IDX
-    } type;
-    union {
-        VarRef var;
-        size_t destIndex;
-    };
-} FindVarRes;
 
 static FindVarRes findVar(NamespaceRef nsRef, SymbolRef name) {
     Namespace const* ns = namespaceToPtr(nsRef);

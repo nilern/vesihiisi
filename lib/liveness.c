@@ -1,3 +1,5 @@
+#include "compiler.h"
+
 inline static void requireLive(Compiler* compiler, BitSet* lives, IRName name) {
     bitSetSet(&compiler->arena, lives, name.index);
 }

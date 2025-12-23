@@ -1,28 +1,13 @@
-// TODO: Bigger (only when necessary?) displacements for BR(F)?
+#include "bytecode.h"
 
-// OPTIMIZE: 4-bit opcode with one 4-bit argument when possible?
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 
-typedef enum Opcode : uint8_t {
-    OP_MOVE,
-    OP_SWAP,
-    OP_DEF,
-    // TODO: OP_GLOBAL_SET
-    OP_GLOBAL,
-    OP_CONST,
-    // TODO: OP_BOX
-    // TODO: OP_BOX_SET
-    // TODO: OP_BOX_GET
-    OP_BRF,
-    OP_BR,
-    OP_RET,
-    OP_CLOSURE,
-    OP_CLOVER,
-    // TODO: OP_CONT_CLOVER / OP_RESTORE
-    OP_CALL,
-    OP_TAILCALL // TODO: Encode as call with 0 closes (nontail call always saves at least ret cont)?
-} Opcode;
+#include "state.h"
+#include "primops.h"
+#include "print.h"
 
-// Calling convention:
 static const uint8_t calleeReg = 1;
 static const uint8_t retContReg = 0;
 static const uint8_t firstArgReg = 2;

@@ -1,0 +1,47 @@
+#pragma once
+
+#include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
+
+typedef struct MaybeSize {
+    size_t val;
+    bool hasVal;
+} MaybeSize;
+
+typedef struct MaybeUInt8 {
+    uint8_t val;
+    bool hasVal;
+} MaybeUInt8;
+
+typedef struct BucketIdx {
+    size_t idx;
+    bool occupied;
+} BucketIdx;
+
+typedef void (*SwapFn)(void* restrict x, void* restrict y);
+
+static void reverse(void* arr, size_t count, size_t size, SwapFn swap);
+
+typedef struct Str {
+    char const* data;
+    size_t len;
+} Str;
+
+static bool strEq(Str s1, Str s2);
+
+typedef struct StringBuilder {
+    char* data;
+    size_t len;
+    size_t cap;
+} StringBuilder;
+
+static StringBuilder createStringBuilder(void);
+
+inline static Str stringBuilderStr(StringBuilder const* s) { return (Str){s->data, s->len}; }
+
+static void stringBuilderPush(StringBuilder* s, char c);
+
+inline static void freeStringBuilder(StringBuilder* s) { free(s->data); }
+
+static uint64_t fnv1aHash(Str s);

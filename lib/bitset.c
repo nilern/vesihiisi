@@ -1,8 +1,6 @@
-typedef struct BitSet {
-    uintptr_t* words;
-    size_t wordCount;
-    size_t wordCap;
-} BitSet;
+#include "bitset.h"
+
+#include <string.h>
 
 static BitSet createBitSet(Arena* arena, size_t cap) {
     size_t wordCap = cap / UINTPTR_WIDTH;
@@ -19,14 +17,6 @@ static BitSet bitSetClone(Arena* arena, BitSet const* bits) {
     memcpy(words, bits->words, wordCount * sizeof *words);
 
     return (BitSet){.words = words, .wordCount = wordCount, .wordCap = wordCap};
-}
-
-inline static size_t bitSetLimit(BitSet const* bits) {
-    return bits->wordCount * UINTPTR_WIDTH;
-}
-
-inline static size_t bitSetBitCap(BitSet const* bits) {
-    return bits->wordCap * UINTPTR_WIDTH;
 }
 
 static bool bitSetContains(BitSet const* bits, size_t n) {
@@ -106,16 +96,6 @@ static void bitSetUnionInto(Arena* arena, BitSet* dest, BitSet const* src) {
         );
         dest->wordCount = src->wordCount;
     }
-}
-
-typedef struct BitSetIter {
-    BitSet const* bits;
-    size_t idx;
-    size_t bitCount;
-} BitSetIter;
-
-inline static BitSetIter newBitSetIter(BitSet const* bits) {
-    return (BitSetIter){.bits = bits, .idx = 0, .bitCount = bitSetLimit(bits)};
 }
 
 // OPTIMIZE: Skip empty words and bytes:

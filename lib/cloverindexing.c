@@ -1,3 +1,8 @@
+#include "util.h"
+#include "bitset.h"
+#include "compiler.h"
+#include "regalloc.h"
+
 typedef struct CloverIdxs {
     MaybeUInt8* idxs;
     size_t cap;

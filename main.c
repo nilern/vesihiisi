@@ -1,15 +1,5 @@
 #define _POSIX_C_SOURCE 200809L // For `getline`
 
-#include <stddef.h>
-#include <assert.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <ctype.h>
-#include <string.h>
-#include <stdbit.h>
-#include <stdarg.h>
-
 #include "lib/util.c"
 #include "lib/arena.c"
 #include "lib/bitset.c"

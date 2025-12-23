@@ -1,3 +1,5 @@
+#include "print.h"
+
 static void print(State const* state, FILE* dest, ORef v) {
     switch (getTag(v)) {
     case TAG_FIXNUM:

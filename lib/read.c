@@ -1,3 +1,8 @@
+#include <ctype.h>
+
+#include "util.h"
+#include "state.h"
+
 typedef struct Parser {
     char const* curr;
     char const* end;

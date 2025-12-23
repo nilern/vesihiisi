@@ -1,3 +1,10 @@
+#include <stdbit.h>
+
+#include "state.h"
+#include "bytecode.h"
+#include "primops.h"
+#include "namespace.h"
+
 typedef struct VMRes {
     ORef val;
     bool success;

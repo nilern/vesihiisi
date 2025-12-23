@@ -1,6 +1,13 @@
-// OPTIMIZE: At this point bitsets are slow because we are usually iterating over them.
+#include "regalloc.h"
 
-typedef struct { uint8_t index; } Reg;
+#include <string.h>
+
+#include "util.h"
+#include "compiler.h"
+#include "state.h"
+#include "bytecode.h"
+
+// OPTIMIZE: At this point bitsets are slow because we are usually iterating over them.
 
 inline static bool regEq(Reg reg1, Reg reg2) { return reg1.index == reg2.index; }
 

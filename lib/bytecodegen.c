@@ -1,3 +1,10 @@
+#include <string.h>
+
+#include "compiler.h"
+#include "state.h"
+#include "bytecode.h"
+#include "bytefulbitset.h"
+
 // TODO: Delay const index allocation to here, especially when we get dead code elimination.
 
 typedef struct LabelIdxs {

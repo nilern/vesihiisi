@@ -4,3 +4,13 @@ test/test_heap
 test/test_arena
 test/test_bitset
 
+# Qt Creator stuff:
+vesihiisi.creator
+vesihiisi.creator.user
+vesihiisi.cflags
+vesihiisi.config
+vesihiisi.cxxflags
+vesihiisi.files
+vesihiisi.includes
+.qtc_clangd
+

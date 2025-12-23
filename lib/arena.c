@@ -1,8 +1,7 @@
-typedef struct ArenaFullBlocks {
-    uint8_t** vals;
-    size_t count;
-    size_t cap;
-} ArenaFullBlocks;
+#include "arena.h"
+
+#include <stdlib.h>
+#include <string.h>
 
 static void freeFullBlocks(ArenaFullBlocks* blocks, size_t /*blockSize*/) {
     size_t const count = blocks->count;
@@ -28,17 +27,6 @@ static void pushFullBlock(ArenaFullBlocks* blocks, uint8_t* block) {
 
     blocks->vals[blocks->count++] = block;
 }
-
-typedef struct ArenaHugeObj {
-    size_t size;
-    void* val;
-} ArenaHugeObj;
-
-typedef struct ArenaHugeObjs {
-    ArenaHugeObj* vals;
-    size_t count;
-    size_t cap;
-} ArenaHugeObjs;
 
 static void freeHugeObjs(ArenaHugeObjs* hugeObjs) {
     size_t const count = hugeObjs->count;
@@ -77,15 +65,6 @@ static void* acallocHuge(ArenaHugeObjs* hugeObjs, size_t count, size_t size) {
     return obj;
 }
 
-typedef struct Arena {
-    uint8_t* free;
-    uint8_t* limit;
-    uint8_t* start;
-    size_t blockSize;
-    ArenaFullBlocks fullBlocks;
-    ArenaHugeObjs hugeObjs;
-} Arena;
-
 static void freeArena(Arena* arena) {
     free(arena->start);
     freeFullBlocks(&arena->fullBlocks, arena->blockSize);
@@ -103,7 +82,7 @@ static Arena newArena(size_t blockSize) {
     };
 }
 
-static const size_t defaultArenaBlockSize = 4096; // 4 KiB, a common page size
+static size_t const defaultArenaBlockSize = 4096; // 4 KiB, a common page size
 
 static void arenaGrow(Arena* arena) {
     if (arena->start) {

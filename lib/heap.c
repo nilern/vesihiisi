@@ -1,8 +1,9 @@
-typedef struct Semispace {
-    char* free;
-    char* limit;
-    char* start;
-} Semispace;
+#include "heap.h"
+
+#include <assert.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
 
 static Semispace tryCreateSemispace(size_t size) {
     char* const start = calloc(size, sizeof *start);
@@ -20,10 +21,6 @@ inline static size_t semispaceSize(Semispace const* space) {
 
 inline static bool semispaceContains(Semispace const* space, void const* ptr) {
     return space->start <= (char const*)ptr && (char const*)ptr < space->limit;
-}
-
-inline static bool allocatedInSemispace(Semispace const* space, void const* ptr) {
-    return space->start <= (char const*)ptr && (char const*)ptr < space->free;
 }
 
 static bool semispaceShouldGrow(Semispace const* space, Semispace const* other) {
@@ -51,11 +48,6 @@ static void refurbishSemispace(Semispace* space, Semispace const* other) {
     space->free = space->start;
 }
 
-typedef struct Heap {
-    Semispace tospace;
-    Semispace fromspace;
-} Heap;
-
 static Heap tryCreateHeap(size_t size) {
     size_t const semispaceSize = size / 2;
 
@@ -79,14 +71,6 @@ static void freeSemispace(Semispace* semispace) {
 static void freeHeap(Heap* heap) {
     freeSemispace(&heap->fromspace);
     freeSemispace(&heap->tospace);
-}
-
-inline static bool mustCollect(void const* ptr) {
-#ifdef GC_ALOT
-    return !ptr || true;
-#else
-    return !ptr;
-#endif
 }
 
 [[nodiscard]]
@@ -184,12 +168,6 @@ static void* tryShallowCopy(Heap* heap, void* ptr) {
     memcpy(copy, ptr, size);
 
     return copy;
-}
-
-static void flipSemispaces(Heap* heap) {
-    Semispace const tmp = heap->tospace;
-    heap->tospace = heap->fromspace;
-    heap->fromspace = tmp;
 }
 
 [[nodiscard]]

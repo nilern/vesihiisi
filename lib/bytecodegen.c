@@ -200,7 +200,7 @@ static void emitTransfer(MethodBuilder* builder, IRTransfer const* transfer) {
 
         emitClose(builder, &transfer->call.closes);
 
-        size_t const regCount = 2 + transfer->tailcall.args.count;
+        size_t const regCount = 2 + transfer->call.args.count;
         assert(regCount < UINT8_MAX); // TODO: Handle absurd argument count (probably too late here)
         pushCodeByte(builder, (uint8_t)regCount);
 

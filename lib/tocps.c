@@ -206,6 +206,20 @@ static IRName exprToIR(
     State const* state, Compiler* compiler, IRFn* fn, ToCpsEnv const* env, IRBlock** block,
     ORef expr, ToCpsCont k);
 
+[[nodiscard]]
+static bool paramToCPS(
+    State const* state, Compiler* compiler, ToCpsEnv* fnEnv, IRBlock* entryBlock, ORef param
+) {
+    if (!isSymbol(state, param)) { return false; }
+    SymbolRef const paramSym = uncheckedORefToSymbol(param);
+
+    IRName const paramName = renameSymbol(compiler, paramSym);
+    pushIRParam(compiler, entryBlock, paramName);
+    defSymbolIRName(fnEnv, paramSym, paramName, BINDINGS_PAR);
+
+    return true;
+}
+
 static IRName fnToCPS(
     State const* state, Compiler* compiler, IRFn* fn, ToCpsEnv const* env, IRBlock** block,
     ORef args, ToCpsCont k
@@ -225,35 +239,23 @@ static IRName fnToCPS(
     }
     Pair const* argsPair = pairToPtr(uncheckedORefToPair(args));
 
-    for (ORef params = argsPair->car;;) {
+    for (ORef params = argsPair->car; !isEmptyList(state, params);) {
         if (isPair(state, params)) {
             Pair const* const paramsPair = pairToPtr(uncheckedORefToPair(params));
 
-            ORef const param = paramsPair->car;
-            if (!isSymbol(state, param)) {
+            if (!paramToCPS(state, compiler, &fnEnv, entryBlock, paramsPair->car)) {
                 assert(false); // TODO: Proper param error
             }
-            SymbolRef const paramSym = uncheckedORefToSymbol(param);
-
-            IRName const paramName = renameSymbol(compiler, paramSym);
-            pushIRParam(compiler, entryBlock, paramName);
-            defSymbolIRName(&fnEnv, paramSym, paramName, BINDINGS_PAR);
-
             params = paramsPair->cdr;
-        } else if (isEmptyList(state, params)) {
-            break;
-        } else if (isa(state, state->symbolType, params)) {
-            SymbolRef const paramSym = uncheckedORefToSymbol(params);
-
-            IRName const paramName = renameSymbol(compiler, paramSym);
-            pushIRParam(compiler, entryBlock, paramName);
-            defSymbolIRName(&fnEnv, paramSym, paramName, BINDINGS_PAR);
-            innerFn.hasVarArg = true;
-
-            break;
-        } else {
-            assert(false); // TODO: Proper improper params error
+            continue;
         }
+
+        if (paramToCPS(state, compiler, &fnEnv, entryBlock, params)) {
+            innerFn.hasVarArg = true;
+            break;
+        }
+
+        assert(false); // TODO: Proper improper params error
     }
 
     args = argsPair->cdr;

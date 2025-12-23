@@ -204,331 +204,380 @@ static IRName globalToCPS(
 
 static IRName exprToIR(
     State const* state, Compiler* compiler, IRFn* fn, ToCpsEnv const* env, IRBlock** block,
+    ORef expr, ToCpsCont k);
+
+static IRName fnToCPS(
+    State const* state, Compiler* compiler, IRFn* fn, ToCpsEnv const* env, IRBlock** block,
+    ORef args, ToCpsCont k
+) {
+    IRFn innerFn = createIRFn(compiler);
+
+    IRBlock* entryBlock = createIRBlock(compiler, &innerFn, 0);
+
+    ToCpsEnv fnEnv = createToCpsEnv(env);
+    IRName const self = freshName(compiler);
+    pushIRParam(compiler, entryBlock, self);
+    IRName const ret = freshName(compiler);
+    pushIRParam(compiler, entryBlock, ret);
+
+    if (!isPair(state, args)) {
+        assert(false); // TODO: Proper args error (`(fn)`)
+    }
+    Pair const* argsPair = pairToPtr(uncheckedORefToPair(args));
+
+    for (ORef params = argsPair->car;;) {
+        if (isPair(state, params)) {
+            Pair const* const paramsPair = pairToPtr(uncheckedORefToPair(params));
+
+            ORef const param = paramsPair->car;
+            if (!isSymbol(state, param)) {
+                assert(false); // TODO: Proper param error
+            }
+            SymbolRef const paramSym = uncheckedORefToSymbol(param);
+
+            IRName const paramName = renameSymbol(compiler, paramSym);
+            pushIRParam(compiler, entryBlock, paramName);
+            defSymbolIRName(&fnEnv, paramSym, paramName, BINDINGS_PAR);
+
+            params = paramsPair->cdr;
+        } else if (isEmptyList(state, params)) {
+            break;
+        } else if (isa(state, state->symbolType, params)) {
+            SymbolRef const paramSym = uncheckedORefToSymbol(params);
+
+            IRName const paramName = renameSymbol(compiler, paramSym);
+            pushIRParam(compiler, entryBlock, paramName);
+            defSymbolIRName(&fnEnv, paramSym, paramName, BINDINGS_PAR);
+            innerFn.hasVarArg = true;
+
+            break;
+        } else {
+            assert(false); // TODO: Proper improper params error
+        }
+    }
+
+    args = argsPair->cdr;
+    if (!isPair(state, args)) {
+        assert(false); // TODO: Proper args error (missing body)
+    }
+    argsPair = pairToPtr(uncheckedORefToPair(args));
+
+    ORef const body = argsPair->car;
+
+    if (!isEmptyList(state, argsPair->cdr)) {
+        assert(false); // TODO: Proper args error or implement body stmts
+    }
+
+    ToCpsCont const retK = {{.ret = {.cont = ret}}, TO_CPS_CONT_RETURN};
+    exprToIR(state, compiler, &innerFn, &fnEnv, &entryBlock, body, retK);
+    freeToCpsEnv(&fnEnv);
+
+
+    IRName const name = toCpsContDestName(compiler, k);
+    // Placeholder, will be replaced with `Method` in codegen:
+    IRConst const constIdx = allocFnConst(compiler, fn);
+    pushIRStmt(compiler, &(*block)->stmts,
+               fnDefToStmt((FnDef){name, innerFn, constIdx, createArgs(compiler)}));
+
+    if (k.type == TO_CPS_CONT_RETURN) {
+        createIRReturn(*block, k.ret.cont, name);
+    }
+
+    return name;
+}
+
+static IRName ifToCPS(
+    State const* state, Compiler* compiler, IRFn* fn, ToCpsEnv const* env, IRBlock** block,
+    ORef args, ToCpsCont k
+) {
+    // OPTIMIZE: Avoid creating `goto`s to `goto`s:
+
+    if (!isPair(state, args)) {
+        assert(false); // TODO
+    }
+    Pair const* argsPair = pairToPtr(uncheckedORefToPair(args));
+
+    ORef const cond = argsPair->car;
+    args = argsPair->cdr;
+    if (!isPair(state, args)) {
+        assert(false); // TODO
+    }
+    argsPair = pairToPtr(uncheckedORefToPair(args));
+
+    ORef const conseq = argsPair->car;
+    args = argsPair->cdr;
+    if (!isPair(state, args)) {
+        assert(false); // TODO
+    }
+    argsPair = pairToPtr(uncheckedORefToPair(args));
+
+    ORef const alt = argsPair->car;
+    if (!isEmptyList(state, argsPair->cdr)) {
+        assert(false); // TODO
+    }
+
+    ToCpsCont const splitK = (ToCpsCont){{}, TO_CPS_CONT_VAL};
+    IRName const condName = exprToIR(state, compiler, fn, env, block, cond, splitK);
+        // Will patch targets shortly:
+    IRIf* ifTransfer = createIRIf(*block, condName, (IRLabel){}, (IRLabel){});
+    IRLabel const ifLabel = (*block)->label;
+
+    IRBlock* conseqBlock = createIRBlock(compiler, fn, 1);
+    pushCaller(conseqBlock, ifLabel);
+    ifTransfer->conseq = conseqBlock->label;
+    IRName const conseqName =
+        exprToIR(state, compiler, fn, env, &conseqBlock, conseq, k);
+
+    IRBlock* altBlock = createIRBlock(compiler, fn, 1);
+    pushCaller(altBlock, ifLabel);
+    ifTransfer->alt = altBlock->label;
+    IRName const altName = exprToIR(state, compiler, fn, env, &altBlock, alt, k);
+
+    if (k.type != TO_CPS_CONT_RETURN) {
+        // FIXME: If we avoid `goto`s to `goto`s, 2 might not suffice:
+        IRBlock* const joinBlock = createIRBlock(compiler, fn, 2);
+        // FIXME: If `k` provides a target name it should be used for `phi`. Now it
+        // gets pushed into the branches and possibly multiply defined:
+        IRName const phi = freshName(compiler);
+        pushIRParam(compiler, joinBlock, phi);
+
+        createIRGoto(compiler, conseqBlock, joinBlock->label, conseqName);
+        pushCaller(joinBlock, conseqBlock->label);
+
+        createIRGoto(compiler, altBlock, joinBlock->label, altName);
+        pushCaller(joinBlock, altBlock->label);
+
+        *block = joinBlock;
+        return phi;
+    } else {
+        return condName; // Arbitrary value, will not be used by callee
+    }
+}
+
+static IRName quoteToCPS(
+    State const* state, Compiler* compiler, IRFn* fn, IRBlock** block, ORef args, ToCpsCont k
+) {
+    if (!isPair(state, args)) {
+        assert(false); // TODO
+    }
+    Pair const* const argsPair = pairToPtr(uncheckedORefToPair(args));
+
+    if (!isEmptyList(state, argsPair->cdr)) {
+        assert(false); // TODO
+    }
+
+    return constToCPS(compiler, fn, *block, argsPair->car, k);
+}
+
+static IRName defToCPS(
+    State const* state, Compiler* compiler, IRFn* fn, ToCpsEnv const* env, IRBlock** block,
+    ORef args, ToCpsCont k
+) {
+    if (!isPair(state, args)) {
+        assert(false); // TODO
+    }
+    Pair const* argsPair = pairToPtr(uncheckedORefToPair(args));
+
+    ORef const pat = argsPair->car;
+    if (!isSymbol(state, pat)) {
+        assert(false); // TODO
+    }
+    SymbolRef const name = uncheckedORefToSymbol(pat);
+    args = argsPair->cdr;
+    if (!isPair(state, args)) {
+        assert(false); // TODO
+    }
+    argsPair = pairToPtr(uncheckedORefToPair(args));
+
+    ORef const val = argsPair->car;
+    if (!isEmptyList(state, argsPair->cdr)) {
+        assert(false); // TODO
+    }
+
+    ToCpsCont const defK = (ToCpsCont){{}, TO_CPS_CONT_VAL};
+    IRName const valName = exprToIR(state, compiler, fn, env, block, val, defK);
+    IRConst const nameIdx = fnConst(compiler, fn, symbolToORef(name));
+    pushIRStmt(compiler, &(*block)->stmts,
+               globalDefToStmt((GlobalDef){nameIdx, valName}));
+    // FIXME: Return e.g. nil/undefined/unspecified instead of new val:
+    IRName const resName = valName;
+    if (k.type == TO_CPS_CONT_RETURN) {
+        createIRReturn(*block, k.ret.cont, resName);
+    }
+
+    return resName;
+}
+
+static IRName letToCPS(
+    State const* state, Compiler* compiler, IRFn* fn, ToCpsEnv const* env, IRBlock** block,
+    ORef args, ToCpsCont k
+) {
+    ToCpsEnv letEnv = createToCpsEnv(env);
+
+    if (!isPair(state, args)) {
+        assert(false); // TODO: Proper invalid args error
+    }
+    Pair const* argsPair = pairToPtr(uncheckedORefToPair(args));
+
+    for (ORef bindings = argsPair->car;;) {
+        if (isPair(state, bindings)) {
+            Pair const* const bindingsPair =
+                pairToPtr(uncheckedORefToPair(bindings));
+
+            ORef const binding = bindingsPair->car;
+            if (!isPair(state, binding)) {
+                assert(false); // TODO: Proper invalid binding error
+            }
+            Pair const* const bindingPair =
+                pairToPtr(uncheckedORefToPair(binding));
+
+            ORef const pat = bindingPair->car;
+            if (!isSymbol(state, pat)) {
+                assert(false); // TODO: Proper invalid binder error
+            }
+            SymbolRef const binder = uncheckedORefToSymbol(pat);
+
+            ORef const bindingArgs = bindingPair->cdr;
+            if (!isPair(state, bindingArgs)) {
+                assert(false); // TODO: Proper invalid binding error
+            }
+            Pair const* const bindingArgsPair =
+                pairToPtr(uncheckedORefToPair(bindingArgs));
+
+            ORef const val = bindingArgsPair->car;
+
+            if (!isEmptyList(state, bindingArgsPair->cdr)) {
+                assert(false); // TODO: Proper invali [[maybe_unused]]d binding error
+            }
+
+            IRName const binderName = renameSymbol(compiler, binder);
+            ToCpsCont const valK = (ToCpsCont){
+                .name = binderName,
+                .type = TO_CPS_CONT_BIND
+            };
+            IRName const finalName =
+                exprToIR(state, compiler, fn, &letEnv, block, val, valK);
+            // If `finalName != binderName` we have a local copy e.g.
+            // `(let ((x 5) (y x)) ...)` and `exprToIR` emitted nothing. Putting
+            // `finalName` to env implements the rest of copy propagation:
+            defSymbolIRName(&letEnv, binder, finalName, BINDINGS_SEQ);
+
+            bindings = bindingsPair->cdr;
+        } else if (isEmptyList(state, bindings)) {
+            break;
+        } else {
+            assert(false); // TODO: Proper invalid bindings error
+        }
+    }
+
+    args = argsPair->cdr;
+    if (!isPair(state, args)) {
+        assert(false); // TODO: Proper invalid args error
+    }
+    argsPair = pairToPtr(uncheckedORefToPair(args));
+
+    ORef const body = argsPair->car;
+
+    if (!isEmptyList(state, argsPair->cdr)) {
+        assert(false); // TODO: Proper invalid args error
+    }
+
+    IRName const bodyName = exprToIR(state, compiler, fn, &letEnv, block, body, k);
+    freeToCpsEnv(&letEnv);
+    return bodyName;
+}
+
+static IRName callToCPS(
+    State const* state, Compiler* compiler, IRFn* fn, ToCpsEnv const* env, IRBlock** block,
+    ORef callee, ORef args, ToCpsCont k
+) {
+    IRName const calleeName =
+        exprToIR(state, compiler, fn, env, block, callee,
+                 (ToCpsCont){.type = TO_CPS_CONT_VAL});
+    Args cpsArgs = createArgs(compiler);
+    for (;/*ever*/;) {
+        if (isPair(state, args)) {
+            Pair const* const argsPair = pairToPtr(uncheckedORefToPair(args));
+
+            ORef const arg = argsPair->car;
+            IRName const argName =
+                exprToIR(state, compiler, fn, env, block, arg,
+                         (ToCpsCont){.type = TO_CPS_CONT_VAL});
+            pushArg(compiler, &cpsArgs, argName);
+
+            args = argsPair->cdr;
+        } else if (isEmptyList(state, args)) {
+            break;
+        } else {
+            assert(false); // TODO: proper improper args error
+        }
+    }
+
+    IRName const retValName = toCpsContDestName(compiler, k);
+
+    if (k.type != TO_CPS_CONT_RETURN) {
+        IRBlock* const retBlock = createIRBlock(compiler, fn, 0);
+        IRName const frame = freshName(compiler);
+        pushIRParam(compiler, retBlock, frame);
+        pushIRParam(compiler, retBlock, retValName);
+
+        createCall(*block, calleeName, retBlock->label, createArgs(compiler), cpsArgs);
+
+        *block = retBlock;
+    } else {
+        createTailcall(*block, calleeName, k.ret.cont, cpsArgs);
+    }
+
+    return retValName;
+}
+
+static IRName useToCPS(
+    Compiler* compiler, IRFn* fn, ToCpsEnv const* env, IRBlock** block, SymbolRef sym, ToCpsCont k
+) {
+    IRName const name = useSymbolIRName(env, sym);
+    if (irNameIsValid(name)) {
+        if (k.type == TO_CPS_CONT_RETURN) {
+            createIRReturn(*block, k.ret.cont, name);
+        }
+
+        return name;
+    } else {
+        return globalToCPS(compiler, fn, *block, sym, k);
+    }
+}
+
+static IRName exprToIR(
+    State const* state, Compiler* compiler, IRFn* fn, ToCpsEnv const* env, IRBlock** block,
     ORef expr, ToCpsCont k
 ) {
     if (isHeaped(expr)) {
         if (isPair(state, expr)) {
-            Pair const* pair = pairToPtr(uncheckedORefToPair(expr));
+            Pair const* const pair = pairToPtr(uncheckedORefToPair(expr));
             ORef const callee = pair->car;
+            ORef const args = pair->cdr;
+
             if (isSymbol(state, callee)) {
                 SymbolRef const calleeSym = uncheckedORefToSymbol(callee);
+
                 // OPTIMIZE: Symbol comparisons instead of `strEq`:
                 if (strEq(symbolName(calleeSym), (Str){"fn", /*HACK:*/2})) {
-                    IRFn innerFn = createIRFn(compiler);
-
-                    IRBlock* entryBlock = createIRBlock(compiler, &innerFn, 0);
-
-                    ToCpsEnv fnEnv = createToCpsEnv(env);
-                    IRName const self = freshName(compiler);
-                    pushIRParam(compiler, entryBlock, self);
-                    IRName const ret = freshName(compiler);
-                    pushIRParam(compiler, entryBlock, ret);
-
-                    ORef args = pair->cdr;
-                    if (!isPair(state, args)) {
-                        assert(false); // TODO: Proper args error (`(fn)`)
-                    }
-                    Pair const* argsPair = pairToPtr(uncheckedORefToPair(args));
-
-                    for (ORef params = argsPair->car;;) {
-                        if (isPair(state, params)) {
-                            Pair const* const paramsPair = pairToPtr(uncheckedORefToPair(params));
-
-                            ORef const param = paramsPair->car;
-                            if (!isSymbol(state, param)) {
-                                assert(false); // TODO: Proper param error
-                            }
-                            SymbolRef const paramSym = uncheckedORefToSymbol(param);
-
-                            IRName const paramName = renameSymbol(compiler, paramSym);
-                            pushIRParam(compiler, entryBlock, paramName);
-                            defSymbolIRName(&fnEnv, paramSym, paramName, BINDINGS_PAR);
-
-                            params = paramsPair->cdr;
-                        } else if (isEmptyList(state, params)) {
-                            break;
-                        } else if (isa(state, state->symbolType, params)) {
-                            SymbolRef const paramSym = uncheckedORefToSymbol(params);
-
-                            IRName const paramName = renameSymbol(compiler, paramSym);
-                            pushIRParam(compiler, entryBlock, paramName);
-                            defSymbolIRName(&fnEnv, paramSym, paramName, BINDINGS_PAR);
-                            innerFn.hasVarArg = true;
-
-                            break;
-                        } else {
-                            assert(false); // TODO: Proper improper params error
-                        }
-                    }
-
-                    args = argsPair->cdr;
-                    if (!isPair(state, args)) {
-                        assert(false); // TODO: Proper args error (missing body)
-                    }
-                    argsPair = pairToPtr(uncheckedORefToPair(args));
-
-                    ORef const body = argsPair->car;
-
-                    if (!isEmptyList(state, argsPair->cdr)) {
-                        assert(false); // TODO: Proper args error or implement body stmts
-                    }
-
-                    ToCpsCont const retK = {{.ret = {.cont = ret}}, TO_CPS_CONT_RETURN};
-                    exprToIR(state, compiler, &innerFn, &fnEnv, &entryBlock, body, retK);
-                    freeToCpsEnv(&fnEnv);
-
-
-                    IRName const name = toCpsContDestName(compiler, k);
-                    // Placeholder, will be replaced with `Method` in codegen:
-                    IRConst const constIdx = allocFnConst(compiler, fn);
-                    pushIRStmt(compiler, &(*block)->stmts,
-                               fnDefToStmt((FnDef){name, innerFn, constIdx, createArgs(compiler)}));
-
-                    if (k.type == TO_CPS_CONT_RETURN) {
-                        createIRReturn(*block, k.ret.cont, name);
-                    }
-
-                    return name;
+                    return fnToCPS(state, compiler, fn, env, block, args, k);
                 } else if (strEq(symbolName(calleeSym), (Str){"if", /*HACK:*/2})) {
-                    // OPTIMIZE: Avoid creating `goto`s to `goto`s:
-
-                    ORef args = pair->cdr;
-                    if (!isPair(state, args)) {
-                        assert(false); // TODO
-                    }
-                    Pair const* argsPair = pairToPtr(uncheckedORefToPair(args));
-
-                    ORef const cond = argsPair->car;
-                    args = argsPair->cdr;
-                    if (!isPair(state, args)) {
-                        assert(false); // TODO
-                    }
-                    argsPair = pairToPtr(uncheckedORefToPair(args));
-
-                    ORef const conseq = argsPair->car;
-                    args = argsPair->cdr;
-                    if (!isPair(state, args)) {
-                        assert(false); // TODO
-                    }
-                    argsPair = pairToPtr(uncheckedORefToPair(args));
-
-                    ORef const alt = argsPair->car;
-                    if (!isEmptyList(state, argsPair->cdr)) {
-                        assert(false); // TODO
-                    }
-
-                    ToCpsCont const splitK = (ToCpsCont){{}, TO_CPS_CONT_VAL};
-                    IRName const condName = exprToIR(state, compiler, fn, env, block, cond, splitK);
-                     // Will patch targets shortly:
-                    IRIf* ifTransfer = createIRIf(*block, condName, (IRLabel){}, (IRLabel){});
-                    IRLabel const ifLabel = (*block)->label;
-
-                    IRBlock* conseqBlock = createIRBlock(compiler, fn, 1);
-                    pushCaller(conseqBlock, ifLabel);
-                    ifTransfer->conseq = conseqBlock->label;
-                    IRName const conseqName =
-                        exprToIR(state, compiler, fn, env, &conseqBlock, conseq, k);
-
-                    IRBlock* altBlock = createIRBlock(compiler, fn, 1);
-                    pushCaller(altBlock, ifLabel);
-                    ifTransfer->alt = altBlock->label;
-                    IRName const altName = exprToIR(state, compiler, fn, env, &altBlock, alt, k);
-
-                    if (k.type != TO_CPS_CONT_RETURN) {
-                        // FIXME: If we avoid `goto`s to `goto`s, 2 might not suffice:
-                        IRBlock* const joinBlock = createIRBlock(compiler, fn, 2);
-                        // FIXME: If `k` provides a target name it should be used for `phi`. Now it
-                        // gets pushed into the branches and possibly multiply defined:
-                        IRName const phi = freshName(compiler);
-                        pushIRParam(compiler, joinBlock, phi);
-
-                        createIRGoto(compiler, conseqBlock, joinBlock->label, conseqName);
-                        pushCaller(joinBlock, conseqBlock->label);
-
-                        createIRGoto(compiler, altBlock, joinBlock->label, altName);
-                        pushCaller(joinBlock, altBlock->label);
-
-                        *block = joinBlock;
-                        return phi;
-                    } else {
-                        return condName; // Arbitrary value, will not be used by callee
-                    }
+                    return ifToCPS(state, compiler, fn, env, block, args, k);
                 } else if (strEq(symbolName(calleeSym), (Str){"quote", /*HACK:*/5})) {
-                    ORef const args = pair->cdr;
-                    if (!isPair(state, args)) {
-                        assert(false); // TODO
-                    }
-                    Pair const* const argsPair = pairToPtr(uncheckedORefToPair(args));
-
-                    if (!isEmptyList(state, argsPair->cdr)) {
-                        assert(false); // TODO
-                    }
-
-                    return constToCPS(compiler, fn, *block, argsPair->car, k);
+                    return quoteToCPS(state, compiler, fn, block, args, k);
                 } else if (strEq(symbolName(calleeSym), (Str){"def", /*HACK:*/3})) {
-                    ORef args = pair->cdr;
-                    if (!isPair(state, args)) {
-                        assert(false); // TODO
-                    }
-                    Pair const* argsPair = pairToPtr(uncheckedORefToPair(args));
-
-                    ORef const pat = argsPair->car;
-                    if (!isSymbol(state, pat)) {
-                        assert(false); // TODO
-                    }
-                    SymbolRef const name = uncheckedORefToSymbol(pat);
-                    args = argsPair->cdr;
-                    if (!isPair(state, args)) {
-                        assert(false); // TODO
-                    }
-                    argsPair = pairToPtr(uncheckedORefToPair(args));
-
-                    ORef const val = argsPair->car;
-                    if (!isEmptyList(state, argsPair->cdr)) {
-                        assert(false); // TODO
-                    }
-
-                    ToCpsCont const defK = (ToCpsCont){{}, TO_CPS_CONT_VAL};
-                    IRName const valName = exprToIR(state, compiler, fn, env, block, val, defK);
-                    IRConst const nameIdx = fnConst(compiler, fn, symbolToORef(name));
-                    pushIRStmt(compiler, &(*block)->stmts,
-                               globalDefToStmt((GlobalDef){nameIdx, valName}));
-                    // FIXME: Return e.g. nil/undefined/unspecified instead of new val:
-                    IRName const resName = valName;
-                    if (k.type == TO_CPS_CONT_RETURN) {
-                        createIRReturn(*block, k.ret.cont, resName);
-                    }
-
-                    return resName;
+                    return defToCPS(state, compiler, fn, env, block, args, k);
                 } else if (strEq(symbolName(calleeSym), (Str){"let", /*HACK:*/3})) {
-                    ToCpsEnv letEnv = createToCpsEnv(env);
-
-                    ORef args = pair->cdr;
-                    if (!isPair(state, args)) {
-                        assert(false); // TODO: Proper invalid args error
-                    }
-                    Pair const* argsPair = pairToPtr(uncheckedORefToPair(args));
-
-                    for (ORef bindings = argsPair->car;;) {
-                        if (isPair(state, bindings)) {
-                            Pair const* const bindingsPair =
-                                pairToPtr(uncheckedORefToPair(bindings));
-
-                            ORef const binding = bindingsPair->car;
-                            if (!isPair(state, binding)) {
-                                assert(false); // TODO: Proper invalid binding error
-                            }
-                            Pair const* const bindingPair =
-                                pairToPtr(uncheckedORefToPair(binding));
-
-                            ORef const pat = bindingPair->car;
-                            if (!isSymbol(state, pat)) {
-                                assert(false); // TODO: Proper invalid binder error
-                            }
-                            SymbolRef const binder = uncheckedORefToSymbol(pat);
-
-                            ORef const bindingArgs = bindingPair->cdr;
-                            if (!isPair(state, bindingArgs)) {
-                                assert(false); // TODO: Proper invalid binding error
-                            }
-                            Pair const* const bindingArgsPair =
-                                pairToPtr(uncheckedORefToPair(bindingArgs));
-
-                            ORef const val = bindingArgsPair->car;
-
-                            if (!isEmptyList(state, bindingArgsPair->cdr)) {
-                                assert(false); // TODO: Proper invali [[maybe_unused]]d binding error
-                            }
-
-                            IRName const binderName = renameSymbol(compiler, binder);
-                            ToCpsCont const valK = (ToCpsCont){
-                                .name = binderName,
-                                .type = TO_CPS_CONT_BIND
-                            };
-                            IRName const finalName =
-                                exprToIR(state, compiler, fn, &letEnv, block, val, valK);
-                            // If `finalName != binderName` we have a local copy e.g.
-                            // `(let ((x 5) (y x)) ...)` and `exprToIR` emitted nothing. Putting
-                            // `finalName` to env implements the rest of copy propagation:
-                            defSymbolIRName(&letEnv, binder, finalName, BINDINGS_SEQ);
-
-                            bindings = bindingsPair->cdr;
-                        } else if (isEmptyList(state, bindings)) {
-                            break;
-                        } else {
-                            assert(false); // TODO: Proper invalid bindings error
-                        }
-                    }
-
-                    args = argsPair->cdr;
-                    if (!isPair(state, args)) {
-                        assert(false); // TODO: Proper invalid args error
-                    }
-                    argsPair = pairToPtr(uncheckedORefToPair(args));
-
-                    ORef const body = argsPair->car;
-
-                    if (!isEmptyList(state, argsPair->cdr)) {
-                        assert(false); // TODO: Proper invalid args error
-                    }
-
-                    IRName const bodyName = exprToIR(state, compiler, fn, &letEnv, block, body, k);
-                    freeToCpsEnv(&letEnv);
-                    return bodyName;
+                    return letToCPS(state, compiler, fn, env, block, args, k);
                 }
             }
 
-            IRName const calleeName =
-                exprToIR(state, compiler, fn, env, block, callee,
-                         (ToCpsCont){.type = TO_CPS_CONT_VAL});
-            Args cpsArgs = createArgs(compiler);
-            for (ORef args = pair->cdr;;) {
-                if (isPair(state, args)) {
-                    Pair const* const argsPair = pairToPtr(uncheckedORefToPair(args));
-
-                    ORef const arg = argsPair->car;
-                    IRName const argName =
-                        exprToIR(state, compiler, fn, env, block, arg,
-                                 (ToCpsCont){.type = TO_CPS_CONT_VAL});
-                    pushArg(compiler, &cpsArgs, argName);
-
-                    args = argsPair->cdr;
-                } else if (isEmptyList(state, args)) {
-                    break;
-                } else {
-                    assert(false); // TODO: proper improper args error
-                }
-            }
-
-            IRName const retValName = toCpsContDestName(compiler, k);
-
-            if (k.type != TO_CPS_CONT_RETURN) {
-                IRBlock* const retBlock = createIRBlock(compiler, fn, 0);
-                IRName const frame = freshName(compiler);
-                pushIRParam(compiler, retBlock, frame);
-                pushIRParam(compiler, retBlock, retValName);
-
-                createCall(*block, calleeName, retBlock->label, createArgs(compiler), cpsArgs);
-
-                *block = retBlock;
-            } else {
-                createTailcall(*block, calleeName, k.ret.cont, cpsArgs);
-            }
-
-            return retValName;
+            return callToCPS(state, compiler, fn, env, block, callee, args, k);
         } else if (isSymbol(state, expr)) {
             SymbolRef const sym = uncheckedORefToSymbol(expr);
 
-            IRName const name = useSymbolIRName(env, sym);
-            if (irNameIsValid(name)) {
-                if (k.type == TO_CPS_CONT_RETURN) {
-                    createIRReturn(*block, k.ret.cont, name);
-                }
-
-                return name;
-            } else {
-                return globalToCPS(compiler, fn, *block, uncheckedORefToSymbol(expr), k);
-            }
+            return useToCPS(compiler, fn, env, block, sym, k);
         }
     }
 

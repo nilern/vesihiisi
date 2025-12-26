@@ -409,7 +409,8 @@ inline static ArityError* arityErrorToPtr(ArityErrorRef v) {
     ArrayRef: uncheckedToORef(v), \
     ByteArrayRef: uncheckedToORef(v), \
     MethodRef: uncheckedToORef(v), \
-    ClosureRef: uncheckedToORef(v))
+    ClosureRef: uncheckedToORef(v), \
+    TypeErrorRef: uncheckedToORef(v))
 
 #define toPtr(v) _Generic((v), \
     TypeRef: typeToPtr, \

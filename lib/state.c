@@ -592,10 +592,10 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         char const* const name = typeNames[i];
         size_t const nameLen = strlen(name);
         if (nameLen > 0) {
-            ORef const type = dest->types[i];
             Str const nameStr = (Str){name, nameLen};
-            nameType(dest, uncheckedORefToTypeRef(type), nameStr);
-            installPrimordial(dest, nameStr, type);
+            // `ORef const type = dest->types[i];` would not pay off since `nameType` may GC:
+            nameType(dest, uncheckedORefToTypeRef(dest->types[i]), nameStr);
+            installPrimordial(dest, nameStr, dest->types[i]);
         }
     }
 

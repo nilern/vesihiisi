@@ -93,6 +93,46 @@ static PrimopRes primopIdentical(State* state) {
     return PRIMOP_RES_CONTINUE;
 }
 
+static PrimopRes primopMake(State* state) {
+    TypeRef typeRef = uncheckedORefToTypeRef(state->regs[firstArgReg]);
+    uint8_t const callArity = state->entryRegc - firstArgReg;
+
+    Type const* type = toPtr(typeRef);
+    if (!unwrapBool(type->isFlex)) {
+        // Alloc:
+        void* ptr = tryAlloc(&state->heap.tospace, type);
+        if (mustCollect(ptr)) {
+            collect(state);
+            typeRef = uncheckedORefToTypeRef(state->regs[firstArgReg]);
+            type = toPtr(typeRef);
+            ptr = allocOrDie(&state->heap.tospace, type);
+        }
+
+        // Init:
+        if (!unwrapBool(type->isBytes)) {
+            size_t const fieldCount = (uintptr_t)fixnumToInt(type->minSize) / sizeof(ORef);
+            if (callArity - 1u != fieldCount) {
+                assert(false); // TODO: Proper error (but not really an arity error!)
+            }
+
+            {
+                ORef* const fields = (ORef*)ptr;
+                for (size_t i = 0; i < fieldCount; ++i) {
+                    fields[i] = state->regs[firstArgReg + 1 + i];
+                }
+            }
+        } else {
+            assert(false); // TODO
+        }
+
+        state->regs[retReg] = tagHeaped(ptr);
+
+        return PRIMOP_RES_CONTINUE;
+    } else {
+        assert(false); // TODO
+    }
+}
+
 static PrimopRes primopFxAdd(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }

@@ -587,7 +587,10 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         char const* const name = typeNames[i];
         size_t const nameLen = strlen(name);
         if (nameLen > 0) {
-            nameType(dest, uncheckedORefToTypeRef(dest->types[i]), (Str){name, nameLen});
+            ORef const type = dest->types[i];
+            Str const nameStr = (Str){name, nameLen};
+            nameType(dest, uncheckedORefToTypeRef(type), nameStr);
+            installPrimordial(dest, nameStr, type);
         }
     }
 
@@ -595,8 +598,6 @@ static bool tryCreateState(State* dest, size_t heapSize) {
     ClosureRef abortClosure = allocClosure(dest, abortMethod, Zero);
     pushStackRoot(dest, (ORef*)&abortClosure);
     varToPtr(dest->errorHandler)->val = closureToORef(abortClosure);
-
-    installPrimordial(dest, strLit("<fixnum>"), toORef(dest->fixnumType));
 
     installPrimordial(dest, strLit("abort"), toORef(abortClosure));
     popStackRoots(dest, 1);

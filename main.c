@@ -271,6 +271,7 @@ int main(int argc, char const* argv[static argc]) {
         return EXIT_FAILURE;
     }
 
+    bool loadFailed = false;
     if (args.filename) { // OPTIMIZE: Use `mmap`:
         FILE* const file = fopen(args.filename, "rb");
         if (!file) {
@@ -290,7 +291,7 @@ int main(int argc, char const* argv[static argc]) {
 
         Parser parser = createParser((Str){fchars, fsize});
 
-        for (bool validExprs = true; validExprs;) {
+        while (!loadFailed) {
             Vshs_MaybeRes const maybeRes = readEval(&state, &parser, args.debug);
             if (!maybeRes.hasVal) { break; }
             Vshs_Res const res = maybeRes.val;
@@ -308,7 +309,7 @@ int main(int argc, char const* argv[static argc]) {
                 case VSHS_VM_ERR: break; // FIXME?
                 }
 
-                validExprs = false;
+                loadFailed = true;
             }; break;
             }
         }
@@ -316,7 +317,7 @@ int main(int argc, char const* argv[static argc]) {
         free(fchars);
     }
 
-    if (!args.filename || args.forceInteractive) {
+    if (!args.filename || (args.forceInteractive && !loadFailed)) {
         for (;/*ever*/;) {
             printf("%s", prompt);
 

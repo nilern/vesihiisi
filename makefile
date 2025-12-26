@@ -16,7 +16,7 @@ dev: vesihiisi-dev
 
 .PHONY: run-dev
 run-dev: vesihiisi-dev
-	rlwrap ./vesihiisi-dev -i base/bootstrap.lisp
+	rlwrap ./vesihiisi-dev
 
 .PHONY: test
 test: test/test_heap test/test_arena test/test_bitset

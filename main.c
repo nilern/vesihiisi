@@ -197,29 +197,37 @@ static ParseArgvRes parseArgv(int argc, char const* argv[static argc]) {
     for (char const* arg; i < argc && *(arg = argv[i]) == '-'; ++i) {
         ++arg;
 
+        bool validFlag = false;
+
         if (*arg == '-') {
             ++arg;
 
             for (size_t j = 0; j < countof(longFlagNames); ++j) {
                 if (strcmp(arg, longFlagNames[j]) == 0) {
                     flagInits[j](&config);
-                    goto nextArg;
+                    validFlag = true;
+                    break;
                 }
             }
 
-            return (ParseArgvRes){.err = {.idx = i, CLI_ERR_NONFLAG}, RES_ERR};
-        }
+            if (!validFlag) {
+                return (ParseArgvRes){.err = {.idx = i, CLI_ERR_NONFLAG}, RES_ERR};
+            }
+        } else {
+            for (; *arg != '\0'; ++arg) {
+                for (size_t j = 0; j < countof(shortFlagNames); ++j) {
+                    if (*arg == shortFlagNames[j]) {
+                        flagInits[j](&config);
+                        validFlag = true;
+                        break;
+                    }
+                }
 
-        for (size_t j = 0; j < countof(shortFlagNames); ++j) {
-            if (*arg == shortFlagNames[j]) {
-                flagInits[j](&config);
-                goto nextArg;
+                if (!validFlag) {
+                    return (ParseArgvRes){.err = {.idx = i, CLI_ERR_NONFLAG}, RES_ERR};
+                }
             }
         }
-
-        return (ParseArgvRes){.err = {.idx = i, CLI_ERR_NONFLAG}, RES_ERR};
-
-    nextArg:
     }
 
     if (i < argc) {

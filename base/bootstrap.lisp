@@ -1,3 +1,5 @@
+(def not (fn (x) (if x #f #t)))
+
 (def cons (fn (x xs) (make <pair> x xs)))
 
 (def car (fn (xs) (field-get <pair> xs 0)))

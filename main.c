@@ -283,7 +283,8 @@ int main(int argc, char const* argv[static argc]) {
         fseek(file, 0, SEEK_SET);
 
         char* const fchars = malloc(fsize + 1);
-        fread(fchars, fsize, 1, file);
+        size_t nread /*HACK:*/ [[maybe_unused]] = fread(fchars, 1, fsize, file);
+        assert(nread == fsize);
         fchars[fsize] = 0;
         fclose(file);
 

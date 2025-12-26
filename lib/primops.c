@@ -112,7 +112,7 @@ static PrimopRes primopMake(State* state) {
         if (!unwrapBool(type->isBytes)) {
             size_t const fieldCount = (uintptr_t)fixnumToInt(type->minSize) / sizeof(ORef);
             if (callArity - 1u != fieldCount) {
-                assert(false); // TODO: Proper error (but not really an arity error!)
+                exit(EXIT_FAILURE); // TODO: Proper error (but not really an arity error!)
             }
 
             {
@@ -122,14 +122,14 @@ static PrimopRes primopMake(State* state) {
                 }
             }
         } else {
-            assert(false); // TODO
+            exit(EXIT_FAILURE); // TODO:
         }
 
         state->regs[retReg] = tagHeaped(ptr);
 
         return PRIMOP_RES_CONTINUE;
     } else {
-        assert(false); // TODO
+        exit(EXIT_FAILURE); // TODO
     }
 }
 

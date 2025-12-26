@@ -22,6 +22,8 @@
 #include "lib/cloverindexing.c"
 #include "lib/bytecodegen.c"
 
+#define countof(v) (sizeof(v) / sizeof(*(v)))
+
 typedef enum ResTag {RES_ERR, RES_OK} ResTag;
 
 typedef struct CLIArgs {
@@ -53,6 +55,24 @@ void printCLIErr(FILE* dest, char const* argv[], CLIErr const* err) {
     }
 }
 
+static void initDebug(CLIArgs* args) { args->debug = true; }
+
+static void initHelp(CLIArgs* args) { args->help = true; }
+
+static char const* const longFlagNames[] = {"debug", "help"};
+
+static char const shortFlagNames[] = {'d', 'h'};
+static_assert(countof(shortFlagNames) == countof(longFlagNames));
+
+static void (*flagInits[countof(longFlagNames)])(CLIArgs*) = {initDebug, initHelp};
+static_assert(countof(flagInits) == countof(longFlagNames));
+
+static char const* const flagDescriptions[countof(longFlagNames)] = {
+    "turn on debug output (for developing the VM)",
+    "display this help and exit"
+};
+static_assert(countof(flagDescriptions) == countof(longFlagNames));
+
 static ParseArgvRes parseArgv(int argc, char const* argv[static argc]) {
     CLIArgs config = {
         .name = argv[0],
@@ -64,29 +84,29 @@ static ParseArgvRes parseArgv(int argc, char const* argv[static argc]) {
     for (size_t i = 1; i < (size_t)argc && *(arg = argv[i]) == '-'; ++i) {
         ++arg;
 
-        switch (*arg) {
-        case '-': {// Long flag
+        if (*arg == '-') {
             ++arg;
 
-            if (strcmp(arg, "debug") == 0) {
-                config.debug = true;
-            } else if (strcmp(arg, "help") == 0) {
-                config.help = true;
-            } else {
-                return (ParseArgvRes){.err = {.idx = i, CLI_ERR_NONFLAG}, RES_ERR};
+            for (size_t j = 0; j < countof(longFlagNames); ++j) {
+                if (strcmp(arg, longFlagNames[j]) == 0) {
+                    flagInits[j](&config);
+                    goto nextArg;
+                }
             }
-        }; break;
 
-        case 'd': {
-            config.debug = true;
-        }; break;
-
-        case 'h': {
-            config.help = true;
-        }; break;
-
-        default: return (ParseArgvRes){.err = {.idx = i, CLI_ERR_NONFLAG}, RES_ERR};
+            return (ParseArgvRes){.err = {.idx = i, CLI_ERR_NONFLAG}, RES_ERR};
         }
+
+        for (size_t j = 0; j < countof(shortFlagNames); ++j) {
+            if (*arg == shortFlagNames[j]) {
+                flagInits[j](&config);
+                goto nextArg;
+            }
+        }
+
+        return (ParseArgvRes){.err = {.idx = i, CLI_ERR_NONFLAG}, RES_ERR};
+
+    nextArg:
     }
 
     return (ParseArgvRes){.val = config, RES_OK};
@@ -107,9 +127,9 @@ int main(int argc, char const* argv[static argc]) {
         printf("Usage: %s [OPTION]...\n", argv[0]);
         puts("An uncommon Lisp.\n");
 
-        // TODO: Make data-driven for consistency with `parseArgv`:
-        printf("  -d, --debug\t turn on debug output (for developing the VM)\n");
-        printf("  -h, --help\t display this help and exit\n");
+        for (size_t i = 0; i < countof(longFlagNames); ++i) {
+            printf("  -%c, --%s\t%s\n", shortFlagNames[i], longFlagNames[i], flagDescriptions[i]);
+        }
 
         return EXIT_SUCCESS;
     }

@@ -18,7 +18,7 @@ inline static bool isSymbolChar(char c) {
         || c == '=' || c == '<' || c == '>';
 }
 
-static bool read(State* state, ORef* dest, Parser* parser) {
+static bool readExpr(State* state, ORef* dest, Parser* parser) {
     while (isspace(*parser->curr)) { ++parser->curr; }
     
     char c = *parser->curr;
@@ -42,7 +42,7 @@ static bool read(State* state, ORef* dest, Parser* parser) {
         
         // <expr>
         ORef car;
-        if (!read(state, &car, parser)) { return false;}
+        if (!readExpr(state, &car, parser)) { return false;}
         pairToPtr(pair)->car = car;
         
         while (isspace(*parser->curr)) { ++parser->curr; } // Skip whitespace
@@ -55,7 +55,7 @@ static bool read(State* state, ORef* dest, Parser* parser) {
                 
                 // <expr>
                 ORef car;
-                if (!read(state, &car, parser)) {
+                if (!readExpr(state, &car, parser)) {
                     popStackRoots(state, 2);
                     return false;
                 }
@@ -64,7 +64,7 @@ static bool read(State* state, ORef* dest, Parser* parser) {
                 ++parser->curr; // Discard '.'
                 
                 ORef cdr;
-                if (!read(state, &cdr, parser)) {
+                if (!readExpr(state, &cdr, parser)) {
                     popStackRoots(state, 2);
                     return false;
                 }
@@ -155,3 +155,19 @@ static bool read(State* state, ORef* dest, Parser* parser) {
     return false;
 }
 
+static bool read(State* state, MaybeORef* dest, Parser* parser) {
+    while (isspace(*parser->curr)) { ++parser->curr; }
+
+    if (*parser->curr == '\0') {
+        *dest = (MaybeORef){};
+        return true;
+    }
+
+    ORef oref;
+    if (readExpr(state, &oref, parser)) {
+        *dest = (MaybeORef){.val = oref, true};
+        return true;
+    } else {
+        return false;
+    }
+}

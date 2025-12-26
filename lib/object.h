@@ -19,6 +19,11 @@ typedef enum Tag : uintptr_t {
 
 typedef struct ORef { uintptr_t bits; } ORef;
 
+typedef struct MaybeORef {
+    ORef val;
+    bool hasVal;
+} MaybeORef;
+
 typedef struct Fixnum { uintptr_t bits; } Fixnum;
 
 typedef struct Char { uintptr_t bits; } Char;

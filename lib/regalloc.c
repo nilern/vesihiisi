@@ -527,7 +527,7 @@ static void regAllocParams(Compiler* compiler, RegEnv* env, IRBlock* block) {
         size_t const arity = block->paramCount;
         for (size_t i = 0; i < arity; ++i) {
             IRName* const param = &block->params[i];
-            assert(env->varRegs[param->index].hasVal);
+            assert(env->varRegs[param->index].hasVal); // FIXME: Triggers for dead variables
             Reg const reg = env->varRegs[param->index].val;
             *param = (IRName){reg.index};
         }

@@ -232,7 +232,7 @@ static PureLoadsEnv blockPureLoadsEnv(
             }
         }
 
-        PureLoadsEnv env = newPureLoadsEnv(lifting.closure, lifting.liftees);
+        PureLoadsEnv env = newPureLoadsEnv(lifting.closure, block->liveIns);
         liftParams(compiler, &env, block, lifting.liftees);
 
         return env;

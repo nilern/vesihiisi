@@ -724,15 +724,19 @@ static void collect(State* state) {
 
 static void markIRFn(State* state, struct IRFn* fn);
 static void assertIRFnInTospace(State const* state, struct IRFn const* fn);
+static void markMethodBuilder(State* state, struct MethodBuilder* builder);
+static void assertMethodBuilderInTospace(State const* state, struct MethodBuilder const* builder);
 
-static void collectTracingIR(State* state, struct IRFn* fn) {
+static void collectTracingIR(State* state, struct IRFn* fn, struct MethodBuilder* builder) {
     defaultPrepCollection(state);
     markIRFn(state, fn);
+    markMethodBuilder(state, builder);
 
     completeCollection(state);
 
 #ifndef NDEBUG
     assertIRFnInTospace(state, fn);
+    assertMethodBuilderInTospace(state, builder);
 #endif
 }
 

@@ -4,6 +4,8 @@
 #include "bitset.h"
 #include "object.h"
 
+// TODO: Compiler linter a la GHC (in addition to bytecode verifier!)
+
 typedef struct Compiler {
     Arena arena;
     ORef* nameSyms;
@@ -14,8 +16,6 @@ typedef struct Compiler {
 typedef struct IRName { size_t index; } IRName;
 
 typedef struct IRLabel { size_t blockIndex; } IRLabel;
-
-typedef struct IRConst { uint8_t index; } IRConst;
 
 typedef struct IRDomain {
     IRName* vals;
@@ -30,10 +30,6 @@ typedef struct IRFn {
     size_t blockCount;
     size_t blockCap;
 
-    ORef* consts;
-    uint8_t constCount;
-    uint8_t constCap;
-
     IRDomain domain;
     bool hasVarArg;
 } IRFn;
@@ -45,18 +41,18 @@ typedef struct Args {
 } Args;
 
 typedef struct GlobalDef {
-    IRConst name;
+    SymbolRef name;
     IRName val;
 } GlobalDef;
 
 typedef struct IRGlobal {
     IRName tmpName;
-    IRConst name;
+    SymbolRef name;
 } IRGlobal;
 
 typedef struct ConstDef {
     IRName name;
-    IRConst v;
+    ORef v;
 } ConstDef;
 
 typedef struct Clover {
@@ -69,7 +65,6 @@ typedef struct Clover {
 typedef struct MethodDef {
     IRName name;
     IRFn fn;
-    IRConst v;
     Args* closes; // Shared with `IRClosure`
 } MethodDef;
 
@@ -203,16 +198,6 @@ static IRFn createIRFn(Compiler* compiler);
 static void setParamType(Compiler* compiler, IRDomain* domain, size_t idx, IRName typeName);
 
 static void completeIRDomain(Compiler* compiler, IRDomain* domain, size_t arity);
-
-static IRConst fnConst(Compiler* compiler, IRFn* fn, ORef c);
-
-static IRConst allocFnConst(Compiler* compiler, IRFn* fn);
-
-inline static void setFnConst(IRFn* fn, IRConst c, ORef v) {
-    assert(c.index < fn->constCount);
-
-    fn->consts[c.index] = v;
-}
 
 inline static BitSet const* fnFreeVars(IRFn const* fn) { return &fn->blocks[0]->liveIns; }
 

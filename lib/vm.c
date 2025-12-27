@@ -4,6 +4,7 @@
 #include "bytecode.h"
 #include "primops.h"
 #include "namespace.h"
+#include "flyweights.h"
 
 typedef struct VMRes {
     ORef val;

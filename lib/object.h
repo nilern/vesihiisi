@@ -19,6 +19,7 @@ typedef enum Tag : uintptr_t {
 
 typedef struct ORef { uintptr_t bits; } ORef;
 
+// OPTIMIZE: Could use tagged nullptr instead of !.hasVal:
 typedef struct MaybeORef {
     ORef val;
     bool hasVal;

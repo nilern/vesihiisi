@@ -84,7 +84,7 @@ static MethodRef compile(State* state, ORef expr, bool debug) {
         puts("\n");
     }
 
-    MethodRef const method = emitToplevelMethod(state, &irFn);
+    MethodRef const method = emitToplevelMethod(state, &compiler, &irFn);
     if (debug) {
         puts(";; # Bytecode:");
         disassemble(state, stdout, method);

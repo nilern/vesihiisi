@@ -176,10 +176,9 @@ static IRName toCpsContDestName(Compiler* compiler, ToCpsCont k) {
     return invalidIRName; // Unreachable
 }
 
-static IRName constToCPS(Compiler* compiler, IRFn* fn, IRBlock* block, ORef expr, ToCpsCont k) {
+static IRName constToCPS(Compiler* compiler, IRBlock* block, ORef expr, ToCpsCont k) {
     IRName const name = toCpsContDestName(compiler, k);
-    IRConst const c = fnConst(compiler, fn, expr);
-    pushIRStmt(compiler, &block->stmts, constDefToStmt((ConstDef){name, c}));
+    pushIRStmt(compiler, &block->stmts, constDefToStmt((ConstDef){name, expr}));
 
     if (k.type == TO_CPS_CONT_RETURN) {
         createIRReturn(block, k.ret.cont, name);
@@ -188,12 +187,9 @@ static IRName constToCPS(Compiler* compiler, IRFn* fn, IRBlock* block, ORef expr
     return name;
 }
 
-static IRName globalToCPS(
-    Compiler* compiler, IRFn* fn, IRBlock* block, SymbolRef sym, ToCpsCont k
-) {
+static IRName globalToCPS(Compiler* compiler, IRBlock* block, SymbolRef sym, ToCpsCont k) {
     IRName const name = toCpsContDestName(compiler, k);
-    IRConst const symIdx = fnConst(compiler, fn, symbolToORef(sym));
-    pushIRStmt(compiler, &block->stmts, globalToStmt((IRGlobal){name, symIdx}));
+    pushIRStmt(compiler, &block->stmts, globalToStmt((IRGlobal){name, sym}));
 
     if (k.type == TO_CPS_CONT_RETURN) {
         createIRReturn(block, k.ret.cont, name);
@@ -323,11 +319,10 @@ static IRName fnToCPS(
     freeToCpsEnv(&fnEnv);
 
     IRName const name = toCpsContDestName(compiler, k);
-    IRConst const constIdx = allocFnConst(compiler, fn);
     Args* const closes = amalloc(&compiler->arena, sizeof *closes);
     *closes = createArgs(compiler);
     pushIRStmt(compiler, &(*block)->stmts,
-               (IRStmt){.methodDef = {name, innerFn, constIdx, closes}, STMT_METHOD_DEF});
+               (IRStmt){.methodDef = {name, innerFn, closes}, STMT_METHOD_DEF});
 
     if (k.type == TO_CPS_CONT_RETURN) {
         createIRReturn(*block, k.ret.cont, name);
@@ -405,7 +400,7 @@ static IRName ifToCPS(
 }
 
 static IRName quoteToCPS(
-    State const* state, Compiler* compiler, IRFn* fn, IRBlock** block, ORef args, ToCpsCont k
+    State const* state, Compiler* compiler, IRBlock** block, ORef args, ToCpsCont k
 ) {
     if (!isPair(state, args)) {
         assert(false); // TODO
@@ -416,7 +411,7 @@ static IRName quoteToCPS(
         assert(false); // TODO
     }
 
-    return constToCPS(compiler, fn, *block, argsPair->car, k);
+    return constToCPS(compiler, *block, argsPair->car, k);
 }
 
 static IRName defToCPS(
@@ -446,9 +441,7 @@ static IRName defToCPS(
 
     ToCpsCont const defK = (ToCpsCont){{}, TO_CPS_CONT_VAL};
     IRName const valName = exprToIR(state, compiler, fn, env, block, val, defK);
-    IRConst const nameIdx = fnConst(compiler, fn, symbolToORef(name));
-    pushIRStmt(compiler, &(*block)->stmts,
-               globalDefToStmt((GlobalDef){nameIdx, valName}));
+    pushIRStmt(compiler, &(*block)->stmts, globalDefToStmt((GlobalDef){name, valName}));
     // FIXME: Return e.g. nil/undefined/unspecified instead of new val:
     IRName const resName = valName;
     if (k.type == TO_CPS_CONT_RETURN) {
@@ -582,7 +575,7 @@ static IRName callToCPS(
 }
 
 static IRName useToCPS(
-    Compiler* compiler, IRFn* fn, ToCpsEnv const* env, IRBlock** block, SymbolRef sym, ToCpsCont k
+    Compiler* compiler, ToCpsEnv const* env, IRBlock** block, SymbolRef sym, ToCpsCont k
 ) {
     IRName const name = useSymbolIRName(env, sym);
     if (irNameIsValid(name)) {
@@ -592,7 +585,7 @@ static IRName useToCPS(
 
         return name;
     } else {
-        return globalToCPS(compiler, fn, *block, sym, k);
+        return globalToCPS(compiler, *block, sym, k);
     }
 }
 
@@ -615,7 +608,7 @@ static IRName exprToIR(
                 } else if (strEq(symbolName(calleeSym), (Str){"if", /*HACK:*/2})) {
                     return ifToCPS(state, compiler, fn, env, block, args, k);
                 } else if (strEq(symbolName(calleeSym), (Str){"quote", /*HACK:*/5})) {
-                    return quoteToCPS(state, compiler, fn, block, args, k);
+                    return quoteToCPS(state, compiler, block, args, k);
                 } else if (strEq(symbolName(calleeSym), (Str){"def", /*HACK:*/3})) {
                     return defToCPS(state, compiler, fn, env, block, args, k);
                 } else if (strEq(symbolName(calleeSym), (Str){"let", /*HACK:*/3})) {
@@ -627,12 +620,12 @@ static IRName exprToIR(
         } else if (isSymbol(state, expr)) {
             SymbolRef const sym = uncheckedORefToSymbol(expr);
 
-            return useToCPS(compiler, fn, env, block, sym, k);
+            return useToCPS(compiler, env, block, sym, k);
         }
     }
 
     // Else a constant:
-    return constToCPS(compiler, fn, *block, expr, k);
+    return constToCPS(compiler, *block, expr, k);
 }
 
 static IRFn topLevelExprToIR(State const* state, Compiler* compiler, ORef expr) {

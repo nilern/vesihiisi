@@ -178,8 +178,9 @@ static TypeErrorRef createTypeError(State* state, TypeRef type, ORef val);
 
 static ArityErrorRef createArityError(State* state, ClosureRef callee, Fixnum callArgc);
 
-struct IRFn;
-
 static void collect(State* state);
 
-static void collectTracingIR(State* state, struct IRFn* fn);
+struct IRFn;
+struct MethodBuilder;
+
+static void collectTracingIR(State* state, struct IRFn* fn, struct MethodBuilder* builder);

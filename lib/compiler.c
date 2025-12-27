@@ -56,39 +56,18 @@ static IRName renameIRName(Compiler* compiler, IRName name) {
 static void markIRBlock(State* state, struct IRBlock* block);
 
 static void markIRFn(State* state, IRFn* fn) {
-    {
-        size_t const blockCount = fn->blockCount;
-        for (size_t i = 0; i < blockCount; ++i) {
-            markIRBlock(state, fn->blocks[i]);
-        }
-    }
-
-    {
-        size_t const constCount = fn->constCount;
-        for (size_t i = 0; i < constCount; ++i) {
-            fn->consts[i] = mark(&state->heap, fn->consts[i]);
-        }
+    size_t const blockCount = fn->blockCount;
+    for (size_t i = 0; i < blockCount; ++i) {
+        markIRBlock(state, fn->blocks[i]);
     }
 }
 
 static void assertIRBlockInTospace(State const* state, struct IRBlock const* block);
 
 static void assertIRFnInTospace(State const* state, IRFn const* fn) {
-    {
-        size_t const blockCount = fn->blockCount;
-        for (size_t i = 0; i < blockCount; ++i) {
-            assertIRBlockInTospace(state, fn->blocks[i]);
-        }
-    }
-
-    {
-        size_t const constCount = fn->constCount;
-        for (size_t i = 0; i < constCount; ++i) {
-            ORef const v = fn->consts[i];
-            if (isHeaped(v)) {
-                assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(v)));
-            }
-        }
+    size_t const blockCount = fn->blockCount;
+    for (size_t i = 0; i < blockCount; ++i) {
+        assertIRBlockInTospace(state, fn->blocks[i]);
     }
 }
 
@@ -112,7 +91,20 @@ static void pushArg(Compiler* compiler, Args* args, IRName arg) {
 
 static void markIRStmt(State* state, IRStmt* stmt) {
     switch (stmt->type) {
-    case STMT_GLOBAL_DEF: case STMT_GLOBAL: case STMT_CONST_DEF: case STMT_CLOVER: break;
+    case STMT_GLOBAL_DEF: {
+        stmt->globalDef.name =
+            uncheckedORefToSymbol(mark(&state->heap, toORef(stmt->globalDef.name)));
+    }; break;
+
+    case STMT_GLOBAL: {
+        stmt->global.name = uncheckedORefToSymbol(mark(&state->heap, toORef(stmt->global.name)));
+    }; break;
+
+    case STMT_CONST_DEF: {
+        stmt->constDef.v = mark(&state->heap, stmt->constDef.v);
+    }; break;
+
+    case STMT_CLOVER: break;
 
     case STMT_METHOD_DEF: markIRFn(state, &stmt->methodDef.fn); break;
 
@@ -122,7 +114,22 @@ static void markIRStmt(State* state, IRStmt* stmt) {
 
 static void assertIRStmtInTospace(State const* state, IRStmt const* stmt) {
     switch (stmt->type) {
-    case STMT_GLOBAL_DEF: case STMT_GLOBAL: case STMT_CONST_DEF: case STMT_CLOVER: break;
+    case STMT_GLOBAL_DEF: {
+        assert(allocatedInSemispace(&state->heap.tospace, toPtr(stmt->globalDef.name)));
+    }; break;
+
+    case STMT_GLOBAL: {
+        assert(allocatedInSemispace(&state->heap.tospace, toPtr(stmt->global.name)));
+    }; break;
+
+    case STMT_CONST_DEF: {
+        ORef const v = stmt->constDef.v;
+        if (isHeaped(v)) {
+            assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(v)));
+        }
+    }; break;
+
+    case STMT_CLOVER: break;
 
     case STMT_METHOD_DEF: assertIRFnInTospace(state, &stmt->methodDef.fn); break;
 
@@ -170,9 +177,6 @@ static void pushIRStmt(Compiler* compiler, Stmts* stmts, IRStmt stmt) {
 }
 
 static IRFn createIRFn(Compiler* compiler) {
-    uint8_t const constCap = 2;
-    ORef* const consts = amalloc(&compiler->arena, constCap * sizeof *consts);
-
     size_t const blockCap = 2;
     IRBlock** const blocks = amalloc(&compiler->arena, blockCap * sizeof *blocks);
 
@@ -180,10 +184,6 @@ static IRFn createIRFn(Compiler* compiler) {
         .blocks = blocks,
         .blockCount = 0,
         .blockCap = blockCap,
-
-        .consts = consts,
-        .constCount = 0,
-        .constCap = constCap,
 
         .domain = (IRDomain){.vals = nullptr, .count = 0, .cap = 0},
         .hasVarArg = false
@@ -227,34 +227,6 @@ void completeIRDomain(Compiler *compiler, IRDomain *domain, size_t arity) {
 
         domain->count = arity;
     }
-}
-
-static IRConst pushFnConst(Compiler* compiler, IRFn* fn, ORef c) {
-    if (fn->constCount == fn->constCap) {
-        uint8_t const newCap = fn->constCap + (fn->constCap >> 1);
-        fn->consts = arealloc(&compiler->arena, fn->consts, fn->constCap * sizeof *fn->consts,
-                              newCap * sizeof *fn->consts);
-        fn->constCap = newCap;
-    }
-
-    uint8_t const index = fn->constCount;
-    fn->consts[fn->constCount++] = c;
-    return (IRConst){index};
-}
-
-static IRConst fnConst(Compiler* compiler, IRFn* fn, ORef c) {
-    // Linear search is actually good since there usually aren't that many constants per fn:
-    size_t const constCount = fn->constCount;
-    for (size_t i = 0; i < constCount; ++i) {
-        ORef const ic = fn->consts[i];
-        if (eq(ic, c)) { return (IRConst){(uint8_t)i}; }
-    }
-
-    return pushFnConst(compiler, fn, c);
-}
-
-static IRConst allocFnConst(Compiler* compiler, IRFn* fn) {
-    return pushFnConst(compiler, fn, fixnumToORef(Zero));
 }
 
 static IRBlock* createIRBlock(Compiler* compiler, IRFn* fn, size_t callerCap) {
@@ -366,10 +338,6 @@ static void printIRLabel(FILE* dest, IRLabel label) {
     fprintf(dest, ":%ld", label.blockIndex);
 }
 
-inline static void printIRConst(State const* state, FILE* dest, IRFn const* fn, IRConst c) {
-    print(state, dest, fn->consts[c.index]);
-}
-
 static void printArgs(
     State const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
     Args const* args
@@ -388,7 +356,7 @@ static void printNestedIRFn(
 
 static void printStmt(
     State const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
-    IRFn const* fn, size_t nesting, IRStmt const* stmt
+    size_t nesting, IRStmt const* stmt
 ) {
     for (size_t i = 0; i < nesting + 1; ++i) { fprintf(dest, "  "); }
 
@@ -396,7 +364,7 @@ static void printStmt(
     case STMT_GLOBAL_DEF: {
         GlobalDef const globalDef = stmt->globalDef;
         fprintf(dest, "(def ");
-        printIRConst(state, dest, fn, globalDef.name);
+        print(state, dest, toORef(globalDef.name));
         fputc(' ', dest);
         printName(state, dest, compiler, globalDef.val);
         fputc(')', dest);
@@ -407,7 +375,7 @@ static void printStmt(
         fprintf(dest, "(let ");
         printName(state, dest, compiler, global.tmpName);
         fprintf(dest, " (global ");
-        printIRConst(state, dest, fn, global.name);
+        print(state, dest, toORef(global.name));
         fprintf(dest, "))");
     }; break;
 
@@ -416,7 +384,7 @@ static void printStmt(
         fprintf(dest, "(let ");
         printName(state, dest, compiler, cdef.name);
         fputc(' ', dest);
-        printIRConst(state, dest, fn, cdef.v);
+        print(state, dest, cdef.v);
         fputc(')', dest);
     }; break;
 
@@ -577,7 +545,7 @@ static void printBlock(
     
     size_t const stmtCount = block->stmts.count;
     for (size_t i = 0; i < stmtCount; ++i) {
-        printStmt(state, dest, compiler, printName, fn, nesting, &block->stmts.vals[i]);
+        printStmt(state, dest, compiler, printName, nesting, &block->stmts.vals[i]);
         fputc('\n', dest);
     }
     

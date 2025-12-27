@@ -159,6 +159,7 @@ typedef struct ToCpsCont {
         IRName name;
     };
     enum {
+        TO_CPS_CONT_EFF,
         TO_CPS_CONT_VAL,
         TO_CPS_CONT_BIND,
         TO_CPS_CONT_RETURN
@@ -169,6 +170,7 @@ static IRName toCpsContDestName(Compiler* compiler, ToCpsCont k) {
     switch (k.type) {
     case TO_CPS_CONT_BIND: return k.name;
 
+    case TO_CPS_CONT_EFF: // fallthrough
     case TO_CPS_CONT_VAL: // fallthrough
     case TO_CPS_CONT_RETURN: return freshName(compiler);
     }
@@ -302,21 +304,33 @@ static IRName fnToCPS(
 
     completeIRDomain(compiler, &innerFn.domain, arity);
 
+    // TODO: DRY wrt. `letToCPS`:
+
     args = argsPair->cdr;
     if (!isPair(state, args)) {
         assert(false); // TODO: Proper args error (missing body)
     }
-    argsPair = pairToPtr(uncheckedORefToPair(args));
+    argsPair = toPtr(uncheckedORefToPair(args));
 
-    ORef const body = argsPair->car;
+    for (;/*ever*/;) {
+        ORef const stmt = argsPair->car;
+        args = argsPair->cdr;
 
-    if (!isEmptyList(state, argsPair->cdr)) {
-        assert(false); // TODO: Proper args error or implement body stmts
+        if (isEmptyList(state, args)) {
+            ToCpsCont const retK = {{.ret = {.cont = ret}}, TO_CPS_CONT_RETURN};
+            exprToIR(state, compiler, &innerFn, &fnEnv, &entryBlock, stmt, retK);
+
+            freeToCpsEnv(&fnEnv);
+            break;
+        } else if (isPair(state, args)){
+            exprToIR(state, compiler, &innerFn, &fnEnv, &entryBlock, stmt,
+                     (ToCpsCont){.type = TO_CPS_CONT_EFF});
+
+            argsPair = toPtr(uncheckedORefToPair(args));
+        } else {
+            assert(false); // TODO: Proper improper args error
+        }
     }
-
-    ToCpsCont const retK = {{.ret = {.cont = ret}}, TO_CPS_CONT_RETURN};
-    exprToIR(state, compiler, &innerFn, &fnEnv, &entryBlock, body, retK);
-    freeToCpsEnv(&fnEnv);
 
     IRName const name = toCpsContDestName(compiler, k);
     Args* const closes = amalloc(&compiler->arena, sizeof *closes);
@@ -513,21 +527,32 @@ static IRName letToCPS(
         }
     }
 
+    // TODO: DRY wrt. `fnToCPS`:
+
     args = argsPair->cdr;
     if (!isPair(state, args)) {
         assert(false); // TODO: Proper invalid args error
     }
-    argsPair = pairToPtr(uncheckedORefToPair(args));
+    argsPair = toPtr(uncheckedORefToPair(args));
 
-    ORef const body = argsPair->car;
+    for (;/*ever*/;) {
+        ORef const stmt = argsPair->car;
+        args = argsPair->cdr;
 
-    if (!isEmptyList(state, argsPair->cdr)) {
-        assert(false); // TODO: Proper invalid args error
+        if (isEmptyList(state, args)) {
+            IRName const bodyName = exprToIR(state, compiler, fn, &letEnv, block, stmt, k);
+
+            freeToCpsEnv(&letEnv);
+            return bodyName;
+        } else if (isPair(state, args)){
+            exprToIR(state, compiler, fn, &letEnv, block, stmt,
+                         (ToCpsCont){.type = TO_CPS_CONT_EFF});
+
+            argsPair = toPtr(uncheckedORefToPair(args));
+        } else {
+            assert(false); // TODO: Proper improper args error
+        }
     }
-
-    IRName const bodyName = exprToIR(state, compiler, fn, &letEnv, block, body, k);
-    freeToCpsEnv(&letEnv);
-    return bodyName;
 }
 
 static IRName callToCPS(

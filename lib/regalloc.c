@@ -145,7 +145,10 @@ static MaybeMove allocTransferArgReg(RegEnv* env, IRName var, Reg reg) {
 }
 
 static Reg deallocVarReg(RegEnv* env, IRName var) {
-    assert(env->varRegs[var.index].hasVal); // FIXME: Triggers for dead variables
+    if (!env->varRegs[var.index].hasVal) {
+        allocVarReg(env, var); // OPTIMIZE: Will be immediately deallocated:
+    }
+
     Reg const reg = env->varRegs[var.index].val;
     env->varRegs[var.index] = (MaybeReg){};
     env->regVars[reg.index] = invalidIRName;
@@ -527,8 +530,8 @@ static void regAllocParams(Compiler* compiler, RegEnv* env, IRBlock* block) {
         size_t const arity = block->paramCount;
         for (size_t i = 0; i < arity; ++i) {
             IRName* const param = &block->params[i];
-            assert(env->varRegs[param->index].hasVal); // FIXME: Triggers for dead variables
-            Reg const reg = env->varRegs[param->index].val;
+            MaybeReg const maybeReg = env->varRegs[param->index];
+            Reg const reg = maybeReg.hasVal ? maybeReg.val : allocVarReg(env, *param);
             *param = (IRName){reg.index};
         }
     }

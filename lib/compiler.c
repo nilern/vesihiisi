@@ -30,7 +30,7 @@ static void freeCompiler(Compiler* compiler) {
 }
 
 static IRName renameSymbolImpl(Compiler* compiler, ORef maybeSym) {
-    if (compiler->nameCount < compiler->nameCap) {
+    if (compiler->nameCount == compiler->nameCap) {
         size_t const newCap = compiler->nameCap + (compiler->nameCap >> 1);
         compiler->nameSyms = realloc(compiler->nameSyms, newCap * sizeof *compiler->nameSyms);
         compiler->nameCap = newCap;

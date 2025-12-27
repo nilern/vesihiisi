@@ -12,11 +12,13 @@ inline static Parser createParser(Str src) {
     return (Parser){.curr = src.data, .end = src.data + src.len};
 }
 
-inline static bool isSymbolChar(char c) {
+inline static bool isInitial(char c) {
     return isalpha(c) || c == ':' || c == '!' || c == '?'
         || c == '+' || c == '-' || c == '*' || c == '/'
         || c == '=' || c == '<' || c == '>';
 }
+
+inline static bool isSubsequent(char c) { return isInitial(c) || isdigit(c); }
 
 static bool readExpr(State* state, ORef* dest, Parser* parser) {
     while (isspace(*parser->curr)) { ++parser->curr; }
@@ -91,12 +93,12 @@ static bool readExpr(State* state, ORef* dest, Parser* parser) {
         *dest = pairToORef(firstPair);
         popStackRoots(state, 2);
         return true;
-    } else if (isSymbolChar(c)) {
+    } else if (isInitial(c)) {
         StringBuilder builder = createStringBuilder();
          do {
             stringBuilderPush(&builder, c);
             c = *++parser->curr;
-         } while (isSymbolChar(c));
+         } while (isSubsequent(c));
         
         *dest = symbolToORef(intern(state, stringBuilderStr(&builder)));
         freeStringBuilder(&builder); // OPTIMIZE: Reuse same builder

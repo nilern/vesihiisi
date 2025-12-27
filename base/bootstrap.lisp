@@ -38,3 +38,92 @@
       (drop (fx- n 1) (cdr xs)))))
 
 (def nth (fn (xs i) (car (drop i xs))))
+
+(def meet
+  (fn (type1 type2)
+    (if (not (identical? type1 <any>))
+      (if (not (identical? type2 <any>))
+        #f
+        type1)
+      type2)))
+
+(def meet-domains
+  (let ((has-vararg? (fn (method) (field-get <method> method 3)))
+
+        (min-arity (fn (method has-vararg)
+                     (let ((arity (flex-count method)))
+                       (if (not has-vararg)
+                         arity
+                         (fx- arity 1)))))
+
+        (meet-domains*
+         (fn (method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2)
+           (call-with-current-continuation
+             (fn (return)
+               (letfn ((meet-domain-tails
+                        (fn (i)
+                          (if (fx< i min-arity1)
+                            (let ((param-type1 (flex-get method1 i))
+                                  (param-type2 (flex-get method2
+                                                         (if (fx< i min-arity2) i min-arity2))))
+                              (let ((met-param (meet param-type1 param-type2)))
+                                (if (not met-param)
+                                  (return #f)
+                                  (cons met-param (meet-domain-tails (fx+ i 1))))))
+                            (let ((param-type1 (flex-get method1 min-arity1)))
+                              (if (fx< i min-arity2)
+                                (let ((met-param (meet param-type1 (flex-get method2 i))))
+                                  (if (not met-param)
+                                    (return #f)
+                                    (cons met-param (meet-domain-tails (fx+ i 1)))))
+                               (if (if (not has-vararg1) #t (not has-vararg2))
+                                  ()
+                                  (let ((met-tail (meet param-type1 (flex-get method2 min-arity2))))
+                                    (if (not met-tail)
+                                      (return #f)
+                                      (meet param-type1 (flex-get method2 min-arity2)))))))))))
+                 (meet-domain-tails 0)))))))
+  (fn (f1 f2)
+    (let ((method1 (fn-method f1))
+          (has-vararg1 (has-vararg? method1))
+          (min-arity1 (min-arity method1 has-vararg1))
+
+          (method2 (fn-method f2))
+          (has-vararg2 (has-vararg? method2))
+          (min-arity2 (min-arity method2 has-vararg2)))
+      (if (not has-vararg1)
+        (if (not has-vararg2)
+          (if (identical? min-arity1 min-arity2)
+            (meet-domains* method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2)
+            #f)
+          (if (fx< min-arity1 min-arity2)
+            #f
+            (meet-domains* method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2)))
+        (if (not has-vararg2)
+          (if (fx> min-arity1 min-arity2)
+            #f
+            (meet-domains* method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2))
+          (meet-domains* method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2)))))))
+
+(def make-multimethod
+  (fn methods
+    (let ((methods (array!->array methods))
+
+          (ensure-unambiguous
+           (fn (f i)
+             (array-fold-left
+               (fn (f* j)
+                 (if (not (identical? j i))
+                   (let ((met-domain (meet-domains f f*)))
+                     (if (not met-domain)
+                       (fx+ i 1)
+                       (error (quote ambiguous-methods) f f* met-domain)))
+                   (fx+ i 1)))
+               0 methods))))
+      (array-fold-left
+        (fn (f i)
+          (ensure-unambiguous f i)
+          (fx+ i 1))
+        0 methods)
+
+      (make <multimethod> methods))))

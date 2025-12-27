@@ -431,6 +431,8 @@ inline static Type* tryCreateBoolType(Semispace* semispace, Type const* typeType
 
 static PrimopRes callBytecode(State* state);
 static PrimopRes primopAbort(State* state);
+static PrimopRes primopCallCC(State* state);
+static PrimopRes primopContinue(State* state);
 static PrimopRes primopIdentical(State* state);
 static PrimopRes primopMake(State* state);
 static PrimopRes primopFieldGet(State* state);
@@ -606,6 +608,10 @@ static bool tryCreateState(State* dest, size_t heapSize) {
 
     installPrimordial(dest, strLit("abort"), toORef(abortClosure));
     popStackRoots(dest, 1);
+    installPrimop(dest, strLit("call-with-current-continuation"), primopCallCC,
+                  tagInt(1), false, dest->closureType);
+    installPrimop(dest, strLit("continue"), primopContinue,
+                  tagInt(2), false, dest->continuationType, dest->anyType);
     installPrimop(dest, strLit("identical?"), primopIdentical,
                   tagInt(2), false, dest->anyType, dest->anyType);
     installPrimop(dest, strLit("make"), primopMake,

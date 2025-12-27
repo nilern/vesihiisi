@@ -18,7 +18,7 @@ static ORef getErrorHandler(State const* state) {
 static PrimopRes primopError(State* state, ORef err) {
     state->regs[calleeReg] = getErrorHandler(state);
     state->regs[firstArgReg] = err;
-    state->entryRegc = 3;
+    state->entryRegc = firstArgReg + 1;
     return PRIMOP_RES_TAILCALL;
 }
 
@@ -79,6 +79,19 @@ static PrimopRes primopAbort(State* state) {
     putc('\n', stderr);
 
     return PRIMOP_RES_ABORT;
+}
+
+static PrimopRes primopCallCC(State* state) {
+    state->regs[calleeReg] = state->regs[firstArgReg];
+    state->regs[firstArgReg] = state->regs[retContReg];
+    state->entryRegc = firstArgReg + 1;
+    return PRIMOP_RES_TAILCALL;
+}
+
+static PrimopRes primopContinue(State* state) {
+    state->regs[retContReg] = state->regs[firstArgReg];
+    state->regs[retReg] = state->regs[firstArgReg + 1];
+    return PRIMOP_RES_CONTINUE;
 }
 
 static PrimopRes primopIdentical(State* state) {

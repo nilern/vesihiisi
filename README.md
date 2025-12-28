@@ -7,6 +7,10 @@ Yet another Lisp.
 ## Philosophy
 
 * Make the core as elegant as possible.
+* If we must choose, prioritize speed over space. We anticipate slightly modern
+  system requirements of a 64-bit processor and megabytes of RAM. If you must
+  run Lisp on your IoT toaster, look elsewhere (you do have plenty of existing
+  options even there).
 
 ## Current State
 

@@ -294,6 +294,23 @@ static void emitStmt(
         pushReg(compiler, builder, stmt->swap.reg1);
         pushOp(compiler, builder, OP_SWAP);
     }; break;
+
+    case STMT_KNOT: {
+        pushReg(compiler, builder, stmt->knot.name);
+        pushOp(compiler, builder, OP_KNOT);
+    }; break;
+
+    case STMT_KNOT_INIT: {
+        pushReg(compiler, builder, stmt->knotInit.v);
+        pushReg(compiler, builder, stmt->knotInit.knot);
+        pushOp(compiler, builder, OP_KNOT_INIT);
+    }; break;
+
+    case STMT_KNOT_GET: {
+        pushReg(compiler, builder, stmt->knotGet.knot);
+        pushReg(compiler, builder, stmt->knotGet.name);
+        pushOp(compiler, builder, OP_KNOT_GET);
+    }; break;
     }
 }
 

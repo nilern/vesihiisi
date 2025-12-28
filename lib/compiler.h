@@ -84,6 +84,20 @@ typedef struct SwapStmt {
     IRName reg2;
 } SwapStmt;
 
+typedef struct KnotStmt {
+    IRName name;
+} KnotStmt;
+
+typedef struct KnotInitStmt {
+    IRName knot;
+    IRName v;
+} KnotInitStmt;
+
+typedef struct KnotGetStmt {
+    IRName name;
+    IRName knot;
+} KnotGetStmt;
+
 typedef struct IRStmt {
     union {
         GlobalDef globalDef;
@@ -94,6 +108,9 @@ typedef struct IRStmt {
         IRClosure closure;
         MoveStmt mov;
         SwapStmt swap;
+        KnotStmt knot;
+        KnotInitStmt knotInit;
+        KnotGetStmt knotGet;
     };
     enum IRStmtType {
         STMT_GLOBAL_DEF,
@@ -103,7 +120,10 @@ typedef struct IRStmt {
         STMT_METHOD_DEF,
         STMT_CLOSURE,
         STMT_MOVE,
-        STMT_SWAP
+        STMT_SWAP,
+        STMT_KNOT,
+        STMT_KNOT_INIT,
+        STMT_KNOT_GET
     } type;
 } IRStmt;
 

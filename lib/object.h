@@ -344,6 +344,20 @@ inline static VarRef tagVar(Var* ptr) {
 
 inline static Var* varToPtr(VarRef v) { return (Var*)(void*)(v.bits & ~tag_bits); }
 
+typedef struct Knot {
+    ORef val;
+} Knot;
+
+typedef struct KnotRef { uintptr_t bits; } KnotRef;
+
+inline static KnotRef uncheckedORefToKnot(ORef v) { return (KnotRef){v.bits}; }
+
+inline static KnotRef tagKnot(Knot* ptr) {
+    return (KnotRef){(uintptr_t)(void*)ptr | (uintptr_t)TAG_HEAPED};
+}
+
+inline static Knot* knotToPtr(KnotRef v) { return (Knot*)(void*)(v.bits & ~tag_bits); }
+
 typedef struct Namespace {
     ArrayRef keys;
     ArrayRef vals;
@@ -411,6 +425,7 @@ inline static ArityError* arityErrorToPtr(ArityErrorRef v) {
     ByteArrayRef: uncheckedToORef(v), \
     MethodRef: uncheckedToORef(v), \
     ClosureRef: uncheckedToORef(v), \
+    KnotRef: uncheckedToORef(v), \
     TypeErrorRef: uncheckedToORef(v))
 
 #define toPtr(v) _Generic((v), \
@@ -419,5 +434,6 @@ inline static ArityError* arityErrorToPtr(ArityErrorRef v) {
     ArrayRef: arrayToPtr, \
     ByteArrayRef: byteArrayToPtr, \
     PairRef: pairToPtr, \
-    MethodRef: methodToPtr \
+    MethodRef: methodToPtr, \
+    KnotRef: knotToPtr \
     )(v)

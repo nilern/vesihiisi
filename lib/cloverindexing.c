@@ -92,7 +92,8 @@ static void indexStmtClovers(Compiler* compiler, CloverIdxs const* env, IRStmt* 
         indexFnClovers(compiler, &innerEnv, &stmt->methodDef.fn);
     }; break;
 
-    case STMT_CLOSURE: case STMT_MOVE: case STMT_SWAP: break;
+    case STMT_CLOSURE: case STMT_MOVE: case STMT_SWAP:
+    case STMT_KNOT: case STMT_KNOT_INIT: case STMT_KNOT_GET: break;
     }
 }
 

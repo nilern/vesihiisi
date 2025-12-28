@@ -488,6 +488,20 @@ static void regAllocStmt(Compiler* compiler, RegEnv* env, IRStmt* stmt) {
     }; break;
 
     case STMT_MOVE: case STMT_SWAP: break; // Generated during this pass => no-op
+
+    case STMT_KNOT: {
+        stmt->knot.name = (IRName){deallocVarReg(env, stmt->knot.name).index};
+    }; break;
+
+    case STMT_KNOT_INIT: {
+        stmt->knotInit.v = (IRName){getVarReg(env, stmt->knotInit.v).index};
+        stmt->knotInit.knot = (IRName){getVarReg(env, stmt->knotInit.knot).index};
+    }; break;
+
+    case STMT_KNOT_GET: {
+        stmt->knotGet.name = (IRName){deallocVarReg(env, stmt->knotGet.name).index};
+        stmt->knotGet.knot = (IRName){getVarReg(env, stmt->knotGet.knot).index};
+    }; break;
     }
 }
 

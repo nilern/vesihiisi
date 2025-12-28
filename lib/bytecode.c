@@ -114,6 +114,24 @@ static size_t disassembleNestedInstr(
         disassembleNested(state, dest, innerMethod, nesting + 1);
     }; break;
 
+    case OP_KNOT: {
+        disassembleReg(dest, code[pc++]);
+        fputs(" = knot ()", dest);
+    }; break;
+
+    case OP_KNOT_INIT: {
+        fputs("knot-init! ", dest);
+        disassembleReg(dest, code[pc++]);
+        putc(' ', dest);
+        disassembleReg(dest, code[pc++]);
+    }; break;
+
+    case OP_KNOT_GET: {
+        disassembleReg(dest, code[pc++]);
+        fputs(" = knot-get ", dest);
+        disassembleReg(dest, code[pc++]);
+    }; break;
+
     case OP_BRF: {
         fprintf(dest, "brf ");
         disassembleReg(dest, code[pc++]);

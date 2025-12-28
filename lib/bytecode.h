@@ -14,9 +14,9 @@ typedef enum Opcode : uint8_t {
     OP_GLOBAL,
     OP_CONST,
     OP_SPECIALIZE,
-    // TODO: OP_BOX
-    // TODO: OP_BOX_SET
-    // TODO: OP_BOX_GET
+    OP_KNOT,        // rx = knot ()
+    OP_KNOT_INIT,   // knot-init! rx ry
+    OP_KNOT_GET,    // rx = knot-get ry
     OP_BRF,
     OP_BR,
     OP_RET,

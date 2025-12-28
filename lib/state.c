@@ -31,6 +31,7 @@ static char const* const typeNames[] = {
     "<fn>",
     "<continuation>",
     "<var>",
+    "<knot>",
     "<ns>",
     "<type-error>",
     "<arity-error>"
@@ -349,6 +350,22 @@ static Type* tryCreateVarType(Semispace* semispace, Type const* typeType) {
     return type;
 }
 
+static Type* tryCreateKnotType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = tryAlloc(semispace, typeType);
+    if (!maybeType) { return nullptr; }
+
+    Type* const type = (Type*)maybeType;
+    *type = (Type){
+        .minSize = tagInt(sizeof(Knot)),
+        .align = tagInt(alignof(Knot)),
+        .isBytes = False,
+        .hasCodePtr = False,
+        .isFlex = False
+    };
+
+    return type;
+}
+
 static Type* tryCreateNamespaceType(Semispace* semispace, Type const* typeType) {
     void* const maybeType = tryAlloc(semispace, typeType);
     if (!maybeType) { return nullptr; }
@@ -516,6 +533,8 @@ static bool tryCreateState(State* dest, size_t heapSize) {
     if (!unboundType) { return false; }
     Type const* const varType = tryCreateVarType(&heap.tospace, typeTypePtr);
     if (!varType) { return false; }
+    Type const* const knotType = tryCreateKnotType(&heap.tospace, typeTypePtr);
+    if (!knotType) { return false; }
     Type const* const nsType = tryCreateNamespaceType(&heap.tospace, typeTypePtr);
     if (!nsType) { return false; }
     Type const* const typeErrorType = tryCreateTypeErrorType(&heap.tospace, typeTypePtr);
@@ -568,6 +587,7 @@ static bool tryCreateState(State* dest, size_t heapSize) {
         .continuationType = tagType(continuationType),
         .unboundType = tagType(unboundType),
         .varType = tagType(varType),
+        .knotType = tagType(knotType),
         .nsType = tagType(nsType),
         .typeErrorType = tagType(typeErrorType),
         .arityErrorType = tagType(arityErrorType),
@@ -1022,6 +1042,16 @@ static ContinuationRef allocContinuation(
     ptr->pc = pc;
 
     return tagContinuation(ptr);
+}
+
+static KnotRef allocKnot(State* state) {
+    Knot* ptr = tryAlloc(&state->heap.tospace, toPtr(state->knotType));
+    if (mustCollect(ptr)) {
+        collect(state);
+        ptr = allocOrDie(&state->heap.tospace, toPtr(state->knotType));
+    }
+
+    return tagKnot(ptr);
 }
 
 static TypeErrorRef createTypeError(State* state, TypeRef type, ORef val) {

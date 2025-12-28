@@ -129,6 +129,30 @@ static VMRes run(State* state, ClosureRef selfRef) {
             state->regs[destReg] = toORef(method);
         }; continue;
 
+        case OP_KNOT: {
+            uint8_t const destReg = state->code[state->pc++];
+
+            state->regs[destReg] = toORef(allocKnot(state));
+        }; continue;
+
+        case OP_KNOT_INIT: {
+            uint8_t const knotReg = state->code[state->pc++];
+            uint8_t const srcReg = state->code[state->pc++];
+
+            assert(isa(state, state->knotType, state->regs[knotReg]));
+            Knot* const knot = toPtr(uncheckedORefToKnot(state->regs[knotReg]));
+            knot->val = state->regs[srcReg];
+        }; continue;
+
+        case OP_KNOT_GET: {
+            uint8_t const destReg = state->code[state->pc++];
+            uint8_t const knotReg = state->code[state->pc++];
+
+            assert(isa(state, state->knotType, state->regs[knotReg]));
+            Knot const* const knot = toPtr(uncheckedORefToKnot(state->regs[knotReg]));
+            state->regs[destReg] = knot->val;
+        }; continue;
+
         case OP_BR: {
             uint8_t const displacement = state->code[state->pc++];
 

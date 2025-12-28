@@ -101,6 +101,20 @@ static void enlivenStmt(Compiler* compiler, BitSet* liveOuts, IRStmt* stmt) {
     }; break;
 
     case STMT_CLOSURE: case STMT_MOVE: case STMT_SWAP: assert(false); break; // Should not exist yet
+
+    case STMT_KNOT: {
+        rangeStart(liveOuts, stmt->knot.name);
+    }; break;
+
+    case STMT_KNOT_INIT: {
+        requireLive(compiler, liveOuts, stmt->knotInit.v);
+        requireLive(compiler, liveOuts, stmt->knotInit.knot);
+    }; break;
+
+    case STMT_KNOT_GET: {
+        requireLive(compiler, liveOuts, stmt->knotGet.knot);
+        rangeStart(liveOuts, stmt->knotGet.name);
+    }
     }
 }
 

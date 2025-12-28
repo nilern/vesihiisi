@@ -108,7 +108,8 @@ static void markIRStmt(State* state, IRStmt* stmt) {
 
     case STMT_METHOD_DEF: markIRFn(state, &stmt->methodDef.fn); break;
 
-    case STMT_CLOSURE: case STMT_MOVE: case STMT_SWAP: break;
+    case STMT_CLOSURE: case STMT_MOVE: case STMT_SWAP:
+    case STMT_KNOT: case STMT_KNOT_INIT: case STMT_KNOT_GET: break;
     }
 }
 
@@ -133,7 +134,8 @@ static void assertIRStmtInTospace(State const* state, IRStmt const* stmt) {
 
     case STMT_METHOD_DEF: assertIRFnInTospace(state, &stmt->methodDef.fn); break;
 
-    case STMT_CLOSURE: case STMT_MOVE: case STMT_SWAP: break;
+    case STMT_CLOSURE: case STMT_MOVE: case STMT_SWAP:
+    case STMT_KNOT: case STMT_KNOT_INIT: case STMT_KNOT_GET: break;
     }
 }
 
@@ -435,6 +437,31 @@ static void printStmt(
         fputc(' ', dest);
         printName(state, dest, compiler, swap.reg2);
         fputc(')', dest);
+    }; break;
+
+    case STMT_KNOT: {
+        KnotStmt const knotStmt = stmt->knot;
+        fputs("(let ", dest);
+        printName(state, dest, compiler, knotStmt.name);
+        fputs(" (knot))", dest);
+    }; break;
+
+    case STMT_KNOT_INIT: {
+        KnotInitStmt const knotInit = stmt->knotInit;
+        fputs("(knot-init! ", dest);
+        printName(state, dest, compiler, knotInit.knot);
+        fputc(' ', dest);
+        printName(state, dest, compiler, knotInit.v);
+        fputc(')', dest);
+    }; break;
+
+    case STMT_KNOT_GET: {
+        KnotGetStmt const knotGet = stmt->knotGet;
+        fprintf(dest, "(let ");
+        printName(state, dest, compiler, knotGet.name);
+        fprintf(dest, " (knot-get ");
+        printName(state, dest, compiler, knotGet.knot);
+        fputs("))", dest);
     }; break;
     }
 }

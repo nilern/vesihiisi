@@ -287,6 +287,17 @@ static IRStmt stmtWithPureLoads(
     }; break;
 
     case STMT_CLOSURE: case STMT_MOVE: case STMT_SWAP: assert(false); break; // Should not exist yet
+
+    case STMT_KNOT: break;
+
+    case STMT_KNOT_INIT: {
+        stmt.knotInit.knot = deepLexicalUse(compiler, env, newStmts, stmt.knotInit.knot);
+        stmt.knotInit.v = deepLexicalUse(compiler, env, newStmts, stmt.knotInit.v);
+    }; break;
+
+    case STMT_KNOT_GET: {
+        stmt.knotGet.knot = deepLexicalUse(compiler, env, newStmts, stmt.knotGet.knot);
+    }; break;
     }
 
     return stmt;

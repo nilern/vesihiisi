@@ -146,28 +146,19 @@ static PrimopRes primopMake(State* state) {
     }
 }
 
-static PrimopRes primopFieldGet(State* state) {
-    TypeRef const typeRef = uncheckedORefToTypeRef(state->regs[firstArgReg]);
-    ORef const v = state->regs[firstArgReg + 1];
-    size_t const fieldIdx = (uintptr_t)uncheckedFixnumToInt(state->regs[firstArgReg + 2]);
+static PrimopRes primopSlotGet(State* state) {
+    ORef const v = state->regs[firstArgReg];
+    size_t const fieldIdx = (uintptr_t)uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
 
-    if (!isa(state, typeRef, v)) {
-        return primopError(state, toORef(createTypeError(state, typeRef, v)));
-    }
-
-    Type const* type = toPtr(typeRef);
-    if (!unwrapBool(type->isFlex)) {
-        if (!unwrapBool(type->isBytes)) {
-            size_t const fieldCount = (uintptr_t)fixnumToInt(type->minSize) / sizeof(ORef);
-            if (fieldIdx >= fieldCount) {
-                assert(false); // TODO: Proper bounds error
-            }
-
-            ORef const* const fields = (ORef const*)uncheckedORefToPtr(v);
-            state->regs[retReg] = fields[fieldIdx];
-        } else {
-            assert(false); // TODO
+    Type const* type = toPtr(typeOf(state, v));
+    if (!unwrapBool(type->isBytes)) {
+        size_t const fieldCount = (uintptr_t)fixnumToInt(type->minSize) / sizeof(ORef);
+        if (fieldIdx >= fieldCount) {
+            assert(false); // TODO: Proper bounds error
         }
+
+        ORef const* const fields = (ORef const*)uncheckedORefToPtr(v);
+        state->regs[retReg] = fields[fieldIdx];
     } else {
         assert(false); // TODO
     }

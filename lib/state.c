@@ -452,7 +452,7 @@ static PrimopRes primopCallCC(State* state);
 static PrimopRes primopContinue(State* state);
 static PrimopRes primopIdentical(State* state);
 static PrimopRes primopMake(State* state);
-static PrimopRes primopFieldGet(State* state);
+static PrimopRes primopSlotGet(State* state);
 static PrimopRes primopFxAdd(State* state);
 static PrimopRes primopFxSub(State* state);
 static PrimopRes primopFxMul(State* state);
@@ -636,8 +636,8 @@ static bool tryCreateState(State* dest, size_t heapSize) {
                   tagInt(2), false, dest->anyType, dest->anyType);
     installPrimop(dest, strLit("make"), primopMake,
                   tagInt(2), true, dest->typeType, dest->anyType);
-    installPrimop(dest, strLit("field-get"), primopFieldGet,
-                  tagInt(3), false, dest->typeType, dest->anyType, dest->fixnumType);
+    installPrimop(dest, strLit("slot-get"), primopSlotGet,
+                  tagInt(2), false, dest->anyType, dest->fixnumType);
     installPrimop(dest, strLit("fx+"), primopFxAdd,
                   tagInt(2), false, dest->fixnumType, dest->fixnumType);
     installPrimop(dest, strLit("fx-"), primopFxSub,

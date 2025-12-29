@@ -2,8 +2,8 @@
 
 (def cons (fn (x xs) (make <pair> x xs)))
 
-(def car (fn (xs) (field-get <pair> xs 0)))
-(def cdr (fn (xs) (field-get <pair> xs 1)))
+(def car (fn ((: xs <pair>)) (slot-get xs 0)))
+(def cdr (fn ((: xs <pair>)) (slot-get xs 1)))
 
 (def fold-left
   (fn (f acc xs)
@@ -48,9 +48,9 @@
       type2)))
 
 (def meet-domains
-  (let ((has-vararg? (fn (method) (field-get <method> method 3)))
+  (let ((has-vararg? (fn ((: method <method>)) (slot-get method 3)))
 
-        (min-arity (fn (method has-vararg)
+        (min-arity (fn ((: method <method>) has-vararg)
                      (let ((arity (flex-count method)))
                        (if (not has-vararg)
                          arity

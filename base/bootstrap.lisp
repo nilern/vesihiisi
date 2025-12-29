@@ -47,16 +47,17 @@
         type1)
       type2)))
 
+(def has-vararg? (fn ((: method <method>)) (slot-get method 3)))
+
+(def min-arity
+  (fn ((: method <method>) has-vararg)
+    (let ((arity (flex-count method)))
+      (if (not has-vararg)
+        arity
+        (fx- arity 1)))))
+
 (def meet-domains
-  (let ((has-vararg? (fn ((: method <method>)) (slot-get method 3)))
-
-        (min-arity (fn ((: method <method>) has-vararg)
-                     (let ((arity (flex-count method)))
-                       (if (not has-vararg)
-                         arity
-                         (fx- arity 1)))))
-
-        (meet-domains*
+  (let ((meet-domains*
          (fn (method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2)
            (call-with-current-continuation
              (fn (return)

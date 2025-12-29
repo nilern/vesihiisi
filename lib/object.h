@@ -419,6 +419,7 @@ inline static ArityError* arityErrorToPtr(ArityErrorRef v) {
 #define uncheckedToORef(v) (ORef){(v).bits}
 
 #define toORef(v) _Generic((v), \
+    Fixnum: uncheckedToORef(v), \
     TypeRef: uncheckedToORef(v), \
     SymbolRef: uncheckedToORef(v), \
     ArrayRef: uncheckedToORef(v), \

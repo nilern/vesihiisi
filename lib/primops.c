@@ -82,6 +82,9 @@ static PrimopRes primopAbort(State* state) {
 }
 
 static PrimopRes primopCallCC(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
     state->regs[calleeReg] = state->regs[firstArgReg];
     state->regs[firstArgReg] = state->regs[retContReg];
     state->entryRegc = firstArgReg + 1;
@@ -89,6 +92,9 @@ static PrimopRes primopCallCC(State* state) {
 }
 
 static PrimopRes primopContinue(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
     state->regs[retContReg] = state->regs[firstArgReg];
     state->regs[retReg] = state->regs[firstArgReg + 1];
     return PRIMOP_RES_CONTINUE;
@@ -107,6 +113,9 @@ static PrimopRes primopIdentical(State* state) {
 }
 
 static PrimopRes primopMake(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
     TypeRef typeRef = uncheckedORefToTypeRef(state->regs[firstArgReg]);
     uint8_t const callArity = state->entryRegc - firstArgReg;
 
@@ -147,6 +156,9 @@ static PrimopRes primopMake(State* state) {
 }
 
 static PrimopRes primopSlotGet(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
     ORef const v = state->regs[firstArgReg];
     size_t const fieldIdx = (uintptr_t)uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
 
@@ -162,6 +174,22 @@ static PrimopRes primopSlotGet(State* state) {
     } else {
         assert(false); // TODO
     }
+
+    return PRIMOP_RES_CONTINUE;
+}
+
+static PrimopRes primopFlexCount(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    ORef const v = state->regs[firstArgReg];
+
+    Type const* type = toPtr(typeOf(state, v));
+    if (!unwrapBool(type->isFlex)) {
+        assert(false); // TODO: Proper error
+    }
+
+    state->regs[retReg] = toORef(((FlexHeader const*)uncheckedORefToPtr(v) - 1)->length);
 
     return PRIMOP_RES_CONTINUE;
 }

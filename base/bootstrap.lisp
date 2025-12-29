@@ -52,13 +52,7 @@
                    acc)))
         (loop acc 0)))))
 
-(def meet
-  (fn (type1 type2)
-    (if (not (identical? type1 <any>))
-      (if (not (identical? type2 <any>))
-        #f
-        type1)
-      type2)))
+(def fn-method (fn ((: f <fn>)) (slot-get f 0)))
 
 (def has-vararg? (fn ((: method <method>)) (slot-get method 3)))
 
@@ -68,6 +62,14 @@
       (if (not has-vararg)
         arity
         (fx- arity 1)))))
+
+(def meet
+  (fn (type1 type2)
+    (if (not (identical? type1 <any>))
+      (if (not (identical? type2 <any>))
+        #f
+        type1)
+      type2)))
 
 (def meet-domains
   (let ((meet-domains*
@@ -96,27 +98,27 @@
                                       (continue return #f)
                                       (meet param-type1 (flex-get method2 min-arity2))))))))))
                  (meet-domain-tails 0)))))))
-  (fn (f1 f2)
-    (let ((method1 (fn-method f1))
-          (has-vararg1 (has-vararg? method1))
-          (min-arity1 (min-arity method1 has-vararg1))
+    (fn (f1 f2)
+      (let ((method1 (fn-method f1))
+            (has-vararg1 (has-vararg? method1))
+            (min-arity1 (min-arity method1 has-vararg1))
 
-          (method2 (fn-method f2))
-          (has-vararg2 (has-vararg? method2))
-          (min-arity2 (min-arity method2 has-vararg2)))
-      (if (not has-vararg1)
-        (if (not has-vararg2)
-          (if (identical? min-arity1 min-arity2)
-            (meet-domains* method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2)
-            #f)
-          (if (fx< min-arity1 min-arity2)
-            #f
-            (meet-domains* method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2)))
-        (if (not has-vararg2)
-          (if (fx> min-arity1 min-arity2)
-            #f
-            (meet-domains* method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2))
-          (meet-domains* method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2)))))))
+            (method2 (fn-method f2))
+            (has-vararg2 (has-vararg? method2))
+            (min-arity2 (min-arity method2 has-vararg2)))
+        (if (not has-vararg1)
+          (if (not has-vararg2)
+            (if (identical? min-arity1 min-arity2)
+              (meet-domains* method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2)
+              #f)
+             (if (fx< min-arity1 min-arity2)
+              #f
+              (meet-domains* method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2)))
+          (if (not has-vararg2)
+            (if (fx> min-arity1 min-arity2)
+              #f
+              (meet-domains* method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2))
+            (meet-domains* method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2)))))))
 
 (def make-multimethod
   (fn methods

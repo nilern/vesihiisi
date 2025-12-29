@@ -454,10 +454,12 @@ static PrimopRes primopIdentical(State* state);
 static PrimopRes primopMake(State* state);
 static PrimopRes primopSlotGet(State* state);
 static PrimopRes primopFlexCount(State* state);
+static PrimopRes primopFlexGet(State* state);
 static PrimopRes primopFxAdd(State* state);
 static PrimopRes primopFxSub(State* state);
 static PrimopRes primopFxMul(State* state);
-static PrimopRes primopFxDiv(State* state);
+static PrimopRes primopFxQuot(State* state);
+static PrimopRes primopFxLt(State* state);
 
 static MethodRef vcreatePrimopMethod(
     State* state, MethodCode nativeCode, Fixnum arity, bool hasVarArg, va_list domain);
@@ -640,13 +642,17 @@ static bool tryCreateState(State* dest, size_t heapSize) {
     installPrimop(dest, strLit("slot-get"), primopSlotGet,
                   tagInt(2), false, dest->anyType, dest->fixnumType);
     installPrimop(dest, strLit("flex-count"), primopFlexCount, tagInt(1), false, dest->anyType);
+    installPrimop(dest, strLit("flex-get"), primopFlexGet,
+                  tagInt(2), false, dest->anyType, dest->fixnumType);
     installPrimop(dest, strLit("fx+"), primopFxAdd,
                   tagInt(2), false, dest->fixnumType, dest->fixnumType);
     installPrimop(dest, strLit("fx-"), primopFxSub,
                   tagInt(2), false, dest->fixnumType, dest->fixnumType);
     installPrimop(dest, strLit("fx*"), primopFxMul,
                   tagInt(2), false, dest->fixnumType, dest->fixnumType);
-    installPrimop(dest, strLit("fx-quot"), primopFxDiv,
+    installPrimop(dest, strLit("fx-quot"), primopFxQuot,
+                  tagInt(2), false, dest->fixnumType, dest->fixnumType);
+    installPrimop(dest, strLit("fx<"), primopFxLt,
                   tagInt(2), false, dest->fixnumType, dest->fixnumType);
 
     return true;

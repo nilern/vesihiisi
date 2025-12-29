@@ -420,6 +420,7 @@ inline static ArityError* arityErrorToPtr(ArityErrorRef v) {
 
 #define toORef(v) _Generic((v), \
     Fixnum: uncheckedToORef(v), \
+    Bool: uncheckedToORef(v), \
     TypeRef: uncheckedToORef(v), \
     SymbolRef: uncheckedToORef(v), \
     ArrayRef: uncheckedToORef(v), \

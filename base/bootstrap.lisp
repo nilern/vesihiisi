@@ -39,6 +39,19 @@
 
 (def nth (fn (xs i) (car (drop i xs))))
 
+(def array!-count (fn ((: xs <array!>)) (flex-count xs)))
+
+(def array!-get (fn ((: xs <array!>) i) (flex-get xs i)))
+
+(def array!-fold-left
+  (fn (f acc xs)
+    (let ((len (array!-count xs)))
+      (letfn (((loop acc i)
+                 (if (fx< i len)
+                   (loop (f (array!-get xs i) acc) (fx+ i 1))
+                   acc)))
+        (loop acc 0)))))
+
 (def meet
   (fn (type1 type2)
     (if (not (identical? type1 <any>))
@@ -107,11 +120,9 @@
 
 (def make-multimethod
   (fn methods
-    (let ((methods (array!->array methods))
-
-          (ensure-unambiguous
+    (let ((ensure-unambiguous
            (fn (f i)
-             (array-fold-left
+             (array!-fold-left
                (fn (f* j)
                  (if (not (identical? j i))
                    (let ((met-domain (meet-domains f f*)))
@@ -120,10 +131,10 @@
                        (error (quote ambiguous-methods) f f* met-domain)))
                    (fx+ i 1)))
                0 methods))))
-      (array-fold-left
+      (array!-fold-left
         (fn (f i)
           (ensure-unambiguous f i)
           (fx+ i 1))
         0 methods)
 
-      (make <multimethod> methods))))
+      (make <multimethod> (array!->array methods)))))

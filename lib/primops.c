@@ -160,17 +160,17 @@ static PrimopRes primopSlotGet(State* state) {
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
 
     ORef const v = state->regs[firstArgReg];
-    size_t const fieldIdx = (uintptr_t)uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
+    size_t const slotIdx = (uintptr_t)uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
 
     Type const* type = toPtr(typeOf(state, v));
     if (!unwrapBool(type->isBytes)) {
-        size_t const fieldCount = (uintptr_t)fixnumToInt(type->minSize) / sizeof(ORef);
-        if (fieldIdx >= fieldCount) {
+        size_t const slotCount = (uintptr_t)fixnumToInt(type->minSize) / sizeof(ORef);
+        if (slotIdx >= slotCount) {
             assert(false); // TODO: Proper bounds error
         }
 
-        ORef const* const fields = (ORef const*)uncheckedORefToPtr(v);
-        state->regs[retReg] = fields[fieldIdx];
+        ORef const* const slots = (ORef const*)uncheckedORefToPtr(v);
+        state->regs[retReg] = slots[slotIdx];
     } else {
         assert(false); // TODO
     }
@@ -186,10 +186,37 @@ static PrimopRes primopFlexCount(State* state) {
 
     Type const* type = toPtr(typeOf(state, v));
     if (!unwrapBool(type->isFlex)) {
-        assert(false); // TODO: Proper error
+        assert(false); // TODO: Proper nonflex error
     }
 
     state->regs[retReg] = toORef(((FlexHeader const*)uncheckedORefToPtr(v) - 1)->length);
+
+    return PRIMOP_RES_CONTINUE;
+}
+
+static PrimopRes primopFlexGet(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    ORef const v = state->regs[firstArgReg];
+    intptr_t const i = uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
+
+    Type const* type = toPtr(typeOf(state, v));
+    if (!unwrapBool(type->isFlex)) {
+        assert(false); // TODO: Proper nonflex error
+    }
+    if (unwrapBool(type->isBytes)) {
+        assert(false); // TODO: Proper nonslots error
+    }
+
+    void const* const ptr = uncheckedORefToPtr(v);
+    intptr_t const count = fixnumToInt(((FlexHeader const*)ptr - 1)->length);
+    if (i < 0 || i >= count) {
+        assert(false); // TODO: Proper bounds error
+    }
+
+    ORef const* const flexSlots = (ORef const*)((char const*)ptr + fixnumToInt(type->minSize));
+    state->regs[retReg] = flexSlots[i];
 
     return PRIMOP_RES_CONTINUE;
 }
@@ -230,7 +257,7 @@ static PrimopRes primopFxMul(State* state) {
     return PRIMOP_RES_CONTINUE;
 }
 
-static PrimopRes primopFxDiv(State* state) {
+static PrimopRes primopFxQuot(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
 
@@ -239,6 +266,18 @@ static PrimopRes primopFxDiv(State* state) {
 
     if (y == 0) { assert(false); } // TODO: Proper error
     state->regs[retReg] = fixnumToORef(tagInt(x / y)); // TODO: Overflow check
+
+    return PRIMOP_RES_CONTINUE;
+}
+
+static PrimopRes primopFxLt(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    intptr_t const x = uncheckedFixnumToInt(state->regs[firstArgReg]);
+    intptr_t const y = uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
+
+    state->regs[retReg] = toORef(tagBool(x < y));
 
     return PRIMOP_RES_CONTINUE;
 }

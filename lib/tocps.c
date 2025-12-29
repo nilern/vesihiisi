@@ -178,6 +178,7 @@ typedef struct ToCpsCont {
         TO_CPS_CONT_EFF,
         TO_CPS_CONT_VAL,
         TO_CPS_CONT_BIND,
+        TO_CPS_CONT_JOIN,
         TO_CPS_CONT_RETURN
     } type;
 } ToCpsCont;
@@ -188,6 +189,7 @@ static IRName toCpsContDestName(Compiler* compiler, ToCpsCont k) {
 
     case TO_CPS_CONT_EFF: // fallthrough
     case TO_CPS_CONT_VAL: // fallthrough
+    case TO_CPS_CONT_JOIN: // fallthrough
     case TO_CPS_CONT_RETURN: return freshName(compiler);
     }
 
@@ -411,24 +413,25 @@ static IRName ifToCPS(
         // Will patch targets shortly:
     IRIf* ifTransfer = createIRIf(*block, condName, (IRLabel){}, (IRLabel){});
     IRLabel const ifLabel = (*block)->label;
+    ToCpsCont const joinK = k.type != TO_CPS_CONT_RETURN
+        ? (ToCpsCont){{}, TO_CPS_CONT_JOIN}
+        : k;
 
     IRBlock* conseqBlock = createIRBlock(compiler, fn, 1);
     pushCaller(conseqBlock, ifLabel);
     ifTransfer->conseq = conseqBlock->label;
     IRName const conseqName =
-        exprToIR(state, compiler, fn, env, &conseqBlock, conseq, k);
+        exprToIR(state, compiler, fn, env, &conseqBlock, conseq, joinK);
 
     IRBlock* altBlock = createIRBlock(compiler, fn, 1);
     pushCaller(altBlock, ifLabel);
     ifTransfer->alt = altBlock->label;
-    IRName const altName = exprToIR(state, compiler, fn, env, &altBlock, alt, k);
+    IRName const altName = exprToIR(state, compiler, fn, env, &altBlock, alt, joinK);
 
     if (k.type != TO_CPS_CONT_RETURN) {
         // FIXME: If we avoid `goto`s to `goto`s, 2 might not suffice:
         IRBlock* const joinBlock = createIRBlock(compiler, fn, 2);
-        // FIXME: If `k` provides a target name it should be used for `phi`. Now it
-        // gets pushed into the branches and possibly multiply defined:
-        IRName const phi = freshName(compiler);
+        IRName const phi = toCpsContDestName(compiler, k);
         pushIRParam(compiler, joinBlock, phi);
 
         createIRGoto(compiler, conseqBlock, joinBlock->label, conseqName);

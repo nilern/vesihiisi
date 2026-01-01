@@ -19,10 +19,10 @@ run-dev: vesihiisi-dev
 	rlwrap ./vesihiisi-dev -di base/bootstrap.lisp
 
 .PHONY: test
-test: test/test_heap test/test_arena test/test_bitset
-	./test/test_heap
-	./test/test_arena
-	./test/test_bitset
+test: test/test_heap.out test/test_arena.out test/test_bitset.out
+	./test/test_heap.out
+	./test/test_arena.out
+	./test/test_bitset.out
 
 vesihiisi: main.c libvesihiisi.a
 	cc $(BASE_FLAGS) $(OPT_FLAGS) $< -L. -lvesihiisi -o $@
@@ -39,7 +39,7 @@ libvesihiisi-dev.o: $(LIB_SRCS)
 %.a: %.o
 	ar rcs $@ $<
 
-test/%: test/%.c $(LIB_SRCS)
+test/%.out: test/%.c $(LIB_SRCS)
 	cc $(TEST_FLAGS) $(DEBUG_FLAGS) -o $@ $<
 
 .PHONY: clean
@@ -47,6 +47,4 @@ clean:
 	rm -f vesihiisi
 	rm -f vesihiisi-dev
 	rm -f libvesihiisi*
-	rm -f test/test_heap
-	rm -f test/test_arena
-	rm -f test/test_bitset
+	rm -f test/*.out

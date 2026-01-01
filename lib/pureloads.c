@@ -274,8 +274,8 @@ static IRStmt stmtWithPureLoads(
         }
 
         fnWithPureLoads(compiler, &stmt.methodDef.fn);
-        IRName const methodName = freshName(compiler);
         IRName const closureName = stmt.methodDef.name;
+        IRName const methodName = renameIRName(compiler, closureName);
         stmt.methodDef.name = methodName;
         pushIRStmt(compiler, newStmts, stmt);
 

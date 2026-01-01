@@ -5,6 +5,9 @@
 #include "bytecode.h"
 #include "bytefulbitset.h"
 
+// Label to Bytecode Index Mapping
+// =================================================================================================
+
 typedef struct LabelIdxs {
     size_t* idxs;
 } LabelIdxs;
@@ -21,6 +24,9 @@ inline static size_t getLabelIndex(LabelIdxs const* labelIdxs, IRLabel label) {
 inline static void setLabelIndex(LabelIdxs* labelIdxs, IRLabel label, size_t index) {
     labelIdxs->idxs[label.blockIndex] = index;
 }
+
+// Bytecode Method Builder
+// =================================================================================================
 
 typedef struct MethodBuilder {
     uint8_t* code;
@@ -164,12 +170,16 @@ inline static void pushReg(Compiler* compiler, MethodBuilder* builder, IRName na
     pushCodeByte(compiler, builder, (uint8_t)(name.index));
 }
 
-inline static void pushDisplacement(Compiler* compiler, MethodBuilder* builder, size_t displacement) {
-    pushCodeByte(compiler, builder, (uint8_t)displacement); // FIXME: `displacement` may not fit in one byte
+inline static void pushDisplacement(
+    Compiler* compiler, MethodBuilder* builder, size_t displacement
+) {
+    // FIXME: `displacement` may not fit in one byte:
+    pushCodeByte(compiler, builder, (uint8_t)displacement);
 }
 
 static void emitRegBits(
-    Compiler* compiler, MethodBuilder* builder, IRName const* names, size_t count, bool specializeHack
+    Compiler* compiler, MethodBuilder* builder, IRName const* names, size_t count,
+    bool specializeHack
 ) {
     // OPTIMIZE: Use `&compiler->arena`:
     BytefulBitSet bits = newBytefulBitSet(count); // Need at least `count` bits, likely more
@@ -177,7 +187,8 @@ static void emitRegBits(
     // Set bits for each register:
     for (size_t i = 0; i < count; ++i) {
         size_t const regIdx = names[i].index;
-        if (!specializeHack || regIdx != 0) { // FIXME: Hack for `specialize`, assumes that r0 cannot happen
+        // FIXME: Hack for `specialize`, assumes that r0 cannot happen:
+        if (!specializeHack || regIdx != 0) {
             bytefulBitSetSet(&bits, regIdx);
         }
     }
@@ -233,84 +244,101 @@ static void emitConstDef(Compiler* compiler, MethodBuilder* builder, IRName name
     pushOp(compiler, builder, OP_CONST);
 }
 
+// Emit Bytecode over IR into Builder
+// =================================================================================================
+
 static MethodRef emitMethod(
-    State* state, Compiler* compiler, IRFn* toplevelFn, MethodBuilder* parentBuilder, IRFn* fn);
+    State* state, Compiler* compiler, IRFn* toplevelFn, MethodBuilder* parentBuilder,
+    IRFn const* fn);
 
 static void emitStmt(
     State* state, Compiler* compiler, IRFn* toplevelFn, MethodBuilder* builder, IRStmt* stmt
 ) {
     switch (stmt->type) {
     case STMT_GLOBAL_DEF: {
-        pushReg(compiler, builder, stmt->globalDef.val);
-        emitConstArg(compiler, builder, toORef(stmt->globalDef.name));
+        GlobalDef const* const globalDef = &stmt->globalDef;
+
+        pushReg(compiler, builder, globalDef->val);
+        emitConstArg(compiler, builder, toORef(globalDef->name));
         pushOp(compiler, builder, OP_DEF);
     }; break;
 
     case STMT_GLOBAL: {
-        emitConstArg(compiler, builder, toORef(stmt->global.name));
-        pushReg(compiler, builder, stmt->global.tmpName);
+        IRGlobal const* const global = &stmt->global;
+
+        emitConstArg(compiler, builder, toORef(global->name));
+        pushReg(compiler, builder, global->tmpName);
         pushOp(compiler, builder, OP_GLOBAL);
     }; break;
 
     case STMT_CONST_DEF: {
-        emitConstDef(compiler, builder, stmt->constDef.name, stmt->constDef.v);
+        ConstDef const* const constDef = &stmt->constDef;
+        emitConstDef(compiler, builder, constDef->name, constDef->v);
     }; break;
 
     case STMT_METHOD_DEF: {
-        MethodRef const method =
-            emitMethod(state, compiler, toplevelFn, builder, &stmt->methodDef.fn);
+        MethodDef const* const methodDef = &stmt->methodDef;
+        IRFn const* const fn = &methodDef->fn;
 
-        if (stmt->methodDef.fn.domain.count == 0) {
-            emitConstDef(compiler, builder, stmt->methodDef.name, toORef(method));
+        MethodRef const method = emitMethod(state, compiler, toplevelFn, builder, fn);
+
+        if (fn->domain.count == 0) {
+            emitConstDef(compiler, builder, methodDef->name, toORef(method));
         } else {
-            emitRegBits(compiler, builder, stmt->methodDef.fn.domain.vals, stmt->methodDef.fn.domain.count,
-                        true);
+            emitRegBits(compiler, builder, fn->domain.vals, fn->domain.count, true);
             emitConstArg(compiler, builder, toORef(method));
-            pushReg(compiler, builder, stmt->methodDef.name);
+            pushReg(compiler, builder, methodDef->name);
             pushOp(compiler, builder, OP_SPECIALIZE);
         }
     }; break;
 
     case STMT_CLOSURE: {
-        emitClose(compiler, builder, stmt->closure.closes);
-        pushReg(compiler, builder, stmt->closure.method);
-        pushReg(compiler, builder, stmt->closure.name);
+        IRClosure const* const closure = &stmt->closure;
+        emitClose(compiler, builder, closure->closes);
+        pushReg(compiler, builder, closure->method);
+        pushReg(compiler, builder, closure->name);
         pushOp(compiler, builder, OP_CLOSURE);
     }; break;
 
     case STMT_CLOVER: {
-        pushCodeByte(compiler, builder, stmt->clover.idx);
-        pushReg(compiler, builder, stmt->clover.closure);
-        pushReg(compiler, builder, stmt->clover.name);
+        Clover const* const clover = &stmt->clover;
+        pushCodeByte(compiler, builder, clover->idx);
+        pushReg(compiler, builder, clover->closure);
+        pushReg(compiler, builder, clover->name);
         pushOp(compiler, builder, OP_CLOVER);
     }; break;
 
     case STMT_MOVE: {
-        pushReg(compiler, builder, stmt->mov.src);
-        pushReg(compiler, builder, stmt->mov.dest);
+        MoveStmt const* const mov = &stmt->mov;
+        pushReg(compiler, builder, mov->src);
+        pushReg(compiler, builder, mov->dest);
         pushOp(compiler, builder, OP_MOVE);
     }; break;
 
     case STMT_SWAP: {
-        pushReg(compiler, builder, stmt->swap.reg2);
-        pushReg(compiler, builder, stmt->swap.reg1);
+        SwapStmt const* const swap = &stmt->swap;
+        pushReg(compiler, builder, swap->reg2);
+        pushReg(compiler, builder, swap->reg1);
         pushOp(compiler, builder, OP_SWAP);
     }; break;
 
     case STMT_KNOT: {
-        pushReg(compiler, builder, stmt->knot.name);
+        KnotStmt const* const knot = &stmt->knot;
+        pushReg(compiler, builder, knot->name);
         pushOp(compiler, builder, OP_KNOT);
     }; break;
 
     case STMT_KNOT_INIT: {
-        pushReg(compiler, builder, stmt->knotInit.v);
-        pushReg(compiler, builder, stmt->knotInit.knot);
+        KnotInitStmt const* const knotInit = &stmt->knotInit;
+        pushReg(compiler, builder, knotInit->v);
+        pushReg(compiler, builder, knotInit->knot);
         pushOp(compiler, builder, OP_KNOT_INIT);
     }; break;
 
     case STMT_KNOT_GET: {
-        pushReg(compiler, builder, stmt->knotGet.knot);
-        pushReg(compiler, builder, stmt->knotGet.name);
+        KnotGetStmt const* const knotGet = &stmt->knotGet;
+        pushReg(compiler, builder, knotGet->knot);
+        pushReg(compiler, builder, knotGet->name);
         pushOp(compiler, builder, OP_KNOT_GET);
     }; break;
     }
@@ -319,11 +347,13 @@ static void emitStmt(
 static void emitTransfer(Compiler* compiler, MethodBuilder* builder, IRTransfer const* transfer) {
     switch (transfer->type) {
     case TRANSFER_CALL: {
+        Call const* const call = &transfer->call;
+
         // Guaranteed not to need an `OP_BR` to return block here.
 
-        emitClose(compiler, builder, &transfer->call.closes);
+        emitClose(compiler, builder, &call->closes);
 
-        size_t const regCount = 2 + transfer->call.args.count;
+        size_t const regCount = 2 + call->args.count;
         assert(regCount < UINT8_MAX); // TODO: Handle absurd argument count (probably too late here)
         pushCodeByte(compiler, builder, (uint8_t)regCount);
 
@@ -331,7 +361,9 @@ static void emitTransfer(Compiler* compiler, MethodBuilder* builder, IRTransfer 
     }; break;
 
     case TRANSFER_TAILCALL: {
-        size_t const regCount = 2 + transfer->tailcall.args.count;
+        Tailcall const* const tailcall = &transfer->tailcall;
+
+        size_t const regCount = 2 + tailcall->args.count;
         assert(regCount < UINT8_MAX); // TODO: Handle absurd argument count (probably too late here)
         pushCodeByte(compiler, builder, (uint8_t)regCount);
 
@@ -339,18 +371,22 @@ static void emitTransfer(Compiler* compiler, MethodBuilder* builder, IRTransfer 
     }; break;
 
     case TRANSFER_IF: {
+        IRIf const* const iff = &transfer->iff;
+
         size_t const postIndex = builder->codeCount - 1;
-        size_t const destIndex = getLabelIndex(&builder->labelIdxs, transfer->iff.alt);
+        size_t const destIndex = getLabelIndex(&builder->labelIdxs, iff->alt);
         size_t const displacement = postIndex - destIndex;
 
         pushDisplacement(compiler, builder, displacement);
-        pushReg(compiler, builder, transfer->iff.cond);
+        pushReg(compiler, builder, iff->cond);
         pushOp(compiler, builder, OP_BRF);
     }; break;
 
     case TRANSFER_GOTO: {
+        IRGoto const* const gotoo = &transfer->gotoo;
+
         size_t const postIndex = builder->codeCount - 1;
-        size_t const destIndex = getLabelIndex(&builder->labelIdxs, transfer->gotoo.dest);
+        size_t const destIndex = getLabelIndex(&builder->labelIdxs, gotoo->dest);
         size_t const displacement = postIndex - destIndex;
 
         if (displacement > 0) { // Only emit branches that actually jump a distance.
@@ -374,13 +410,11 @@ static void emitBlock(
         emitStmt(state, compiler, toplevelFn, builder, &block->stmts.vals[i]);
     }
 
-    // TODO: Handle block params? At least call entry block, for encoding arity (& domain?) into fn.
-
     setLabelIndex(&builder->labelIdxs, block->label, builder->codeCount - 1);
 }
 
 static MethodRef emitMethod(
-    State* state, Compiler* compiler, IRFn* toplevelFn, MethodBuilder* parentBuilder, IRFn* fn
+    State* state, Compiler* compiler, IRFn* toplevelFn, MethodBuilder* parentBuilder, IRFn const* fn
 ) {
     MethodBuilder builder = createMethodBuilder(compiler, parentBuilder, fn->blockCount);
 

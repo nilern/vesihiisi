@@ -2,9 +2,9 @@
 
 #include <string.h>
 
-#include "util.h"
-#include "state.h"
-#include "bytecode.h"
+#include "../util/util.h"
+#include "../state.h"
+#include "../bytecode.h"
 
 // OPTIMIZE: At this point bitsets are slow because we are usually iterating over them.
 

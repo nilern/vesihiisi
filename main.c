@@ -1,9 +1,9 @@
 #define _POSIX_C_SOURCE 200809L // For `getline`
 
-#include "lib/util.c"
-#include "lib/arena.c"
-#include "lib/bitset.c"
-#include "lib/bytefulbitset.c"
+#include "lib/util/util.c"
+#include "lib/util/arena.c"
+#include "lib/util/bitset.c"
+#include "lib/util/bytefulbitset.c"
 #include "lib/object.c"
 #include "lib/heap.c"
 #include "lib/state.c"
@@ -14,13 +14,13 @@
 #include "lib/namespace.c"
 #include "lib/primops.c"
 #include "lib/vm.c"
-#include "lib/compiler.c"
-#include "lib/tocps.c"
-#include "lib/liveness.c"
-#include "lib/pureloads.c"
-#include "lib/regalloc.c"
-#include "lib/cloverindexing.c"
-#include "lib/bytecodegen.c"
+#include "lib/compiler/compiler.c"
+#include "lib/compiler/tocps.c"
+#include "lib/compiler/liveness.c"
+#include "lib/compiler/pureloads.c"
+#include "lib/compiler/regalloc.c"
+#include "lib/compiler/cloverindexing.c"
+#include "lib/compiler/bytecodegen.c"
 
 #include <errno.h>
 

@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "util.h"
+#include "util/util.h"
 
 static_assert(sizeof(void*) == sizeof(uint64_t)); // Only 64-bit supported (for now)
 

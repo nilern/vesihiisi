@@ -2,9 +2,8 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <string.h>
 
-#include "../lib/arena.c"
+#include "../lib/util/arena.c"
 
 static void test_lifecycle(void) {
     Arena arena = newArena(defaultArenaBlockSize);

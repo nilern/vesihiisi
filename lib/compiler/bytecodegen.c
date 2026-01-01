@@ -1,9 +1,9 @@
 #include <string.h>
 
 #include "compiler.h"
-#include "state.h"
-#include "bytecode.h"
-#include "bytefulbitset.h"
+#include "../state.h"
+#include "../bytecode.h"
+#include "../util/bytefulbitset.h"
 
 // Label to Bytecode Index Mapping
 // =================================================================================================

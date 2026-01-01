@@ -1,7 +1,7 @@
 #include "compiler.h"
 
-#include "state.h"
-#include "print.h"
+#include "../state.h"
+#include "../print.h"
 
 static const IRName invalidIRName = {0};
 

@@ -1,11 +1,9 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
 #include <assert.h>
-#include <stdio.h>
 
-#include "../lib/util.c"
+#include "../lib/util/util.c"
 #include "../lib/object.c"
 #include "../lib/heap.c"
 #include "../lib/state.c"
@@ -13,10 +11,12 @@
 #include "../lib/print.c"
 #include "../lib/bytecode.c"
 #include "../lib/primops.c"
-// To avoid linker error for `collectTracingIR`:
-#include "../lib/arena.c"
-#include "../lib/bitset.c"
-#include "../lib/compiler.c"
+#include "../lib/flyweights.c"
+#include "../lib/util/arena.c"
+#include "../lib/util/bitset.c"
+#include "../lib/util/bytefulbitset.c"
+#include "../lib/compiler/compiler.c"
+#include "../lib/compiler/bytecodegen.c"
 
 static void testBootstrap(void) {
     State state;

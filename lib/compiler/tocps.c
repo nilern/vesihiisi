@@ -1,7 +1,7 @@
 #include <string.h>
 
 #include "compiler.h"
-#include "state.h"
+#include "../state.h"
 
 typedef enum BindingsType {
     BINDINGS_PAR,

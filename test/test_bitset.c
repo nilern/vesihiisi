@@ -1,12 +1,11 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <string.h>
 #include <assert.h>
 
-#include "../lib/util.c"
-#include "../lib/arena.c"
-#include "../lib/bitset.c"
+#include "../lib/util/util.c"
+#include "../lib/util/arena.c"
+#include "../lib/util/bitset.c"
 
 static const size_t wordBitSize = sizeof(uintptr_t) * 8;
 

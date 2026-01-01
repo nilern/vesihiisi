@@ -1,7 +1,7 @@
 #include "cloverindexing.h"
 
-#include "util.h"
-#include "bitset.h"
+#include "../util/util.h"
+#include "../util/bitset.h"
 #include "regalloc.h"
 
 typedef struct CloverIdxs {

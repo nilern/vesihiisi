@@ -1,6 +1,6 @@
 #include <ctype.h>
 
-#include "util.h"
+#include "util/util.h"
 #include "state.h"
 
 typedef struct Parser {

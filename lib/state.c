@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdarg.h>
 
-#include "util.h"
+#include "util/util.h"
 #include "object.h"
 #include "heap.h"
 #include "flyweights.h"

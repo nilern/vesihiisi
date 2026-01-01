@@ -1,8 +1,8 @@
 #pragma once
 
-#include "arena.h"
-#include "bitset.h"
-#include "object.h"
+#include "../util/arena.h"
+#include "../util/bitset.h"
+#include "../object.h"
 
 // TODO: Compiler linter a la GHC (in addition to bytecode verifier!)
 

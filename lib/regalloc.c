@@ -3,7 +3,6 @@
 #include <string.h>
 
 #include "util.h"
-#include "compiler.h"
 #include "state.h"
 #include "bytecode.h"
 
@@ -15,6 +14,9 @@ typedef struct MaybeReg {
     Reg val;
     bool hasVal;
 } MaybeReg;
+
+// Bidirectional Variable-Register Mappings
+// =================================================================================================
 
 typedef struct RegEnv {
     MaybeReg* varRegs;
@@ -194,6 +196,9 @@ static void regEnvSwap(RegEnv* env, IRName var1, Reg reg1, IRName var2, Reg reg2
     env->regVars[reg1.index] = var2;
 }
 
+// Register Allocation Over IR
+// =================================================================================================
+
 static void shuffleRegs(Compiler* compiler, RegEnv* current, RegEnv const* goal, IRBlock* block) {
     // Reversing the block retargets `pushIRStmt` to the start of the block:
     reverse(block->stmts.vals, block->stmts.count, sizeof *block->stmts.vals, swapStmts);
@@ -344,62 +349,67 @@ static RegEnv regAllocTransfer(
 
     switch (transfer->type) {
     case TRANSFER_CALL: {
-        IRLabel const retLabel = transfer->call.retLabel;
+        Call* const call = &transfer->call;
+
+        IRLabel const retLabel = call->retLabel;
         assert(retLabel.blockIndex < fn->blockCount);
         IRBlock* const retBlock = fn->blocks[retLabel.blockIndex];
         regAllocBlock(compiler, savedEnvs, visited, fn, retBlock);
 
         RegEnv env = newRegEnv(compiler);
 
-        transfer->call.callee = regAllocCallee(compiler, &env, block, transfer->call.callee);
+        call->callee = regAllocCallee(compiler, &env, block, call->callee);
 
-        regAllocArgs(compiler, &env, block, &transfer->call.args);
+        regAllocArgs(compiler, &env, block, &call->args);
 
-        // FIXME: Clovers should be in register order:
-        for (size_t i = transfer->call.closes.count; i-- > 0;) {
-            transfer->call.closes.names[i] =
-                (IRName){getVarReg(&env, transfer->call.closes.names[i]).index};
+        for (size_t i = call->closes.count; i-- > 0;) {
+            call->closes.names[i] = (IRName){getVarReg(&env, call->closes.names[i]).index};
         }
 
         return env;
     }; break;
 
     case TRANSFER_TAILCALL: {
+        Tailcall* const tailcall = &transfer->tailcall;
+
         RegEnv env = newRegEnv(compiler);
 
-        transfer->tailcall.callee =
-            regAllocCallee(compiler, &env, block, transfer->tailcall.callee);
+        tailcall->callee = regAllocCallee(compiler, &env, block, tailcall->callee);
 
         Reg const contReg = (Reg){retContReg};
         [[maybe_unused]] MaybeMove const maybeContMove =
-            allocTransferArgReg(&env, transfer->tailcall.retFrame, contReg);
+            allocTransferArgReg(&env, tailcall->retFrame, contReg);
         assert(!maybeContMove.hasVal);
-        transfer->tailcall.retFrame = (IRName){contReg.index};
+        tailcall->retFrame = (IRName){contReg.index};
 
-        regAllocArgs(compiler, &env, block, &transfer->tailcall.args);
+        regAllocArgs(compiler, &env, block, &tailcall->args);
 
         return env;
     }; break;
 
     case TRANSFER_IF: {
-        IRLabel const conseqLabel = transfer->iff.conseq;
+        IRIf* const iff = &transfer->iff;
+
+        IRLabel const conseqLabel = iff->conseq;
         assert(conseqLabel.blockIndex < fn->blockCount);
         IRBlock* conseqBlock = fn->blocks[conseqLabel.blockIndex];
         regAllocBlock(compiler, savedEnvs, visited, fn, conseqBlock);
-        IRLabel const altLabel = transfer->iff.alt;
+        IRLabel const altLabel = iff->alt;
         assert(altLabel.blockIndex < fn->blockCount);
         IRBlock* altBlock = fn->blocks[altLabel.blockIndex];
         regAllocBlock(compiler, savedEnvs, visited, fn, altBlock);
 
-        RegEnv env = regAllocIfSuccession(compiler, savedEnvs, fn, transfer->iff.conseq, altLabel);
+        RegEnv env = regAllocIfSuccession(compiler, savedEnvs, fn, iff->conseq, altLabel);
 
-        transfer->iff.cond = (IRName){getVarReg(&env, transfer->iff.cond).index};
+        iff->cond = (IRName){getVarReg(&env, iff->cond).index};
 
         return env;
     }; break;
 
     case TRANSFER_GOTO: {
-        IRLabel const destLabel = transfer->gotoo.dest;
+        IRGoto* const gotoo = &transfer->gotoo;
+
+        IRLabel const destLabel = gotoo->dest;
         assert(destLabel.blockIndex < fn->blockCount);
         IRBlock* const destBlock = fn->blocks[destLabel.blockIndex];
         regAllocBlock(compiler, savedEnvs, visited, fn, destBlock);
@@ -407,11 +417,11 @@ static RegEnv regAllocTransfer(
         assert(savedEnvs->vals[destLabel.blockIndex].hasVal);
         RegEnv env = cloneRegEnv(&savedEnvs->vals[destLabel.blockIndex].val);
 
-        size_t const arity = transfer->gotoo.args.count;
+        size_t const arity = gotoo->args.count;
         assert(destBlock->paramCount == arity);
         for (size_t i = 0; i < arity; ++i) {
             Reg const paramReg = (Reg){(uint8_t)destBlock->params[i].index};
-            IRName* const arg = &transfer->gotoo.args.names[i];
+            IRName* const arg = &gotoo->args.names[i];
 
             regEnvParamToArg(&env, paramReg, *arg);
             *arg = (IRName){paramReg.index};
@@ -421,19 +431,20 @@ static RegEnv regAllocTransfer(
     }; break;
 
     case TRANSFER_RETURN: {
+        IRReturn* const ret = &transfer->ret;
+
         RegEnv env = newRegEnv(compiler);
 
         Reg const calleeReg = (Reg){retContReg};
         [[maybe_unused]] MaybeMove const maybeContMove =
-            allocTransferArgReg(&env, transfer->ret.callee, calleeReg);
+            allocTransferArgReg(&env, ret->callee, calleeReg);
         assert(!maybeContMove.hasVal);
-        transfer->ret.callee = (IRName){calleeReg.index};
+        ret->callee = (IRName){calleeReg.index};
 
         Reg const valReg = (Reg){retReg};
-        [[maybe_unused]] MaybeMove const maybeValMove =
-            allocTransferArgReg(&env, transfer->ret.arg, valReg);
+        [[maybe_unused]] MaybeMove const maybeValMove = allocTransferArgReg(&env, ret->arg, valReg);
         assert(!maybeValMove.hasVal);
-        transfer->ret.arg = (IRName){valReg.index};
+        ret->arg = (IRName){valReg.index};
 
         return env;
     }; break;
@@ -442,76 +453,85 @@ static RegEnv regAllocTransfer(
     }
 }
 
-static void regAllocFn(Compiler* compiler, IRFn* fn);
-
 static void regAllocStmt(Compiler* compiler, RegEnv* env, IRStmt* stmt) {
     switch (stmt->type) {
     case STMT_GLOBAL_DEF: {
-        stmt->globalDef.val = (IRName){getVarReg(env, stmt->globalDef.val).index};
+        GlobalDef* const globalDef = &stmt->globalDef;
+        globalDef->val = (IRName){getVarReg(env, globalDef->val).index};
     }; break;
 
     case STMT_GLOBAL: {
-        stmt->global.tmpName = (IRName){deallocVarReg(env, stmt->global.tmpName).index};
+        IRGlobal* const global = &stmt->global;
+        global->tmpName = (IRName){deallocVarReg(env, global->tmpName).index};
     }; break;
 
     case STMT_CONST_DEF: {
-        stmt->constDef.name = (IRName){deallocVarReg(env, stmt->constDef.name).index};
+        ConstDef* const constDef = &stmt->constDef;
+        constDef->name = (IRName){deallocVarReg(env, constDef->name).index};
     }; break;
 
     case STMT_CLOVER: {
-        stmt->clover.name = (IRName){deallocVarReg(env, stmt->clover.name).index};
-        stmt->clover.closure = (IRName){getVarReg(env, stmt->clover.closure).index};
+        Clover* const clover = &stmt->clover;
+        clover->name = (IRName){deallocVarReg(env, clover->name).index};
+        clover->closure = (IRName){getVarReg(env, clover->closure).index};
     }; break;
 
     case STMT_METHOD_DEF: {
-        stmt->methodDef.name = (IRName){deallocVarReg(env, stmt->methodDef.name).index};
+        MethodDef* const methodDef = &stmt->methodDef;
+        IRFn* const fn = &methodDef->fn;
 
-        for (size_t i = stmt->methodDef.fn.domain.count; i-- > 0;) {
-            IRName const typeName = stmt->methodDef.fn.domain.vals[i];
+        methodDef->name = (IRName){deallocVarReg(env, methodDef->name).index};
+
+        for (size_t i = fn->domain.count; i-- > 0;) {
+            IRName const typeName = fn->domain.vals[i];
             if (irNameIsValid(typeName)) {
-                stmt->methodDef.fn.domain.vals[i] = (IRName){getVarReg(env, typeName).index};
+                fn->domain.vals[i] = (IRName){getVarReg(env, typeName).index};
             }
         }
 
-        regAllocFn(compiler, &stmt->methodDef.fn);
+        regAllocFn(compiler, fn);
     }; break;
 
     case STMT_CLOSURE: {
-        stmt->closure.name = (IRName){deallocVarReg(env, stmt->closure.name).index};
+        IRClosure* const closure = &stmt->closure;
 
-        for (size_t i = stmt->closure.closes->count; i-- > 0;) {
-            stmt->closure.closes->names[i] =
-                (IRName){getVarReg(env, stmt->closure.closes->names[i]).index};
+        closure->name = (IRName){deallocVarReg(env, closure->name).index};
+
+        for (size_t i = closure->closes->count; i-- > 0;) {
+            closure->closes->names[i] = (IRName){getVarReg(env, closure->closes->names[i]).index};
         }
 
-        stmt->closure.method = (IRName){getVarReg(env, stmt->closure.method).index};
+        closure->method = (IRName){getVarReg(env, closure->method).index};
     }; break;
 
     case STMT_MOVE: case STMT_SWAP: break; // Generated during this pass => no-op
 
     case STMT_KNOT: {
-        stmt->knot.name = (IRName){deallocVarReg(env, stmt->knot.name).index};
+        KnotStmt* const knot = &stmt->knot;
+        knot->name = (IRName){deallocVarReg(env, knot->name).index};
     }; break;
 
     case STMT_KNOT_INIT: {
-        stmt->knotInit.v = (IRName){getVarReg(env, stmt->knotInit.v).index};
-        stmt->knotInit.knot = (IRName){getVarReg(env, stmt->knotInit.knot).index};
+        KnotInitStmt* const knotInit = &stmt->knotInit;
+        knotInit->v = (IRName){getVarReg(env, knotInit->v).index};
+        knotInit->knot = (IRName){getVarReg(env, knotInit->knot).index};
     }; break;
 
     case STMT_KNOT_GET: {
-        stmt->knotGet.name = (IRName){deallocVarReg(env, stmt->knotGet.name).index};
-        stmt->knotGet.knot = (IRName){getVarReg(env, stmt->knotGet.knot).index};
+        KnotGetStmt* const knotGet = &stmt->knotGet;
+        knotGet->name = (IRName){deallocVarReg(env, knotGet->name).index};
+        knotGet->knot = (IRName){getVarReg(env, knotGet->knot).index};
     }; break;
     }
 }
 
 static void regAllocParams(Compiler* compiler, RegEnv* env, IRBlock* block) {
-    if (block->callers.count == 0) {
+    if (block->callers.count == 0) { // Escaping block:
         RegEnv goal = newRegEnv(compiler);
 
         size_t paramIdx = 0;
 
-        if (block->label.blockIndex == 0) { // Call entry block
+        if (block->label.blockIndex == 0) { // Call entry block:
             IRName* const callee = &block->params[0];
             regEnvAdd(&goal, *callee, (Reg){calleeReg});
             *callee = (IRName){calleeReg};
@@ -521,7 +541,7 @@ static void regAllocParams(Compiler* compiler, RegEnv* env, IRBlock* block) {
             *retCont = (IRName){retContReg};
 
             paramIdx = 2;
-        } else { // Return entry block
+        } else { // Return entry block:
             IRName* const retCont = &block->params[0];
             regEnvAdd(&goal, *retCont, (Reg){retContReg});
             *retCont = (IRName){retContReg};
@@ -540,7 +560,7 @@ static void regAllocParams(Compiler* compiler, RegEnv* env, IRBlock* block) {
         shuffleRegs(compiler, env, &goal, block);
 
         freeRegEnv(&goal);
-    } else {
+    } else { // Non-escaping block:
         size_t const arity = block->paramCount;
         for (size_t i = 0; i < arity; ++i) {
             IRName* const param = &block->params[i];

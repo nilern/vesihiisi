@@ -173,15 +173,23 @@ static LiftingAnalysis joinLambdaLiftees(
 }
 
 static void liftArgs(
-    Compiler* compiler, PureLoadsEnv* env, Stmts* newStmts, Args* args, BitSet liftees
+    Compiler* compiler, MaybePureLoadsEnv* savedEnvs, IRFn* fn, IRLabel label, BitSet liftees
 ) {
+    assert(savedEnvs[label.blockIndex].hasVal);
+    PureLoadsEnv* env = &savedEnvs[label.blockIndex].val;
+    assert(label.blockIndex < fn->blockCount);
+    IRBlock* const block = fn->blocks[label.blockIndex];
+    IRTransfer* const transfer = &block->transfer;
+    assert(transfer->type == TRANSFER_GOTO);
+    Args* const args = &transfer->gotoo.args;
+
     for (BitSetIter it = newBitSetIter(&liftees);;) {
         MaybeSize const maybeIdx = bitSetIterNext(&it);
         if (!maybeIdx.hasVal) { break; }
         IRName const liftee = {maybeIdx.val};
 
         // OPTIMIZE: Does not need to `setCloverReg`, which `deepLexicalUse` will do:
-        pushArg(compiler, args, deepLexicalUse(compiler, env, newStmts, liftee));
+        pushArg(compiler, args, deepLexicalUse(compiler, env, &block->stmts, liftee));
     }
 }
 
@@ -215,19 +223,10 @@ static PureLoadsEnv blockPureLoadsEnv(
     default: { // Join: lambda-lift some or all of block live-ins:
         LiftingAnalysis const lifting = joinLambdaLiftees(compiler, savedEnvs, block);
 
-        {
+        { // Lambda-lift caller args:
             size_t const callerCount = block->callers.count;
             for (size_t i = 0; i < callerCount; ++i) {
-                IRLabel const callerLabel = block->callers.vals[i];
-
-                assert(savedEnvs[callerLabel.blockIndex].hasVal);
-                PureLoadsEnv* callerEnv = &savedEnvs[callerLabel.blockIndex].val;
-                assert(callerLabel.blockIndex < fn->blockCount);
-                IRBlock* const caller = fn->blocks[callerLabel.blockIndex];
-                IRTransfer* const callerTransfer = &caller->transfer;
-                assert(callerTransfer->type == TRANSFER_GOTO);
-                Args* const callerArgs = &callerTransfer->gotoo.args;
-                liftArgs(compiler, callerEnv, &caller->stmts, callerArgs, lifting.liftees);
+                liftArgs(compiler, savedEnvs, fn, block->callers.vals[i], lifting.liftees);
             }
         }
 

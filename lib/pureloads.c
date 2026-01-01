@@ -35,7 +35,6 @@ static CloverLocs newCloverLocs(BitSet const vars) {
     return (CloverLocs){.vals = vals, .count = count};
 }
 
-// OPTIMIZE: Make this unnecessary:
 static CloverLocs cloneCloverLocs(CloverLocs const locs) {
     size_t const count = locs.count;
     CloverLoc* const vals = malloc(count * sizeof *vals);

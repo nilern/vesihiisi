@@ -1,6 +1,7 @@
+#include "cloverindexing.h"
+
 #include "util.h"
 #include "bitset.h"
-#include "compiler.h"
 #include "regalloc.h"
 
 typedef struct CloverIdxs {
@@ -79,21 +80,23 @@ static void indexFnClovers(Compiler* compiler, CloverIdxs const* fnEnv, IRFn* fn
 
 static void indexStmtClovers(Compiler* compiler, CloverIdxs const* env, IRStmt* stmt) {
     switch (stmt->type) {
-    case STMT_GLOBAL_DEF: case STMT_GLOBAL: case STMT_CONST_DEF: break;
+    case STMT_GLOBAL_DEF: case STMT_GLOBAL: case STMT_CONST_DEF: break; // Not closure-related
 
     case STMT_CLOVER: {
-        stmt->clover.idx = getCloverIdx(env, stmt->clover.origName);
+        Clover* const clover = &stmt->clover;
+        clover->idx = getCloverIdx(env, clover->origName);
     }; break;
 
     case STMT_METHOD_DEF: {
-        IRBlock const* const entryBlock = stmt->methodDef.fn.blocks[0];
-        CloverIdxs innerEnv =
-            closeCloverIdxs(compiler, &entryBlock->liveIns, stmt->methodDef.closes);
-        indexFnClovers(compiler, &innerEnv, &stmt->methodDef.fn);
+        MethodDef* const methodDef = &stmt->methodDef;
+        IRFn* const fn = &methodDef->fn;
+
+        CloverIdxs innerEnv = closeCloverIdxs(compiler, fnFreeVars(fn), methodDef->closes);
+        indexFnClovers(compiler, &innerEnv, fn);
     }; break;
 
     case STMT_CLOSURE: case STMT_MOVE: case STMT_SWAP:
-    case STMT_KNOT: case STMT_KNOT_INIT: case STMT_KNOT_GET: break;
+    case STMT_KNOT: case STMT_KNOT_INIT: case STMT_KNOT_GET: break; // Not closure-related
     }
 }
 
@@ -103,24 +106,27 @@ static void indexTransferClovers(
 ) {
     switch (transfer->type) {
     case TRANSFER_CALL: {
-        IRLabel const retLabel = transfer->call.retLabel;
+        Call const* const call = &transfer->call;
+
+        IRLabel const retLabel = call->retLabel;
         IRBlock const* const retBlock = fn->blocks[retLabel.blockIndex];
-        CloverIdxs retEnv = closeCloverIdxs(compiler, &retBlock->liveIns, &transfer->call.closes);
+        CloverIdxs retEnv = closeCloverIdxs(compiler, &retBlock->liveIns, &call->closes);
         saveCloverIdxs(pass, retLabel, &retEnv);
     }; break;
 
-    case TRANSFER_TAILCALL: break;
+    case TRANSFER_TAILCALL: break; // Terminator; does not even ned to `saveCloverIdxs`
 
     case TRANSFER_IF: {
-        saveCloverIdxs(pass, transfer->iff.conseq, env);
-        saveCloverIdxs(pass, transfer->iff.alt, env);
+        IRIf const* const iff = &transfer->iff;
+        saveCloverIdxs(pass, iff->conseq, env);
+        saveCloverIdxs(pass, iff->alt, env);
     }; break;
 
     case TRANSFER_GOTO: {
         saveCloverIdxs(pass, transfer->gotoo.dest, env);
     }; break;
 
-    case TRANSFER_RETURN: break;
+    case TRANSFER_RETURN: break; // Terminator; does not even ned to `saveCloverIdxs`
     }
 }
 

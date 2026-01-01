@@ -1,27 +1,11 @@
 #define _POSIX_C_SOURCE 200809L // For `getline`
 
-#include "lib/util/util.c"
-#include "lib/util/arena.c"
-#include "lib/util/bitset.c"
-#include "lib/util/bytefulbitset.c"
-#include "lib/object.c"
-#include "lib/heap.c"
-#include "lib/state.c"
-#include "lib/flyweights.c"
-#include "lib/read.c"
-#include "lib/print.c"
-#include "lib/bytecode.c"
-#include "lib/namespace.c"
-#include "lib/primops.c"
-#include "lib/vm.c"
-#include "lib/compiler/compiler.c"
-#include "lib/compiler/tocps.c"
-#include "lib/compiler/liveness.c"
-#include "lib/compiler/pureloads.c"
-#include "lib/compiler/regalloc.c"
-#include "lib/compiler/cloverindexing.c"
-#include "lib/compiler/bytecodegen.c"
+#include "lib/vesihiisi.h"
 
+#include <assert.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
 #include <errno.h>
 
 typedef enum ResTag {RES_ERR, RES_OK} ResTag;
@@ -45,61 +29,6 @@ typedef struct Vshs_MaybeRes {
     Vshs_Res val;
     bool hasVal;
 } Vshs_MaybeRes;
-
-static MethodRef compile(State* state, ORef expr, bool debug) {
-    Compiler compiler = createCompiler();
-
-    IRFn irFn = topLevelExprToIR(state, &compiler, expr);
-    if (debug) {
-        puts(";; # IR:");
-        printIRFn(state, stdout, &compiler, printIRName, &irFn);
-        puts("\n");
-    }
-
-    enlivenFn(&compiler, &irFn);
-    if (debug) {
-        puts(";; # Enlivened IR:");
-        printIRFn(state, stdout, &compiler, printIRName, &irFn);
-        puts("\n");
-    }
-
-    fnWithPureLoads(&compiler, &irFn);
-    if (debug) {
-        puts(";; # Cachy-loading IR:");
-        printIRFn(state, stdout, &compiler, printIRName, &irFn);
-        puts("\n");
-    }
-
-    regAllocFn(&compiler, &irFn);
-    if (debug) {
-        puts(";; # Registral IR:");
-        printIRFn(state, stdout, &compiler, printIRReg, &irFn);
-        puts("\n");
-    }
-
-    indexToplevelFnClovers(&compiler, &irFn);
-    if (debug) {
-        puts(";; # Concrete IR:");
-        printIRFn(state, stdout, &compiler, printIRReg, &irFn);
-        puts("\n");
-    }
-
-    MethodRef const method = emitToplevelMethod(state, &compiler, &irFn);
-    if (debug) {
-        puts(";; # Bytecode:");
-        disassemble(state, stdout, method);
-        puts("");
-    }
-
-    freeCompiler(&compiler);
-    return method;
-}
-
-static VMRes eval(State* state, ORef expr, bool debug) {
-    MethodRef const method = compile(state, expr, debug);
-    ClosureRef const closure = allocClosure(state, method, Zero);
-    return run(state, closure);
-}
 
 static Vshs_MaybeRes readEval(State* state, Parser* parser, bool debug) {
     MaybeORef maybeExpr;
@@ -265,8 +194,8 @@ int main(int argc, char const* argv[static argc]) {
         return EXIT_SUCCESS;
     }
 
-    State state;
-    if (!tryCreateState(&state, 1024*1024)) {
+    State* state = tryCreateState(1024*1024);
+    if (!state) {
         puts("Insufficient memory");
         return EXIT_FAILURE;
     }
@@ -292,7 +221,7 @@ int main(int argc, char const* argv[static argc]) {
         Parser parser = createParser((Str){fchars, fsize});
 
         while (!loadFailed) {
-            Vshs_MaybeRes const maybeRes = readEval(&state, &parser, args.debug);
+            Vshs_MaybeRes const maybeRes = readEval(state, &parser, args.debug);
             if (!maybeRes.hasVal) { break; }
             Vshs_Res const res = maybeRes.val;
 
@@ -326,13 +255,13 @@ int main(int argc, char const* argv[static argc]) {
             ssize_t const len = getline(&line, &maxLen, stdin);
             if (len != -1) {
                 Parser parser = createParser((Str){line, (size_t)len});
-                Vshs_MaybeRes const maybeRes = readEval(&state, &parser, args.debug);
+                Vshs_MaybeRes const maybeRes = readEval(state, &parser, args.debug);
                 if (maybeRes.hasVal) {
                     Vshs_Res const res = maybeRes.val;
 
                     switch (res.tag) {
                     case RES_OK: {
-                        print(&state, stdout, res.val);
+                        print(state, stdout, res.val);
                         putc('\n', stdout);
                     }; break;
 
@@ -352,14 +281,14 @@ int main(int argc, char const* argv[static argc]) {
                 puts("Error reading input");
 
                 free(line);
-                freeState(&state);
+                freeState(state);
                 return EXIT_FAILURE;
             }
             free(line);
         }
     }
 
-    freeState(&state);
+    freeState(state);
     return EXIT_SUCCESS;
 }
 

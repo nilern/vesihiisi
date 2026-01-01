@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "util/util.h"
+#include "vesihiisi.h"
 
 static_assert(sizeof(void*) == sizeof(uint64_t)); // Only 64-bit supported (for now)
 
@@ -16,14 +16,6 @@ typedef enum Tag : uintptr_t {
     TAG_HEAPED = 0b001,
     TAG_BROKEN_HEART = 0b011
 } Tag;
-
-typedef struct ORef { uintptr_t bits; } ORef;
-
-// OPTIMIZE: Could use tagged nullptr instead of !.hasVal:
-typedef struct MaybeORef {
-    ORef val;
-    bool hasVal;
-} MaybeORef;
 
 typedef struct Fixnum { uintptr_t bits; } Fixnum;
 

@@ -1,15 +1,11 @@
 #include <stdbit.h>
 
+#include "vesihiisi.h"
 #include "state.h"
 #include "bytecode.h"
 #include "primops.h"
 #include "namespace.h"
 #include "flyweights.h"
-
-typedef struct VMRes {
-    ORef val;
-    bool success;
-} VMRes;
 
 static VMRes run(State* state, ClosureRef selfRef) {
     // TODO: Debug index & type checks & bytecode verifier

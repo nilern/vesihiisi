@@ -1,6 +1,7 @@
+#include "bytecodegen.h"
+
 #include <string.h>
 
-#include "compiler.h"
 #include "../state.h"
 #include "../bytecode.h"
 #include "../util/bytefulbitset.h"
@@ -426,6 +427,6 @@ static MethodRef emitMethod(
     return buildMethod(state, toplevelFn, builder, fn);
 }
 
-inline static MethodRef emitToplevelMethod(State* state, Compiler* compiler, IRFn* fn) {
+static MethodRef emitToplevelMethod(State* state, Compiler* compiler, IRFn* fn) {
     return emitMethod(state, compiler, fn, nullptr, fn);
 }

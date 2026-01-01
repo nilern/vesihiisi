@@ -81,7 +81,7 @@ static Shadowstack newShadowstack(void) {
     return (Shadowstack){.vals = vals, .count = 0, .cap = cap};
 }
 
-static void freeState(State* state) {
+void freeState(State* state) {
     freeHeap(&state->heap);
     freeSymbols(&state->symbols);
     freeSpecializations(&state->specializations);
@@ -506,67 +506,69 @@ static void nameType(State* state, TypeRef typeRef, Str name) {
     type->name = nameSym;
 }
 
-static bool tryCreateState(State* dest, size_t heapSize) {
+State* tryCreateState(size_t heapSize) {
     Heap heap = tryCreateHeap(heapSize);
-    if (!heapIsValid(&heap)) { return false; }
+    if (!heapIsValid(&heap)) { return nullptr; }
     
     Type const* const typeTypePtr = tryCreateTypeType(&heap.tospace);
-    if (!typeTypePtr) { return false; }
+    if (!typeTypePtr) { return nullptr; }
     Type const* const anyType = tryCreateAnyType(&heap.tospace, typeTypePtr);
-    if (!anyType) { return false; }
+    if (!anyType) { return nullptr; }
     Type const* const stringTypePtr = tryCreateStringType(&heap.tospace, typeTypePtr);
-    if (!stringTypePtr) { return false; }
+    if (!stringTypePtr) { return nullptr; }
     Type const* const arrayTypePtr = tryCreateArrayType(&heap.tospace, typeTypePtr);
-    if (!arrayTypePtr) { return false; }
+    if (!arrayTypePtr) { return nullptr; }
     Type const* const byteArrayType = tryCreateByteArrayType(&heap.tospace, typeTypePtr);
-    if (!byteArrayType) { return false; }
+    if (!byteArrayType) { return nullptr; }
     Type const* const symbolTypePtr = tryCreateSymbolType(&heap.tospace, typeTypePtr);
-    if (!symbolTypePtr) { return false; }
+    if (!symbolTypePtr) { return nullptr; }
     Type const* const pairTypePtr = tryCreatePairType(&heap.tospace, typeTypePtr);
-    if (!pairTypePtr) { return false; }
+    if (!pairTypePtr) { return nullptr; }
     Type const* const emptyListTypePtr = tryCreateEmptyListType(&heap.tospace, typeTypePtr);
-    if (!emptyListTypePtr) { return false; }
+    if (!emptyListTypePtr) { return nullptr; }
     Type const* const methodType = tryCreateMethodType(&heap.tospace, typeTypePtr);
-    if (!methodType) { return false; }
+    if (!methodType) { return nullptr; }
     Type const* const closureType = tryCreateClosureType(&heap.tospace, typeTypePtr);
-    if (!closureType) { return false; }
+    if (!closureType) { return nullptr; }
     Type const* const continuationType = tryCreateContinuationType(&heap.tospace, typeTypePtr);
-    if (!continuationType) { return false; }
+    if (!continuationType) { return nullptr; }
     Type const* const unboundType = tryCreateUnboundType(&heap.tospace, typeTypePtr);
-    if (!unboundType) { return false; }
+    if (!unboundType) { return nullptr; }
     Type const* const varType = tryCreateVarType(&heap.tospace, typeTypePtr);
-    if (!varType) { return false; }
+    if (!varType) { return nullptr; }
     Type const* const knotType = tryCreateKnotType(&heap.tospace, typeTypePtr);
-    if (!knotType) { return false; }
+    if (!knotType) { return nullptr; }
     Type const* const nsType = tryCreateNamespaceType(&heap.tospace, typeTypePtr);
-    if (!nsType) { return false; }
+    if (!nsType) { return nullptr; }
     Type const* const typeErrorType = tryCreateTypeErrorType(&heap.tospace, typeTypePtr);
-    if (!nsType) { return false; }
+    if (!nsType) { return nullptr; }
     Type const* const arityErrorType = tryCreateArityErrorType(&heap.tospace, typeTypePtr);
-    if (!arityErrorType) { return false; }
+    if (!arityErrorType) { return nullptr; }
     
     Type const* const fixnumType = tryCreateFixnumType(&heap.tospace, typeTypePtr);
-    if (!fixnumType) { return false; }
+    if (!fixnumType) { return nullptr; }
     Type const* const charType = tryCreateCharType(&heap.tospace, typeTypePtr);
-    if (!charType) { return false; }
+    if (!charType) { return nullptr; }
     Type const* const flonumType = tryCreateFlonumType(&heap.tospace, typeTypePtr);
-    if (!flonumType) { return false; }
+    if (!flonumType) { return nullptr; }
     Type const* const boolType = tryCreateBoolType(&heap.tospace, typeTypePtr);
-    if (!boolType) { return false; }
+    if (!boolType) { return nullptr; }
     
     void const* const emptyListPtr = tryAlloc(&heap.tospace, emptyListTypePtr);
-    if (!emptyListPtr) { return false; }
+    if (!emptyListPtr) { return nullptr; }
     void const* const unbound = tryAlloc(&heap.tospace, unboundType);
-    if (!unbound) { return false; }
+    if (!unbound) { return nullptr; }
     void* const exitPtr = tryAllocFlex(&heap.tospace, continuationType, Zero);
-    if (!exitPtr) { return false; }
+    if (!exitPtr) { return nullptr; }
 
     Var* const errorHandler = tryCreateUnboundVar(&heap.tospace, varType, tagUnbound(unbound));
-    if (!errorHandler) { return false; }
+    if (!errorHandler) { return nullptr; }
 
     NamespaceRef ns;
-    if (!tryCreateNamespace(&heap.tospace, &ns, nsType, arrayTypePtr)) { return false; }
+    if (!tryCreateNamespace(&heap.tospace, &ns, nsType, arrayTypePtr)) { return nullptr; }
 
+    State* const dest = malloc(sizeof *dest);
+    if (!dest) { return dest; }
     *dest = (State){
         .method = fixnumToORef(Zero),
         .code = nullptr,
@@ -656,7 +658,7 @@ static bool tryCreateState(State* dest, size_t heapSize) {
     installPrimop(dest, strLit("fx<"), primopFxLt,
                   tagInt(2), false, dest->fixnumType, dest->fixnumType);
 
-    return true;
+    return dest;
 }
 
 inline static bool typeEq(TypeRef type1, TypeRef type2) { return type1.bits == type2.bits; }

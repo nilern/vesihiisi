@@ -3,7 +3,6 @@
 #include <stdio.h>
 
 #include "bytecode.h"
-#include "print.h"
 
 static ORef getErrorHandler(State const* state) {
     ORef const v = varToPtr(state->errorHandler)->val;

@@ -1,6 +1,9 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdio.h>
+
+#include "state.h"
 
 // TODO: Bigger (only when necessary?) displacements for BR(F)?
 
@@ -32,3 +35,5 @@ static const uint8_t calleeReg;
 static const uint8_t retContReg;
 static const uint8_t firstArgReg;
 static const uint8_t retReg;
+
+static void disassemble(State const* state, FILE* dest, MethodRef methodRef);

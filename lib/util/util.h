@@ -1,9 +1,11 @@
 #pragma once
 
+#include <string.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
+
+#include "../vesihiisi.h"
 
 typedef struct MaybeSize {
     size_t val;
@@ -23,11 +25,6 @@ typedef struct BucketIdx {
 typedef void (*SwapFn)(void* restrict x, void* restrict y);
 
 static void reverse(void* arr, size_t count, size_t size, SwapFn swap);
-
-typedef struct Str {
-    char const* data;
-    size_t len;
-} Str;
 
 // TODO: Enforce string literal `data`, incidentally avoiding `strlen`:
 inline static Str strLit(char const* data) { return (Str){.data = data, .len = strlen(data)}; }

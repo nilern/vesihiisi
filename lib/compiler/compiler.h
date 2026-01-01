@@ -2,7 +2,7 @@
 
 #include "../util/arena.h"
 #include "../util/bitset.h"
-#include "../object.h"
+#include "../state.h"
 
 // TODO: Compiler linter a la GHC (in addition to bytecode verifier!)
 
@@ -278,3 +278,5 @@ static IRIf* createIRIf(IRBlock* block, IRName cond, IRLabel conseqLabel, IRLabe
 static void createIRGoto(Compiler* compiler, IRBlock* block, IRLabel destLabel, IRName arg);
 
 static void createIRReturn(IRBlock* block, IRName callee, IRName arg);
+
+static MethodRef compile(State* state, ORef expr, bool debug);

@@ -1,5 +1,6 @@
 vesihiisi
 vesihiisi-dev
+libvesihiisi*
 test/test_heap
 test/test_arena
 test/test_bitset

@@ -1,12 +1,6 @@
 #include "bytecode.h"
 
 #include <stddef.h>
-#include <stdint.h>
-#include <stdio.h>
-
-#include "state.h"
-#include "primops.h"
-#include "print.h"
 
 static const uint8_t calleeReg = 1;
 static const uint8_t retContReg = 0;

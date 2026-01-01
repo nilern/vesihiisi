@@ -1,6 +1,7 @@
+#include "tocps.h"
+
 #include <string.h>
 
-#include "compiler.h"
 #include "../state.h"
 
 typedef enum BindingsType {

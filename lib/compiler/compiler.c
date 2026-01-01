@@ -1,7 +1,13 @@
 #include "compiler.h"
 
 #include "../state.h"
-#include "../print.h"
+#include "../bytecode.h"
+#include "tocps.h"
+#include "liveness.h"
+#include "pureloads.h"
+#include "regalloc.h"
+#include "cloverindexing.h"
+#include "bytecodegen.h"
 
 static const IRName invalidIRName = {0};
 
@@ -624,4 +630,53 @@ static void printIRFn(
     IRFn const* fn
 ) {
     printNestedIRFn(state, dest, compiler, printName, fn, 0);
+}
+
+static MethodRef compile(State* state, ORef expr, bool debug) {
+    Compiler compiler = createCompiler();
+
+    IRFn irFn = topLevelExprToIR(state, &compiler, expr);
+    if (debug) {
+        puts(";; # IR:");
+        printIRFn(state, stdout, &compiler, printIRName, &irFn);
+        puts("\n");
+    }
+
+    enlivenFn(&compiler, &irFn);
+    if (debug) {
+        puts(";; # Enlivened IR:");
+        printIRFn(state, stdout, &compiler, printIRName, &irFn);
+        puts("\n");
+    }
+
+    fnWithPureLoads(&compiler, &irFn);
+    if (debug) {
+        puts(";; # Cachy-loading IR:");
+        printIRFn(state, stdout, &compiler, printIRName, &irFn);
+        puts("\n");
+    }
+
+    regAllocFn(&compiler, &irFn);
+    if (debug) {
+        puts(";; # Registral IR:");
+        printIRFn(state, stdout, &compiler, printIRReg, &irFn);
+        puts("\n");
+    }
+
+    indexToplevelFnClovers(&compiler, &irFn);
+    if (debug) {
+        puts(";; # Concrete IR:");
+        printIRFn(state, stdout, &compiler, printIRReg, &irFn);
+        puts("\n");
+    }
+
+    MethodRef const method = emitToplevelMethod(state, &compiler, &irFn);
+    if (debug) {
+        puts(";; # Bytecode:");
+        disassemble(state, stdout, method);
+        puts("");
+    }
+
+    freeCompiler(&compiler);
+    return method;
 }

@@ -24,11 +24,20 @@ test: test/test_heap test/test_arena test/test_bitset
 	./test/test_arena
 	./test/test_bitset
 
-vesihiisi: main.c $(LIB_SRCS)
-	cc $(BASE_FLAGS) $(OPT_FLAGS) -o $@ $<
+vesihiisi: main.c libvesihiisi.a
+	cc $(BASE_FLAGS) $(OPT_FLAGS) $< -L. -lvesihiisi -o $@
 
-vesihiisi-dev: main.c $(LIB_SRCS)
-	cc $(BASE_FLAGS) $(DEBUG_FLAGS) -o $@ $<
+libvesihiisi.o: $(LIB_SRCS)
+	cc -c $(BASE_FLAGS) $(OPT_FLAGS) -o $@ lib/vesihiisi.c
+
+vesihiisi-dev: main.c libvesihiisi-dev.a
+	cc $(BASE_FLAGS) $(DEBUG_FLAGS) $< -L. -lvesihiisi-dev -o $@
+
+libvesihiisi-dev.o: $(LIB_SRCS)
+	cc -c $(BASE_FLAGS) $(DEBUG_FLAGS) -o $@ lib/vesihiisi.c
+
+%.a: %.o
+	ar rcs $@ $<
 
 test/%: test/%.c $(LIB_SRCS)
 	cc $(TEST_FLAGS) $(DEBUG_FLAGS) -o $@ $<
@@ -37,6 +46,7 @@ test/%: test/%.c $(LIB_SRCS)
 clean:
 	rm -f vesihiisi
 	rm -f vesihiisi-dev
+	rm -f libvesihiisi*
 	rm -f test/test_heap
 	rm -f test/test_arena
 	rm -f test/test_bitset

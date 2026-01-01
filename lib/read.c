@@ -1,14 +1,10 @@
 #include <ctype.h>
 
 #include "util/util.h"
+#include "vesihiisi.h"
 #include "state.h"
 
-typedef struct Parser {
-    char const* curr;
-    char const* end;
-} Parser;
-
-inline static Parser createParser(Str src) {
+Parser createParser(Str src) {
     return (Parser){.curr = src.data, .end = src.data + src.len};
 }
 
@@ -157,7 +153,7 @@ static bool readExpr(State* state, ORef* dest, Parser* parser) {
     return false;
 }
 
-static bool read(State* state, MaybeORef* dest, Parser* parser) {
+bool read(State* state, MaybeORef* dest, Parser* parser) {
     while (isspace(*parser->curr)) { ++parser->curr; }
 
     if (*parser->curr == '\0') {

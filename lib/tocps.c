@@ -178,6 +178,7 @@ typedef struct ToCpsCont {
         TO_CPS_CONT_EFF,
         TO_CPS_CONT_VAL,
         TO_CPS_CONT_BIND,
+        TO_CPS_CONT_DEF,
         TO_CPS_CONT_JOIN,
         TO_CPS_CONT_RETURN
     } type;
@@ -185,7 +186,8 @@ typedef struct ToCpsCont {
 
 static IRName toCpsContDestName(Compiler* compiler, ToCpsCont k) {
     switch (k.type) {
-    case TO_CPS_CONT_BIND: return k.name;
+    case TO_CPS_CONT_BIND: // fallthrough
+    case TO_CPS_CONT_DEF: return k.name;
 
     case TO_CPS_CONT_EFF: // fallthrough
     case TO_CPS_CONT_VAL: // fallthrough
@@ -487,7 +489,8 @@ static IRName defToCPS(
         assert(false); // TODO
     }
 
-    ToCpsCont const defK = (ToCpsCont){{}, TO_CPS_CONT_VAL};
+    IRName const nameHint = renameSymbol(compiler, name);
+    ToCpsCont const defK = (ToCpsCont){{.name = nameHint}, TO_CPS_CONT_DEF};
     IRName const valName = exprToIR(state, compiler, fn, env, block, val, defK);
     pushIRStmt(compiler, &(*block)->stmts, globalDefToStmt((GlobalDef){name, valName}));
     // FIXME: Return e.g. nil/undefined/unspecified instead of new val:
@@ -545,7 +548,7 @@ static IRName letToCPS(
             IRName const finalName =
                 exprToIR(state, compiler, fn, &letEnv, block, val, valK);
             // If `finalName != binderName` we have a local copy e.g.
-            // `(let ((x 5) (y x)) ...)` and `exprToIR` emitted nothing. Putting
+            // `(let ((x 5) (y x)) ...)` and `useToCPS` emitted nothing. Putting
             // `finalName` to env implements the rest of copy propagation:
             setSymbolDef(&letEnv, binder, (ToCpsFrameDef){.name = finalName, FRAME_DEF_NAME},
                          BINDINGS_SEQ);

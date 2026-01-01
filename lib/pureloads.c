@@ -1,6 +1,6 @@
-#include <string.h>
+#include "pureloads.h"
 
-#include "compiler.h"
+#include <string.h>
 
 // OPTIMIZE: At this point bitsets are slow because we are usually iterating over them.
 
@@ -202,18 +202,18 @@ static PureLoadsEnv blockPureLoadsEnv(
     Compiler* compiler, MaybePureLoadsEnv* savedEnvs, IRFn* fn, IRBlock* block
 ) {
     switch (block->callers.count) {
-    case 0: {
+    case 0: { // Escaping block; new env from block live-ins:
         assert(block->paramCount > 0);
         IRName const closure = block->params[0];
         return newPureLoadsEnv(closure, block->liveIns);
     }
 
-    case 1: {
+    case 1: { // Non-join; env from end of predecessor (live-ins = live-outs of predecessor):
         assert(savedEnvs[block->callers.vals[0].blockIndex].hasVal);
         return clonePureLoadsEnv(savedEnvs[block->callers.vals[0].blockIndex].val);
     }
 
-    default: {
+    default: { // Join: lambda-lift some or all of block live-ins:
         LiftingAnalysis const lifting = joinLambdaLiftees(compiler, savedEnvs, block);
 
         {
@@ -240,8 +240,6 @@ static PureLoadsEnv blockPureLoadsEnv(
     }
 }
 
-static void fnWithPureLoads(Compiler* compiler, IRFn* fn);
-
 static void linearizeCloses(
     Compiler* compiler, PureLoadsEnv* env, Stmts* newStmts, Args* dest, BitSet const* closes
 ) {
@@ -259,110 +257,122 @@ static IRStmt stmtWithPureLoads(
 ) {
     switch (stmt.type) {
     case STMT_GLOBAL_DEF: {
-        stmt.globalDef.val = deepLexicalUse(compiler, env, newStmts, stmt.globalDef.val);
+        GlobalDef* const globalDef = &stmt.globalDef;
+
+        globalDef->val = deepLexicalUse(compiler, env, newStmts, globalDef->val);
     }; break;
 
-    case STMT_GLOBAL: case STMT_CONST_DEF: break;
+    case STMT_GLOBAL: case STMT_CONST_DEF: break; // These do not contain any uses
 
     case STMT_CLOVER: assert(false); break; // Should not exist yet
 
     case STMT_METHOD_DEF: {
-        size_t const domainCount = stmt.methodDef.fn.domain.count;
+        MethodDef* const methodDef = &stmt.methodDef;
+        IRFn* const fn = &methodDef->fn;
+
+        // Domain:
+        size_t const domainCount = fn->domain.count;
         for (size_t i = 0; i < domainCount; ++i) {
-            stmt.methodDef.fn.domain.vals[i] =
-                deepLexicalUse(compiler, env, newStmts, stmt.methodDef.fn.domain.vals[i]);
+            fn->domain.vals[i] = deepLexicalUse(compiler, env, newStmts, fn->domain.vals[i]);
         }
 
-        fnWithPureLoads(compiler, &stmt.methodDef.fn);
-        IRName const closureName = stmt.methodDef.name;
+        // Method:
+        fnWithPureLoads(compiler, fn);
+        IRName const closureName = methodDef->name;
         IRName const methodName = renameIRName(compiler, closureName);
-        stmt.methodDef.name = methodName;
+        methodDef->name = methodName;
         pushIRStmt(compiler, newStmts, stmt);
 
+        // Closure:
         IRClosure closure =
-            (IRClosure){.name = closureName, .method = methodName, .closes = stmt.methodDef.closes};
-        linearizeCloses(
-            compiler, env, newStmts, closure.closes, &stmt.methodDef.fn.blocks[0]->liveIns);
+            (IRClosure){.name = closureName, .method = methodName, .closes = methodDef->closes};
+        linearizeCloses(compiler, env, newStmts, closure.closes, fnFreeVars(fn));
         stmt = (IRStmt){.closure = closure, STMT_CLOSURE};
     }; break;
 
     case STMT_CLOSURE: case STMT_MOVE: case STMT_SWAP: assert(false); break; // Should not exist yet
 
-    case STMT_KNOT: break;
+    case STMT_KNOT: break; // Does not contain any uses
 
     case STMT_KNOT_INIT: {
-        stmt.knotInit.knot = deepLexicalUse(compiler, env, newStmts, stmt.knotInit.knot);
-        stmt.knotInit.v = deepLexicalUse(compiler, env, newStmts, stmt.knotInit.v);
+        KnotInitStmt* const knotInit = &stmt.knotInit;
+        knotInit->knot = deepLexicalUse(compiler, env, newStmts, knotInit->knot);
+        knotInit->v = deepLexicalUse(compiler, env, newStmts, knotInit->v);
     }; break;
 
     case STMT_KNOT_GET: {
-        stmt.knotGet.knot = deepLexicalUse(compiler, env, newStmts, stmt.knotGet.knot);
+        KnotGetStmt* const knotGet = &stmt.knotGet;
+        knotGet->knot = deepLexicalUse(compiler, env, newStmts, knotGet->knot);
     }; break;
     }
 
     return stmt;
 }
 
-static IRTransfer transferWithPureLoads(
+static void transferWithPureLoads(
     Compiler* compiler, MaybePureLoadsEnv* savedEnvs, PureLoadsEnv* env,
-    IRFn const* fn, IRBlock const* block, Stmts* newStmts, IRTransfer transfer
+    IRFn const* fn, IRBlock const* block, Stmts* newStmts, IRTransfer* transfer
 ) {
-    switch (transfer.type) {
+    switch (transfer->type) {
     case TRANSFER_CALL: {
-        transfer.call.callee = deepLexicalUse(compiler, env, newStmts, transfer.call.callee);
+        Call* const call = &transfer->call;
 
-        size_t const arity = transfer.call.args.count;
+        call->callee = deepLexicalUse(compiler, env, newStmts, call->callee);
+
+        size_t const arity = call->args.count;
         for (size_t i = 0; i < arity; ++i) {
-            transfer.call.args.names[i] =
-                deepLexicalUse(compiler, env, newStmts, transfer.call.args.names[i]);
+            call->args.names[i] =
+                deepLexicalUse(compiler, env, newStmts, call->args.names[i]);
         }
 
-        IRBlock const* const retBlock = fn->blocks[transfer.call.retLabel.blockIndex];
-        linearizeCloses(compiler, env, newStmts, &transfer.call.closes, &retBlock->liveIns);
+        IRBlock const* const retBlock = fn->blocks[call->retLabel.blockIndex];
+        linearizeCloses(compiler, env, newStmts, &call->closes, &retBlock->liveIns);
 
         freePureLoadsEnv(env);
     }; break;
 
     case TRANSFER_TAILCALL: {
-        transfer.tailcall.callee =
-            deepLexicalUse(compiler, env, newStmts, transfer.tailcall.callee);
-        transfer.tailcall.retFrame =
-            deepLexicalUse(compiler, env, newStmts, transfer.tailcall.retFrame);
+        Tailcall* const tailcall = &transfer->tailcall;
 
-        size_t const arity = transfer.tailcall.args.count;
+        tailcall->callee = deepLexicalUse(compiler, env, newStmts, tailcall->callee);
+        tailcall->retFrame = deepLexicalUse(compiler, env, newStmts, tailcall->retFrame);
+
+        size_t const arity = tailcall->args.count;
         for (size_t i = 0; i < arity; ++i) {
-            transfer.tailcall.args.names[i] =
-                deepLexicalUse(compiler, env, newStmts, transfer.tailcall.args.names[i]);
+            tailcall->args.names[i] =
+                deepLexicalUse(compiler, env, newStmts, tailcall->args.names[i]);
         }
 
         freePureLoadsEnv(env);
     }; break;
 
     case TRANSFER_IF: {
-        transfer.iff.cond = deepLexicalUse(compiler, env, newStmts, transfer.iff.cond);
+        IRIf* const iff = &transfer->iff;
+        iff->cond = deepLexicalUse(compiler, env, newStmts, iff->cond);
 
         savedEnvs[block->label.blockIndex] = (MaybePureLoadsEnv){.val = *env, .hasVal = true};
     }; break;
 
     case TRANSFER_GOTO: {
-        size_t const arity = transfer.gotoo.args.count;
+        IRGoto* const gotoo = &transfer->gotoo;
+
+        size_t const arity = gotoo->args.count;
         for (size_t i = 0; i < arity; ++i) {
-            transfer.gotoo.args.names[i] =
-                deepLexicalUse(compiler, env, newStmts, transfer.gotoo.args.names[i]);
+            gotoo->args.names[i] = deepLexicalUse(compiler, env, newStmts, gotoo->args.names[i]);
         }
 
         savedEnvs[block->label.blockIndex] = (MaybePureLoadsEnv){.val = *env, .hasVal = true};
     }; break;
 
     case TRANSFER_RETURN: {
-        transfer.ret.callee = deepLexicalUse(compiler, env, newStmts, transfer.ret.callee);
-        transfer.ret.arg = deepLexicalUse(compiler, env, newStmts, transfer.ret.arg);
+        IRReturn* const ret = &transfer->ret;
+
+        ret->callee = deepLexicalUse(compiler, env, newStmts, ret->callee);
+        ret->arg = deepLexicalUse(compiler, env, newStmts, ret->arg);
 
         freePureLoadsEnv(env);
     }; break;
     }
-
-    return transfer;
 }
 
 static void blockWithPureLoads(
@@ -378,8 +388,7 @@ static void blockWithPureLoads(
                    stmtWithPureLoads(compiler, &env, &newStmts, block->stmts.vals[i]));
     }
 
-    block->transfer =
-        transferWithPureLoads(compiler, savedEnvs, &env, fn, block, &newStmts, block->transfer);
+    transferWithPureLoads(compiler, savedEnvs, &env, fn, block, &newStmts, &block->transfer);
 
     block->stmts = newStmts;
 }

@@ -266,6 +266,7 @@ typedef struct Method {
     ORef consts;
     Bool hasVarArg;
     Fixnum hash;
+    ORef maybeName;
     ORef domain[];
 } Method;
 
@@ -436,6 +437,7 @@ inline static ArityError* arityErrorToPtr(ArityErrorRef v) {
     ArrayRef: arrayToPtr, \
     ByteArrayRef: byteArrayToPtr, \
     PairRef: pairToPtr, \
+    ClosureRef: closureToPtr, \
     MethodRef: methodToPtr, \
     KnotRef: knotToPtr \
     )(v)

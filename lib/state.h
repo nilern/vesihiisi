@@ -162,13 +162,16 @@ inline static uint8_t* allocByteArrayOrDie(State* state, Fixnum count) {
 static PairRef allocPair(State* state);
 
 static Method* tryAllocBytecodeMethod(
-    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash);
+    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash,
+    ORef maybeName);
 
 static Method* allocBytecodeMethodOrDie(
-    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash);
+    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash,
+    ORef maybeName);
 
 static MethodRef allocBytecodeMethod(
-    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash);
+    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash,
+    ORef maybeName);
 
 static ClosureRef allocClosure(State* state, MethodRef method, Fixnum cloverCount);
 

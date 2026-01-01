@@ -95,10 +95,12 @@ static MethodRef buildMethod(
     uintptr_t const hash =
         fnv1aHash_n((char const*)toPtr(code), (uintptr_t)fixnumToInt(flexLength(toORef(code))));
     Fixnum const fxHash = tagInt((intptr_t)hash);
-    Method* maybeMethod = tryAllocBytecodeMethod(state, code, consts, fxArity, hasVarArg, fxHash);
+    Method* maybeMethod =
+        tryAllocBytecodeMethod(state, code, consts, fxArity, hasVarArg, fxHash, fn->maybeName);
     if (mustCollect(maybeMethod)) {
         collectTracingIR(state, toplevelFn, &builder);
-        maybeMethod = allocBytecodeMethodOrDie(state, code, consts, fxArity, hasVarArg, fxHash);
+        maybeMethod = allocBytecodeMethodOrDie(state, code, consts, fxArity, hasVarArg, fxHash,
+                                               fn->maybeName);
     }
     if (fn->domain.count == 0) {
         for (size_t i = 0; i < arity; ++i) {

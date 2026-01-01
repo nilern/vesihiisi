@@ -30,6 +30,7 @@ typedef struct IRFn {
     size_t blockCount;
     size_t blockCap;
 
+    ORef maybeName;
     IRDomain domain;
     bool hasVarArg;
 } IRFn;
@@ -213,7 +214,7 @@ static IRName freshName(Compiler* compiler);
 
 static IRName renameIRName(Compiler* compiler, IRName name);
 
-static IRFn createIRFn(Compiler* compiler);
+static IRFn createIRFn(Compiler* compiler, ORef maybeName);
 
 static void setParamType(Compiler* compiler, IRDomain* domain, size_t idx, IRName typeName);
 

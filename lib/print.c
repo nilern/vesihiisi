@@ -66,7 +66,20 @@ static void print(State const* state, FILE* dest, ORef v) {
             }
             putc('>', dest);
         } else if (isClosure(state, v)) {
-            fprintf(dest, "#<fn>");
+            Closure const* const closure = toPtr(uncheckedORefToClosure(v));
+
+            fprintf(dest, "#<fn");
+
+            if (isMethod(state, closure->method)) {
+                Method const* const method = toPtr(uncheckedORefToMethod(closure->method));
+                ORef const maybeName = method->maybeName;
+                if (isHeaped(maybeName)) {
+                    putc(' ', dest);
+                    print(state, dest, maybeName);
+                }
+            }
+
+            putc('>', dest);
         } else if (isContinuation(state, v)) {
             fprintf(dest, "#<continuation>");
         } else if (isType(state, v)) {

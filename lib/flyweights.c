@@ -55,7 +55,7 @@ static MethodRef createSpecialization(
     MethodRef const specializationRef =
         allocBytecodeMethod(state, uncheckedORefToByteArray(generic->code),
                             uncheckedORefToArray(generic->consts), fxArity, generic->hasVarArg,
-                            hash);
+                            hash, generic->maybeName);
     popStackRoots(state, 2);
     Method* const specialization = toPtr(specializationRef);
 
@@ -154,7 +154,8 @@ static MethodRef specialize(State* state, MethodRef generic, ArrayRef types) {
             ires = indexOfSpecialization(&state->specializations, hash, generic, types);
         }
 
-        MethodRef const specialization = createSpecialization(state, generic, types, fxHash);
+        MethodRef const specialization =
+            createSpecialization(state, generic, types, fxHash);
         state->specializations.entries[ires.index] = toORef(specialization);
         state->specializations.count = newCount;
         return specialization;

@@ -60,6 +60,8 @@ static void markIRFn(State* state, IRFn* fn) {
     for (size_t i = 0; i < blockCount; ++i) {
         markIRBlock(state, fn->blocks[i]);
     }
+
+    fn->maybeName = mark(&state->heap, fn->maybeName);
 }
 
 static void assertIRBlockInTospace(State const* state, struct IRBlock const* block);
@@ -68,6 +70,10 @@ static void assertIRFnInTospace(State const* state, IRFn const* fn) {
     size_t const blockCount = fn->blockCount;
     for (size_t i = 0; i < blockCount; ++i) {
         assertIRBlockInTospace(state, fn->blocks[i]);
+    }
+
+    if (isHeaped(fn->maybeName)) {
+        assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(fn->maybeName)));
     }
 }
 
@@ -178,7 +184,7 @@ static void pushIRStmt(Compiler* compiler, Stmts* stmts, IRStmt stmt) {
     stmts->vals[stmts->count++] = stmt;
 }
 
-static IRFn createIRFn(Compiler* compiler) {
+static IRFn createIRFn(Compiler* compiler, ORef maybeName) {
     size_t const blockCap = 2;
     IRBlock** const blocks = amalloc(&compiler->arena, blockCap * sizeof *blocks);
 
@@ -187,6 +193,7 @@ static IRFn createIRFn(Compiler* compiler) {
         .blockCount = 0,
         .blockCap = blockCap,
 
+        .maybeName = maybeName,
         .domain = (IRDomain){.vals = nullptr, .count = 0, .cap = 0},
         .hasVarArg = false
     };
@@ -586,8 +593,15 @@ static void printNestedIRFn(
     IRFn const* fn, size_t nesting
 ) {
     for (size_t i = 0; i < nesting; ++i) { fprintf(dest, "  "); }
-    fprintf(dest, "(fn (");
+    fprintf(dest, "(fn ");
     
+    if (isHeaped(fn->maybeName)) {
+        print(state, dest, fn->maybeName);
+    } else {
+        putc('_', dest);
+    }
+    fputs(" (", dest);
+
     size_t const domainCount = fn->domain.count;
     for (size_t i = 0; i < domainCount; ++i) {
         if (i > 0) { putc(' ', dest); }

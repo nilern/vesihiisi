@@ -172,7 +172,10 @@ typedef struct ToCpsContReturn {
 typedef struct ToCpsCont {
     union {
         ToCpsContReturn ret;
-        IRName name;
+        struct {
+            IRName name;
+            SymbolRef sym;
+        };
     };
     enum {
         TO_CPS_CONT_EFF,
@@ -196,6 +199,20 @@ static IRName toCpsContDestName(Compiler* compiler, ToCpsCont k) {
     }
 
     return invalidIRName; // Unreachable
+}
+
+static ORef toCpsContDestSymbol(ToCpsCont k) {
+    switch (k.type) {
+    case TO_CPS_CONT_BIND: // fallthrough
+    case TO_CPS_CONT_DEF: return toORef(k.sym);
+
+    case TO_CPS_CONT_EFF: // fallthrough
+    case TO_CPS_CONT_VAL: // fallthrough
+    case TO_CPS_CONT_JOIN: // fallthrough
+    case TO_CPS_CONT_RETURN: return toORef(Zero);
+    }
+
+    return toORef(Zero); // Unreachable
 }
 
 static IRName constToCPS(Compiler* compiler, IRBlock* block, ORef expr, ToCpsCont k) {
@@ -309,7 +326,8 @@ static IRName fnToCPSimpl(
     State const* state, Compiler* compiler, IRFn* fn, ToCpsEnv const* env, IRBlock** block,
     IRName maybeSelf, ORef params, ORef body, ToCpsCont k
 ) {
-    IRFn innerFn = createIRFn(compiler);
+    ORef const maybeName = toCpsContDestSymbol(k);
+    IRFn innerFn = createIRFn(compiler, maybeName);
 
     IRBlock* entryBlock = createIRBlock(compiler, &innerFn, 0);
 
@@ -490,7 +508,7 @@ static IRName defToCPS(
     }
 
     IRName const nameHint = renameSymbol(compiler, name);
-    ToCpsCont const defK = (ToCpsCont){{.name = nameHint}, TO_CPS_CONT_DEF};
+    ToCpsCont const defK = (ToCpsCont){{.name = nameHint, .sym = name}, TO_CPS_CONT_DEF};
     IRName const valName = exprToIR(state, compiler, fn, env, block, val, defK);
     pushIRStmt(compiler, &(*block)->stmts, globalDefToStmt((GlobalDef){name, valName}));
     // FIXME: Return e.g. nil/undefined/unspecified instead of new val:
@@ -544,7 +562,8 @@ static IRName letToCPS(
             }
 
             IRName const binderName = renameSymbol(compiler, binder);
-            ToCpsCont const valK = (ToCpsCont){.name = binderName, .type = TO_CPS_CONT_BIND};
+            ToCpsCont const valK =
+                (ToCpsCont){{.name = binderName, .sym = binder}, .type = TO_CPS_CONT_BIND};
             IRName const finalName =
                 exprToIR(state, compiler, fn, &letEnv, block, val, valK);
             // If `finalName != binderName` we have a local copy e.g.
@@ -639,7 +658,7 @@ static void knotInit(
     IRName const self = renameSymbol(compiler, fSym);
     setSymbolDef(env, fSym, (ToCpsFrameDef){.name = self, FRAME_DEF_NAME}, BINDINGS_SEQ);
     IRName const fName = renameSymbol(compiler, fSym);
-    ToCpsCont const bindK = (ToCpsCont){.name = fName, .type = TO_CPS_CONT_BIND};
+    ToCpsCont const bindK = (ToCpsCont){{.name = fName, .sym = fSym}, .type = TO_CPS_CONT_BIND};
     // Will just return `fName`, can discard that:
     fnToCPSimpl(state, compiler, fn, env, block, self, binderPair->cdr, bindingPair->cdr, bindK);
     setSymbolDef(env, fSym, (ToCpsFrameDef){.name = fName, FRAME_DEF_NAME}, BINDINGS_SEQ);
@@ -810,7 +829,7 @@ static IRName exprToIR(
 }
 
 static IRFn topLevelExprToIR(State const* state, Compiler* compiler, ORef expr) {
-    IRFn fn = createIRFn(compiler);
+    IRFn fn = createIRFn(compiler, toORef(Zero));
 
     IRBlock* entryBlock = createIRBlock(compiler, &fn, 0);
 

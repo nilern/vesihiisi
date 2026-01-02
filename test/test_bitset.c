@@ -46,7 +46,7 @@ static void test_geometric(void) {
     Arena arena = newArena(4 * (1 << 10));
     BitSet bits = createBitSet(&arena, 0);
 
-    for (size_t b = 1; b < 1000; b *= 10) {
+    for (size_t b = 1; b < 1000; b *= 3) {
         assert(!bitSetContains(&bits, b));
         bitSetSet(&arena, &bits, b);
         assert(bitSetContains(&bits, b));

@@ -34,7 +34,8 @@ static void bitSetSet(Arena* arena, BitSet* bits, size_t n) {
     size_t const wordIdx = n / UINTPTR_WIDTH;
 
     if (wordIdx >= bits->wordCap) { // Does not even fit allocation => grow:
-        size_t const newCap = bits->wordCap + bits->wordCap / 2;
+        size_t newCap = bits->wordCap + bits->wordCap / 2;
+        if (newCap < wordIdx + 1) { newCap = wordIdx + 1; }
         uintptr_t* const newWords = amalloc(arena, newCap * sizeof *newWords);
 
         memcpy(newWords, bits->words, bits->wordCount * sizeof *newWords);

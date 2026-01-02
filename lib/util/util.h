@@ -7,6 +7,9 @@
 
 #include "../vesihiisi.h"
 
+#define CAT_IMPL(A, B) A##_##B
+#define CAT(A, B) CAT_IMPL(A, B)
+
 typedef struct MaybeSize {
     size_t val;
     bool hasVal;

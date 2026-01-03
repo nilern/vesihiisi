@@ -280,3 +280,12 @@ static PrimopRes primopFxLt(State* state) {
 
     return PRIMOP_RES_CONTINUE;
 }
+
+static PrimopRes primopWrite(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    print(state, stdout, state->regs[firstArgReg]);
+
+    return PRIMOP_RES_CONTINUE; // TODO: Maybe do not return written value?
+}

@@ -480,6 +480,7 @@ static PrimopRes primopFxSub(State* state);
 static PrimopRes primopFxMul(State* state);
 static PrimopRes primopFxQuot(State* state);
 static PrimopRes primopFxLt(State* state);
+static PrimopRes primopWrite(State* state);
 
 static MethodRef vcreatePrimopMethod(
     State* state, Str name, MethodCode nativeCode, Fixnum arity, bool hasVarArg, va_list domain);
@@ -680,6 +681,7 @@ State* tryCreateState(size_t heapSize) {
                   tagInt(2), false, dest->fixnumType, dest->fixnumType);
     installPrimop(dest, strLit("fx<"), primopFxLt,
                   tagInt(2), false, dest->fixnumType, dest->fixnumType);
+    installPrimop(dest, strLit("write"), primopWrite, tagInt(1), false, dest->anyType);
 
     return dest;
 }

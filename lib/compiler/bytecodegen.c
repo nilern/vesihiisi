@@ -174,8 +174,9 @@ inline static void pushReg(Compiler* compiler, MethodBuilder* builder, IRName na
 inline static void pushDisplacement(
     Compiler* compiler, MethodBuilder* builder, size_t displacement
 ) {
-    // FIXME: `displacement` may not fit in one byte:
-    pushCodeByte(compiler, builder, (uint8_t)displacement);
+    assert(displacement <= UINT16_MAX); // TODO: Enable even bigger displacements
+    pushCodeByte(compiler, builder, (uint8_t)(displacement & UINT8_MAX));
+    pushCodeByte(compiler, builder, (uint8_t)((displacement >> UINT8_WIDTH) & UINT8_MAX));
 }
 
 static void emitRegBits(

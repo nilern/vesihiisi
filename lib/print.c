@@ -66,11 +66,22 @@ void print(State const* state, FILE* dest, ORef v) {
                 print(state, dest, vs[i]);
             }
             putc('>', dest);
+        } else if (isa(state, state->methodType, v)) {
+            Method const* const method = toPtr(uncheckedORefToMethod(v));
+
+            fprintf(dest, "#<method");
+            ORef const maybeName = method->maybeName;
+            if (isHeaped(maybeName)) {
+                putc(' ', dest);
+                print(state, dest, maybeName);
+            }
+            putc('>', dest);
         } else if (isClosure(state, v)) {
             Closure const* const closure = toPtr(uncheckedORefToClosure(v));
 
             fprintf(dest, "#<fn");
 
+            // TODO: DRY with #<method ... directly above:
             if (isMethod(state, closure->method)) {
                 Method const* const method = toPtr(uncheckedORefToMethod(closure->method));
                 ORef const maybeName = method->maybeName;

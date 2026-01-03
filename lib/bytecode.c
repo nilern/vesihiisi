@@ -9,7 +9,15 @@ static const uint8_t retReg = firstArgReg;
 
 inline static void disassembleReg(FILE* dest, uint8_t reg) { fprintf(dest, "r%u", reg); }
 
-inline static void disassembleDisplacement(FILE* dest, uint8_t len) { fprintf(dest, "%u", len); }
+[[nodiscard]]
+inline static size_t disassembleDisplacement(FILE* dest, uint8_t const* code, size_t i) {
+    uint16_t displacement = code[i++];
+    displacement = (uint16_t)(displacement << UINT8_WIDTH) | code[i++];
+
+    fprintf(dest, "%u", displacement);
+
+    return i;
+}
 
 [[nodiscard]]
 static size_t disassembleRegBits(FILE* dest, uint8_t const* code, size_t i) {
@@ -130,12 +138,12 @@ static size_t disassembleNestedInstr(
         fprintf(dest, "brf ");
         disassembleReg(dest, code[pc++]);
         fputc(' ', dest);
-        disassembleDisplacement(dest, code[pc++]);
+        pc = disassembleDisplacement(dest, code, pc);
     }; break;
 
     case OP_BR: {
         fprintf(dest, "br ");
-        disassembleDisplacement(dest, code[pc++]);
+        pc = disassembleDisplacement(dest, code, pc);
     }; break;
 
     case OP_RET: {

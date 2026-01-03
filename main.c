@@ -77,7 +77,7 @@ typedef struct ParseArgvRes {
     ResTag tag;
 } ParseArgvRes;
 
-void printCLIErr(FILE* dest, char const* argv[], CLIErr const* err) {
+static void printCLIErr(FILE* dest, char const* argv[], CLIErr const* err) {
     switch (err->type) {
     case CLI_ERR_NONFLAG: {
         fprintf(dest, "%s: unrecognized option '%s'", argv[0], argv[err->idx]);

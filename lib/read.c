@@ -142,6 +142,20 @@ static bool readExpr(State* state, ORef* dest, Parser* parser) {
         StringBuilder builder = createStringBuilder();
         
         for (; (c = *parser->curr) != '"'; ++parser->curr) {
+            if (c == '\\') {
+                ++parser->curr; // Discard '\\'
+
+                switch (*parser->curr) {
+                case 'a': c = '\a'; break;
+                case 'b': c = '\b'; break;
+                case 't': c = '\t'; break;
+                case 'n': c = '\n'; break;
+                case 'r': c = '\r'; break;
+                case '\\': c = '\\'; break;
+                default: return false; // TODO: Proper invalid escape parse error
+                }
+            }
+
             stringBuilderPush(&builder, c);
         }
 

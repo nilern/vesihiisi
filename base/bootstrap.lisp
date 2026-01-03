@@ -114,7 +114,7 @@
             (method2 (fn-method f2))
             (has-vararg2 (has-vararg? method2))
             (min-arity2 (min-arity method2 has-vararg2))) ; OPTIMIZE: not needed on all paths
-        ;; If arities are compatible call `meet-domains*` to produce try and produce meet list:
+        ;; If arities are compatible call `meet-domains*` to try and produce meet list:
         (if (not has-vararg1)
           (if (not has-vararg2)
             (if (identical? min-arity1 min-arity2)

@@ -371,6 +371,24 @@ inline static Namespace* namespaceToPtr(NamespaceRef v) {
     return (Namespace*)(void*)(v.bits & ~tag_bits);
 }
 
+typedef struct {
+    SymbolRef name;
+} UnboundError;
+
+typedef struct { uintptr_t bits; } UnboundErrorRef;
+
+inline static UnboundErrorRef tagUnboundError(UnboundError* ptr) {
+    return (UnboundErrorRef){(uintptr_t)(void*)ptr | (uintptr_t)TAG_HEAPED};
+}
+
+inline static UnboundErrorRef uncheckedORefToUnboundError(ORef v) {
+    return (UnboundErrorRef){v.bits};
+}
+
+inline static UnboundError* unboundErrorToPtr(UnboundErrorRef v) {
+    return (UnboundError*)(void*)(v.bits & ~tag_bits);
+}
+
 typedef struct TypeError {
     TypeRef type;
     ORef val;
@@ -421,6 +439,7 @@ inline static ArityError* arityErrorToPtr(ArityErrorRef v) {
     MethodRef: uncheckedToORef(v), \
     ClosureRef: uncheckedToORef(v), \
     KnotRef: uncheckedToORef(v), \
+    UnboundErrorRef: uncheckedToORef(v), \
     TypeErrorRef: uncheckedToORef(v))
 
 #define toPtr(v) _Generic((v), \
@@ -431,5 +450,6 @@ inline static ArityError* arityErrorToPtr(ArityErrorRef v) {
     PairRef: pairToPtr, \
     ClosureRef: closureToPtr, \
     MethodRef: methodToPtr, \
-    KnotRef: knotToPtr \
+    KnotRef: knotToPtr, \
+    UnboundErrorRef: unboundErrorToPtr \
     )(v)

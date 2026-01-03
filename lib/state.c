@@ -33,6 +33,7 @@ static char const* const typeNames[] = {
     "<var>",
     "<knot>",
     "<ns>",
+    "<unbound-error>",
     "<type-error>",
     "<arity-error>"
 };
@@ -102,6 +103,8 @@ static void pushStackRoot(State* state, ORef* stackLoc) {
 static void markRoots(State* state) {
     state->method = mark(&state->heap, state->method);
 
+    // OPTIMIZE: Only mark registers that are actually live (requires emitting liveness bitmaps for
+    // safepoints:
     for (size_t i = 0; i < REG_COUNT; ++i) {
         state->regs[i] = mark(&state->heap, state->regs[i]);
     }
@@ -382,6 +385,22 @@ static Type* tryCreateNamespaceType(Semispace* semispace, Type const* typeType) 
     return type;
 }
 
+static Type* tryCreateUnboundErrorType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = tryAlloc(semispace, typeType);
+    if (!maybeType) { return nullptr; }
+
+    Type* const type = (Type*)maybeType;
+    *type = (Type){
+        .minSize = tagInt(sizeof(UnboundError)),
+        .align = tagInt(alignof(UnboundError)),
+        .isBytes = False,
+        .hasCodePtr = False,
+        .isFlex = False
+    };
+
+    return type;
+}
+
 static Type* tryCreateTypeErrorType(Semispace* semispace, Type const* typeType) {
     void* const maybeType = tryAlloc(semispace, typeType);
     if (!maybeType) { return nullptr; }
@@ -540,8 +559,10 @@ State* tryCreateState(size_t heapSize) {
     if (!knotType) { return nullptr; }
     Type const* const nsType = tryCreateNamespaceType(&heap.tospace, typeTypePtr);
     if (!nsType) { return nullptr; }
+    Type const* const unboundErrorType = tryCreateUnboundErrorType(&heap.tospace, typeTypePtr);
+    if (!unboundType) { return nullptr; }
     Type const* const typeErrorType = tryCreateTypeErrorType(&heap.tospace, typeTypePtr);
-    if (!nsType) { return nullptr; }
+    if (!typeErrorType) { return nullptr; }
     Type const* const arityErrorType = tryCreateArityErrorType(&heap.tospace, typeTypePtr);
     if (!arityErrorType) { return nullptr; }
     
@@ -594,6 +615,7 @@ State* tryCreateState(size_t heapSize) {
         .varType = tagType(varType),
         .knotType = tagType(knotType),
         .nsType = tagType(nsType),
+        .unboundErrorType = tagType(unboundErrorType),
         .typeErrorType = tagType(typeErrorType),
         .arityErrorType = tagType(arityErrorType),
         
@@ -684,7 +706,8 @@ static void assertStateInTospace(State const* state) {
         assert(allocatedInSemispace(&state->heap.tospace, state->consts));
     }
 
-
+    // TODO: When we start only marking live regs, this has to only check those as well to avoid
+    // false positives:
     for (size_t i = 0; i < REG_COUNT; ++i) {
         ORef const reg = state->regs[i];
         if (isHeaped(reg)) {
@@ -1078,6 +1101,20 @@ static KnotRef allocKnot(State* state) {
     }
 
     return tagKnot(ptr);
+}
+
+static UnboundErrorRef createUnboundError(State* state, SymbolRef name) {
+    UnboundError* ptr = tryAlloc(&state->heap.tospace, toPtr(state->unboundErrorType));
+    if (mustCollect(ptr)) {
+        pushStackRoot(state, (ORef*)&name);
+        collect(state);
+        popStackRoots(state, 1);
+        ptr = allocOrDie(&state->heap.tospace, toPtr(state->unboundErrorType));
+    }
+
+    *ptr = (UnboundError){.name = name};
+
+    return tagUnboundError(ptr);
 }
 
 static TypeErrorRef createTypeError(State* state, TypeRef type, ORef val) {

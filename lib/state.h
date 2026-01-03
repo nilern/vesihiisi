@@ -25,7 +25,7 @@ typedef struct Shadowstack {
 
 #define REG_COUNT 256
 
-#define BOOTSTRAP_TYPE_COUNT 25
+#define BOOTSTRAP_TYPE_COUNT 26
 #define BOOTSTRAP_SINGLETON_COUNT 4
 
 typedef struct State {
@@ -65,6 +65,7 @@ typedef struct State {
             TypeRef varType;
             TypeRef knotType;
             TypeRef nsType;
+            TypeRef unboundErrorType;
             TypeRef typeErrorType;
             TypeRef arityErrorType;
         };
@@ -179,6 +180,8 @@ static ContinuationRef allocContinuation(
     State* state, MethodRef method, Fixnum pc, Fixnum cloverCount);
 
 static KnotRef allocKnot(State* state);
+
+static UnboundErrorRef createUnboundError(State* state, SymbolRef name);
 
 static TypeErrorRef createTypeError(State* state, TypeRef type, ORef val);
 

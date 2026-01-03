@@ -89,8 +89,15 @@ void print(State const* state, FILE* dest, ORef v) {
             fprintf(dest, "#<type ");
             print(state, dest, toORef(type->name));
             putc('>', dest);
+        } else if (isa(state, state->unboundErrorType, v)) {
+            UnboundError const* const err = toPtr(uncheckedORefToUnboundError(v));
+
+            fputs("#<unbound-error ", dest);
+            print(state, dest, toORef(err->name));
+            putc('>', dest);
         } else if (isTypeError(state, v)) {
             TypeError const* const err = typeErrorToPtr(uncheckedORefToTypeError(v));
+
             fputs("#<type-error ", dest);
             print(state, dest, typeToORef(err->type));
             putc(' ', dest);
@@ -98,6 +105,7 @@ void print(State const* state, FILE* dest, ORef v) {
             putc('>', dest);
         } else if (isa(state, state->arityErrorType, v)) {
             ArityError const* const err = arityErrorToPtr(uncheckedORefToArityError(v));
+
             fputs("#<arity-error ", dest);
             print(state, dest, closureToORef(err->callee));
             putc(' ', dest);

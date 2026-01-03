@@ -69,7 +69,17 @@ static VMRes run(State* state, ClosureRef selfRef) {
                 SymbolRef const name = uncheckedORefToSymbol(c);
                 FindVarRes const findRes = findVar(state->ns, name);
                 if (findRes.type != NS_FOUND_VAR) {
-                    assert(false); // FIXME: Use of unbound name
+                    // FIXME: Signal that this is a "fatal" (i.e. noncontinuable) error as
+                    // constructing a working continuation at an arbitrary instruction like this
+                    // would take a lot of effort while actually using that to recover from this
+                    // would be a terrible idea. Currently `retContReg` probably holds the return
+                    // continuation of the current function; to support stack traces we probably
+                    // have to ensure that it does. But that continuation is definitely not a
+                    // correct current continuation.
+                    state->regs[calleeReg] = getErrorHandler(state);
+                    state->regs[firstArgReg] = toORef(createUnboundError(state, name));
+                    state->entryRegc = firstArgReg + 1;
+                    goto apply;
                 }
 
                 var = findRes.var;
@@ -286,7 +296,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
                 state->regs[firstArgReg] =
                     typeErrorToORef(createTypeError(state, state->closureType, callee));
                 callee = state->regs[calleeReg];
-                state->entryRegc = 3;
+                state->entryRegc = firstArgReg + 1;
             }
             Closure const* const closure = closureToPtr(uncheckedORefToClosure(callee));
             ORef const method = closure->method;
@@ -302,7 +312,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
                 if (isHeaped(maybeErr)) {
                     state->regs[calleeReg] = getErrorHandler(state);
                     state->regs[firstArgReg] = maybeErr;
-                    state->entryRegc = 3;
+                    state->entryRegc = firstArgReg + 1;
                     continue;
                 }
 

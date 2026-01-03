@@ -160,7 +160,7 @@
                    (fx+ j 1)))
                0 methods))))
       (array!-fold-left
-        (fn (f i)
+        (fn ((: f <fn>) i)
           (ensure-unambiguous f i)
           (fx+ i 1))
         0 methods)

@@ -7,27 +7,30 @@
 
 // TODO: Bigger (only when necessary?) displacements for BR(F)?
 
-// OPTIMIZE: 4-bit opcode with one 4-bit argument when possible?
+// OPTIMIZE: 4-bit opcodes and arguments whenever possible
+
+// OPTIMIZE: `rep` prefix (for e.g. mov, swap, clover)
 
 typedef enum Opcode : uint8_t {
-    OP_MOVE,
-    OP_SWAP,
-    OP_DEF,
+    OP_MOVE,        // rx = mov ry
+    OP_SWAP,        // swap rx ry
+    OP_DEF,         // def c rx
     // TODO: OP_GLOBAL_SET
-    OP_GLOBAL,
-    OP_CONST,
-    OP_SPECIALIZE,
+    OP_GLOBAL,      // rx = global c
+    OP_CONST,       // rx = const c ; TODO: Encode as specialize with 0 types
+    OP_SPECIALIZE,  // rx = specialize c #bi*
     OP_KNOT,        // rx = knot ()
     OP_KNOT_INIT,   // knot-init! rx ry
     OP_KNOT_GET,    // rx = knot-get ry
-    OP_BRF,
-    OP_BR,
-    OP_RET,
-    OP_CLOSURE,
-    OP_CLOVER,
+    OP_BRF,         // brf rx d
+    OP_BR,          // br d
+    OP_RET,         // ret
+    OP_CLOSURE,     // rx = closure ry #bi*
+    OP_CLOVER,      // rx = clover rx i
     // TODO: OP_CONT_CLOVER / OP_RESTORE
-    OP_CALL,
-    OP_TAILCALL // TODO: Encode as call with 0 closes (nontail call always saves at least ret cont)?
+    OP_CALL,        // call n #bi*
+    OP_TAILCALL     // tailcall n TODO: Encode as call with 0 closes (nontail call always saves at
+                    // least ret cont)?
 } Opcode;
 
 // Calling convention:

@@ -181,14 +181,24 @@ static void disassembleNested(State const* state, FILE* dest, MethodRef methodRe
 
     for (size_t j = 0; j < nesting; ++j) { putc('\t', dest); }
     putc('(', dest);
+
+    ORef const maybeName = method->maybeName;
+    if (isa(state, state->symbolType, maybeName)) {
+        print(state, dest, maybeName);
+    } else {
+        putc('_', dest);
+    }
+
     size_t const arity = (uintptr_t)fixnumToInt(flexLength(methodToORef(methodRef)));
     for (size_t i = 0; i < arity; ++i) {
-        if (i > 0) { putc(' ', dest); }
+        putc(' ', dest);
         if (i == arity - 1 && eq(boolToORef(method->hasVarArg), boolToORef(True))) {
             fputs(". ", dest);
         }
+
         print(state, dest, method->domain[i]);
     }
+
     fputs(")\n", dest);
 
     if (isHeaped(method->code)) {

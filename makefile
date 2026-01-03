@@ -5,7 +5,7 @@ DEBUG_FLAGS := -g
 SANITIZE_FLAGS := -fsanitize=address -fsanitize=leak -DGC_ALOT
 
 PROD_FLAGS := $(BASE_FLAGS) $(OPT_FLAGS)
-DEV_FLAGS := $(BASE_FLAGS) $(DEBUG_FLAGS)
+DEV_FLAGS := $(BASE_FLAGS) $(DEBUG_FLAGS) # $(SANITIZE_FLAGS)
 TEST_FLAGS := $(BASER_FLAGS) $(DEBUG_FLAGS) $(SANITIZE_FLAGS)
 
 LIB_SRCS := $(shell find lib -name '*.[ch]')

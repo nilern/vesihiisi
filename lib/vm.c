@@ -118,7 +118,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
                     uint8_t const byte = state->code[start + byteIdx];
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
                         if ((byte >> (UINT8_WIDTH - 1 - bitIdx)) & 1) {
-                            size_t const regIdx = byteIdx + bitIdx;
+                            size_t const regIdx = UINT8_WIDTH * byteIdx + bitIdx;
                             ORef const maybeType = state->regs[regIdx];
                             if (!isType(state, maybeType)) {
                                 return (VMRes){}; // TODO: Signal type error properly
@@ -215,7 +215,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
                         if ((byte >> (UINT8_WIDTH - 1 - bitIdx)) & 1) {
                             ORef* const cloverPtr =
                                 (ORef*)closureToPtr(closure)->clovers + cloverIdx++;
-                            size_t const regIdx = byteIdx + bitIdx;
+                            size_t const regIdx = UINT8_WIDTH * byteIdx + bitIdx;
                             *cloverPtr = state->regs[regIdx];
                         }
                     }
@@ -266,7 +266,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
                         if ((byte >> (UINT8_WIDTH - 1 - bitIdx)) & 1) {
                             ORef* const cloverPtr =
                                 (ORef*)continuationToPtr(cont)->saves + cloverIdx++;
-                            size_t const regIdx = byteIdx + bitIdx;
+                            size_t const regIdx = UINT8_WIDTH * byteIdx + bitIdx;
                             *cloverPtr = state->regs[regIdx];
                         }
                     }

@@ -477,6 +477,14 @@ inline static InapplicableErrorRef tagInapplicableError(InapplicableError* ptr) 
     return (InapplicableErrorRef){(uintptr_t)(void*)ptr | (uintptr_t)TAG_HEAPED};
 }
 
+inline static InapplicableErrorRef uncheckedORefToInapplicableError(ORef v) {
+    return (InapplicableErrorRef){v.bits};
+}
+
+inline static InapplicableError* inapplicableErrorToPtr(InapplicableErrorRef v) {
+    return (InapplicableError*)(void*)(v.bits & ~tag_bits);
+}
+
 #define uncheckedToORef(v) (ORef){(v).bits}
 
 #define toORef(v) _Generic((v), \
@@ -488,6 +496,7 @@ inline static InapplicableErrorRef tagInapplicableError(InapplicableError* ptr) 
     ByteArrayRef: uncheckedToORef(v), \
     MethodRef: uncheckedToORef(v), \
     ClosureRef: uncheckedToORef(v), \
+    MultimethodRef: uncheckedToORef(v), \
     KnotRef: uncheckedToORef(v), \
     UnboundErrorRef: uncheckedToORef(v), \
     TypeErrorRef: uncheckedToORef(v), \
@@ -504,5 +513,6 @@ inline static InapplicableErrorRef tagInapplicableError(InapplicableError* ptr) 
     MultimethodRef: multimethodToPtr, \
     MethodRef: methodToPtr, \
     KnotRef: knotToPtr, \
-    UnboundErrorRef: unboundErrorToPtr \
+    UnboundErrorRef: unboundErrorToPtr, \
+    InapplicableErrorRef: inapplicableErrorToPtr \
     )(v)

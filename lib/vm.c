@@ -307,26 +307,23 @@ static VMRes run(State* state, ClosureRef selfRef) {
                     state->regs[calleeReg] = maybeClosure;
                     closure = closureToPtr(uncheckedORefToClosure(maybeClosure));
                 } else {
-                    ORef const errorHandler = getErrorHandler(state);
-
-                    state->regs[calleeReg] = errorHandler;
+                    state->regs[calleeReg] = getErrorHandler(state);
                     state->regs[firstArgReg] =
                         toORef(createInapplicableError(state, multiCalleeRef));
                     state->entryRegc = firstArgReg + 1;
 
-                    assert(isClosure(state, errorHandler));
-                    closure = closureToPtr(uncheckedORefToClosure(errorHandler));
+                    assert(isClosure(state, state->regs[calleeReg]));
+                    closure = closureToPtr(uncheckedORefToClosure(state->regs[calleeReg]));
                 }
             } else { // TODO: DRY with "inapplicable" directly above:
-                ORef const errorHandler = getErrorHandler(state);
-
-                state->regs[calleeReg] = errorHandler;
+                state->regs[calleeReg] = getErrorHandler(state);
+                // TODO: `UncallableError` as closure is no longer the only callable type:
                 state->regs[firstArgReg] =
                     typeErrorToORef(createTypeError(state, state->closureType, callee));
                 state->entryRegc = firstArgReg + 1;
 
-                assert(isClosure(state, errorHandler));
-                closure = closureToPtr(uncheckedORefToClosure(errorHandler));
+                assert(isClosure(state, state->regs[calleeReg]));
+                closure = closureToPtr(uncheckedORefToClosure(state->regs[calleeReg]));
             }
 
             // OPTIMIZE: If we came here by multimethod dispatch, disable domain checking (easy for

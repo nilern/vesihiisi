@@ -124,6 +124,12 @@ void print(State const* state, FILE* dest, ORef v) {
             putc(' ', dest);
             print(state, dest, fixnumToORef(err->callArgc));
             putc('>', dest);
+        } else if (isa(state, state->inapplicableErrorType, v)) {
+            InapplicableError const* const err = toPtr(uncheckedORefToInapplicableError(v));
+
+            fputs("#<inapplicable-error ", dest);
+            print(state, dest, toORef(err->callee));
+            putc('>', dest);
         } else  {
             assert(false); // FIXME
         }

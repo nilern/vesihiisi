@@ -87,6 +87,7 @@ void freeState(State* state) {
     freeSymbols(&state->symbols);
     freeSpecializations(&state->specializations);
     freeShadowstack(&state->shadowstack);
+    free(state);
 }
 
 static void pushStackRoot(State* state, ORef* stackLoc) {

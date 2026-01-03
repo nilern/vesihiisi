@@ -8,6 +8,23 @@ Parser createParser(Str src) {
     return (Parser){.curr = src.data, .end = src.data + src.len};
 }
 
+/// (\s+|;[^\n]*\n)*
+static void skipWhitespace(Parser* parser) {
+    while (isspace(*parser->curr) || *parser->curr == ';') {
+        while (isspace(*parser->curr)) { ++parser->curr; }
+
+        if (*parser->curr == ';') {
+            ++parser->curr; // Discard ';'
+
+            while (*parser->curr) {
+                ++parser->curr;
+
+                if (*parser->curr == '\n') { break; }
+            }
+        }
+    }
+}
+
 inline static bool isInitial(char c) {
     return isalpha(c) || c == ':' || c == '!' || c == '?'
         || c == '+' || c == '-' || c == '*' || c == '/'
@@ -17,15 +34,15 @@ inline static bool isInitial(char c) {
 inline static bool isSubsequent(char c) { return isInitial(c) || isdigit(c); }
 
 static bool readExpr(State* state, ORef* dest, Parser* parser) {
-    while (isspace(*parser->curr)) { ++parser->curr; }
+    skipWhitespace(parser);
     
     char c = *parser->curr;
     if (*parser->curr == '\0') { return false; }
     
     if (c == '(') {
         ++parser->curr; // Discard '('
-        
-        while (isspace(*parser->curr)) { ++parser->curr; } // Skip whitespace
+
+        skipWhitespace(parser);
         
         if (*parser->curr == ')') { // Empty list
             ++parser->curr; // Discard ')'
@@ -43,7 +60,7 @@ static bool readExpr(State* state, ORef* dest, Parser* parser) {
         if (!readExpr(state, &car, parser)) { return false;}
         pairToPtr(pair)->car = car;
         
-        while (isspace(*parser->curr)) { ++parser->curr; } // Skip whitespace
+        skipWhitespace(parser);
         
         while (*parser->curr != ')') {
             if (*parser->curr != '.') {
@@ -68,7 +85,7 @@ static bool readExpr(State* state, ORef* dest, Parser* parser) {
                 }
                 pairToPtr(pair)->cdr = cdr;
         
-                while (isspace(*parser->curr)) { ++parser->curr; } // Skip whitespace
+                skipWhitespace(parser);
                 
                 if (*parser->curr != ')') {
                     popStackRoots(state, 2);
@@ -80,7 +97,7 @@ static bool readExpr(State* state, ORef* dest, Parser* parser) {
                 return true;
             }
             
-            while (isspace(*parser->curr)) { ++parser->curr; } // Skip whitespace
+            skipWhitespace(parser);
         }
         
         ++parser->curr; // Discard ')'
@@ -170,7 +187,7 @@ static bool readExpr(State* state, ORef* dest, Parser* parser) {
 }
 
 bool read(State* state, MaybeORef* dest, Parser* parser) {
-    while (isspace(*parser->curr)) { ++parser->curr; }
+    skipWhitespace(parser);
 
     if (*parser->curr == '\0') {
         *dest = (MaybeORef){};

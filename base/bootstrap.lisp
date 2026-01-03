@@ -67,7 +67,9 @@
   (fn (type1 type2)
     (if (not (identical? type1 <any>))
       (if (not (identical? type2 <any>))
-        #f
+        (if (identical? type1 type2)
+          type1
+          #f)
         type1)
       type2)))
 

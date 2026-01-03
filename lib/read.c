@@ -141,9 +141,11 @@ static bool readExpr(State* state, ORef* dest, Parser* parser) {
         
         StringBuilder builder = createStringBuilder();
         
-        for (;(c = *parser->curr) != '"'; ++parser->curr) {
+        for (; (c = *parser->curr) != '"'; ++parser->curr) {
             stringBuilderPush(&builder, c);
         }
+
+        ++parser->curr; // Discard '"'
         
         *dest = stringToORef(createString(state, stringBuilderStr(&builder)));
         freeStringBuilder(&builder); // OPTIMIZE: Reuse same builder

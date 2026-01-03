@@ -87,12 +87,12 @@ static MethodRef buildMethod(
 
     // Create method consts:
     Fixnum const constCount = tagInt((intptr_t)builder.constCount);
-    ORef* maybeConsts = tryAllocArray(state, constCount);
+    ORef* maybeConsts = tryAllocArrayMut(state, constCount);
     if (mustCollect(maybeConsts)) {
         collectTracingIR(state, toplevelFn, &builder);
-        maybeConsts = allocArrayOrDie(state, constCount);
+        maybeConsts = allocArrayMutOrDie(state, constCount);
     }
-    ArrayRef consts = tagArray(maybeConsts);
+    ArrayMutRef consts = tagArrayMut(maybeConsts);
     pushStackRoot(state, (ORef*)&consts);
     memcpy(maybeConsts, builder.consts, builder.constCount * sizeof *builder.consts); // Initialize
 
@@ -100,7 +100,7 @@ static MethodRef buildMethod(
     Fixnum const fxArity = tagInt((intptr_t)arity);
     Bool const hasVarArg = tagBool(fn->hasVarArg);
     uintptr_t const hash =
-        fnv1aHash_n((char const*)toPtr(code), (uintptr_t)fixnumToInt(flexLength(toORef(code))));
+        fnv1aHash_n((char const*)toPtr(code), (uintptr_t)fixnumToInt(uncheckedFlexCount(toORef(code))));
     Fixnum const fxHash = tagInt((intptr_t)hash);
     Method* maybeMethod =
         tryAllocBytecodeMethod(state, code, consts, fxArity, hasVarArg, fxHash, fn->maybeName);

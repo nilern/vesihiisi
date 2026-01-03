@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "bytecode.h"
 
@@ -31,7 +32,7 @@ static ORef checkDomain(State* state) {
     assert(isMethod(state, callee->method));
     MethodRef const methodRef = uncheckedORefToMethod(callee->method);
     Method const* const method = methodToPtr(methodRef);
-    size_t const arity = (uintptr_t)fixnumToInt(flexLength(methodToORef(methodRef)));
+    size_t const arity = (uintptr_t)fixnumToInt(uncheckedFlexCount(methodToORef(methodRef)));
 
     uint8_t const callArity = state->entryRegc - firstArgReg;
     if (callArity != arity) {
@@ -64,6 +65,65 @@ static ORef checkDomain(State* state) {
     }
 
     return fixnumToORef(Zero);
+}
+
+// TODO: Can we somehow (efficiently!) DRY this wrt. `checkDomain`?
+[[nodiscard]]
+static bool closureIsApplicable(State const* state, Closure const* callee) {
+    assert(isMethod(state, callee->method));
+    MethodRef const methodRef = uncheckedORefToMethod(callee->method);
+    Method const* const method = methodToPtr(methodRef);
+    size_t const arity = (uintptr_t)fixnumToInt(uncheckedFlexCount(methodToORef(methodRef)));
+
+    uint8_t const callArity = state->entryRegc - firstArgReg;
+    if (callArity != arity) {
+        if (!(unwrapBool(method->hasVarArg) && callArity >= arity - 1)) {
+            return false;
+        }
+    }
+
+    bool const hasVarArg = unwrapBool(method->hasVarArg);
+    size_t const minArity = !hasVarArg ? arity : arity - 1;
+
+    for (size_t i = 0; i < minArity; ++i) {
+        assert(isType(state, method->domain[i]));
+        TypeRef const type = uncheckedORefToTypeRef(method->domain[i]);
+        ORef const v = state->regs[firstArgReg + i];
+        if (!isa(state, type, v)) {
+            return false;
+        }
+    }
+
+    if (hasVarArg) {
+        assert(isType(state, method->domain[minArity]));
+        TypeRef const type = uncheckedORefToTypeRef(method->domain[minArity]);
+        for (size_t i = minArity; i < callArity; ++i) {
+            ORef const v = state->regs[firstArgReg + i];
+            if (!isa(state, type, v)) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+static ORef applicableClosure(State const* state, Multimethod const* callee) {
+    ArrayRef const methodsRef = callee->methods;
+    ORef const* const methods = toPtr(methodsRef);
+
+    size_t const methodCount = (uintptr_t)fixnumToInt(arrayCount(methodsRef));
+    for (size_t i = 0; i < methodCount; ++i) {
+        assert(isa(state, state->closureType, (methods[i])));
+        ClosureRef const methodRef = uncheckedORefToClosure(methods[i]);
+        Closure const* const method = toPtr(methodRef);
+
+        if (closureIsApplicable(state, method)) {
+            return toORef(methodRef);
+        }
+    }
+
+    return toORef(Zero);
 }
 
 static PrimopRes callBytecode(State* /*state*/) { return PRIMOP_RES_TAILCALL; }
@@ -178,6 +238,31 @@ static PrimopRes primopSlotGet(State* state) {
     return PRIMOP_RES_CONTINUE;
 }
 
+static PrimopRes primopMakeFlex(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    TypeRef typeRef = uncheckedORefToTypeRef(state->regs[firstArgReg]);
+    Fixnum const count = uncheckedORefToFixnum(state->regs[firstArgReg + 1]);
+
+    Type const* type = toPtr(typeRef);
+    if (unwrapBool(type->isFlex)) {
+        void* ptr = tryAllocFlex(&state->heap.tospace, type, count);
+        if (mustCollect(ptr)) {
+            collect(state);
+            typeRef = uncheckedORefToTypeRef(state->regs[firstArgReg]);
+            type = toPtr(typeRef);
+            ptr = allocFlexOrDie(&state->heap.tospace, type, count);
+        }
+
+        state->regs[retReg] = tagHeaped(ptr);
+
+        return PRIMOP_RES_CONTINUE;
+    } else {
+        exit(EXIT_FAILURE); // TODO
+    }
+}
+
 static PrimopRes primopFlexCount(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
@@ -217,6 +302,49 @@ static PrimopRes primopFlexGet(State* state) {
 
     ORef const* const flexSlots = (ORef const*)((char const*)ptr + fixnumToInt(type->minSize));
     state->regs[retReg] = flexSlots[i];
+
+    return PRIMOP_RES_CONTINUE;
+}
+
+static PrimopRes primopFlexCopy(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    ORef const dest = state->regs[firstArgReg];
+    intptr_t const offsetS = uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
+    ORef const src = state->regs[firstArgReg + 2];
+    intptr_t const startS = uncheckedFixnumToInt(state->regs[firstArgReg + 3]);
+    intptr_t const endS = uncheckedFixnumToInt(state->regs[firstArgReg + 4]);
+    Type const* const destType = toPtr(typeOf(state, dest));
+    Type const* const srcType = toPtr(typeOf(state, src));
+
+    if (!unwrapBool(destType->isFlex)) { exit(EXIT_FAILURE); } // TODO: Proper nonflex error
+    Bool const isBytesRef = destType->isBytes;
+    if (!unwrapBool(srcType->isFlex)) { exit(EXIT_FAILURE); } // TODO: Proper nonflex error
+    if (!eq(toORef(srcType->isBytes), toORef(isBytesRef))) {
+        exit(EXIT_FAILURE); // TODO: Proper bytes-vs-slots error
+    }
+
+    size_t const destCount = (uintptr_t)fixnumToInt(uncheckedFlexCount(dest));
+    size_t const srcCount = (uintptr_t)fixnumToInt(uncheckedFlexCount(src));
+
+    if (offsetS < 0) { exit(EXIT_FAILURE); } // Negative index TODO: Proper bounds error
+    size_t const offset = (uintptr_t)offsetS;
+    if (offset > destCount) { exit(EXIT_FAILURE); } // TODO: Proper bounds error
+    if (startS < 0) { exit(EXIT_FAILURE); } // Negative index TODO: Proper bounds error
+    size_t const start = (uintptr_t)startS;
+    if (start > srcCount) { exit(EXIT_FAILURE); } // TODO: Proper bounds error
+    if (endS < startS) { exit(EXIT_FAILURE); } // TODO: Proper bounds error
+    size_t const end = (uintptr_t)endS;
+
+    size_t const copyCount = end - start;
+    size_t const copySpace = destCount - offset;
+    if (copyCount > copySpace) { exit(EXIT_FAILURE); } // TODO: Proper bounds error
+
+    char* const destVals = uncheckedUntypedFlexPtrMut(dest);
+    char const* const srcVals = uncheckedUntypedFlexPtr(src);
+    size_t const elemSize = unwrapBool(isBytesRef) ? sizeof(uint8_t) : sizeof(ORef);
+    memmove(destVals, srcVals, copyCount * elemSize);
 
     return PRIMOP_RES_CONTINUE;
 }

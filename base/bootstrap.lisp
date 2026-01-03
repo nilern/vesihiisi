@@ -65,6 +65,12 @@
 
 (def array!->list (fn (arr) (array!-fold-right cons () arr)))
 
+(def array!->array
+  (fn (arr)
+    (let ((len (array!-count arr))
+          (imm-arr (make-flex <array> len)))
+      (flex-copy! imm-arr 0 arr 0 len))))
+
 (def error
   (fn (name . irritants)
     (abort (cons name (array!->list irritants))))) ; HACK: Using a list as error

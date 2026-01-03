@@ -17,7 +17,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
     state->method = method;
     state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
     state->pc = 0;
-    state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
+    state->consts = arrayMutToPtr(uncheckedORefToArrayMut(methodPtr->consts));
     state->regs[calleeReg] = closureToORef(selfRef);
     state->regs[retContReg] = closureToORef(state->exit); // Return continuation
     state->entryRegc = 2;
@@ -110,7 +110,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
             }
 
             // OPTIMIZE:
-            ArrayRef const types = createArray(state, tagInt((intptr_t)typeCount));
+            ArrayMutRef const types = createArrayMut(state, tagInt((intptr_t)typeCount));
             {
                 size_t const end = state->pc;
                 size_t const start = end - typeSetByteCount;
@@ -123,7 +123,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
                             if (!isType(state, maybeType)) {
                                 return (VMRes){}; // TODO: Signal type error properly
                             }
-                            toPtr(types)[typeIdx++] = maybeType;
+                            arrayMutToPtr(types)[typeIdx++] = maybeType;
                         }
                     }
                 }
@@ -188,7 +188,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
                 state->method = method;
                 state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
                 state->pc = (size_t)fixnumToInt(ret->pc);
-                state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
+                state->consts = arrayMutToPtr(uncheckedORefToArrayMut(methodPtr->consts));
             } else { // Exit
                 return (VMRes){.success = true, .val = state->regs[retReg]};
             }
@@ -289,18 +289,49 @@ static VMRes run(State* state, ClosureRef selfRef) {
         }; continue;
         }
 
-        apply: // FIXME: Arity check:
+        apply:
         bool trampoline = true;
         while (trampoline) {
             ORef callee = state->regs[calleeReg];
-            if (!isClosure(state, callee)) {
-                state->regs[calleeReg] = getErrorHandler(state);
+
+            // TODO: Make continuations directly callable?
+            // TODO: Make this extensible (à la JVM `invokedynamic`):
+            Closure const* closure;
+            if (isClosure(state, callee)) {
+                closure = closureToPtr(uncheckedORefToClosure(callee));
+            } else if (isMultimethod(state, callee)) {
+                MultimethodRef const multiCalleeRef = uncheckedORefToMultimethod(callee);
+                Multimethod const* const multiCallee = toPtr(multiCalleeRef);
+                ORef const maybeClosure = applicableClosure(state, multiCallee);
+                if (isHeaped(maybeClosure)) {
+                    state->regs[calleeReg] = maybeClosure;
+                    closure = closureToPtr(uncheckedORefToClosure(maybeClosure));
+                } else {
+                    ORef const errorHandler = getErrorHandler(state);
+
+                    state->regs[calleeReg] = errorHandler;
+                    state->regs[firstArgReg] =
+                        toORef(createInapplicableError(state, multiCalleeRef));
+                    state->entryRegc = firstArgReg + 1;
+
+                    assert(isClosure(state, errorHandler));
+                    closure = closureToPtr(uncheckedORefToClosure(errorHandler));
+                }
+            } else { // TODO: DRY with "inapplicable" directly above:
+                ORef const errorHandler = getErrorHandler(state);
+
+                state->regs[calleeReg] = errorHandler;
                 state->regs[firstArgReg] =
                     typeErrorToORef(createTypeError(state, state->closureType, callee));
-                callee = state->regs[calleeReg];
                 state->entryRegc = firstArgReg + 1;
+
+                assert(isClosure(state, errorHandler));
+                closure = closureToPtr(uncheckedORefToClosure(errorHandler));
             }
-            Closure const* const closure = closureToPtr(uncheckedORefToClosure(callee));
+
+            // OPTIMIZE: If we came here by multimethod dispatch, disable domain checking (easy for
+            // bytecode methods but primops (and eventually JIT:ed methods) have the checks compiled
+            // into themselves instead of here to (also eventually) support inline caching.
             ORef const method = closure->method;
             assert(isMethod(state, method));
             Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
@@ -308,7 +339,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
                 state->method = method;
                 state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
                 state->pc = 0;
-                state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
+                state->consts = arrayMutToPtr(uncheckedORefToArrayMut(methodPtr->consts));
 
                 ORef const maybeErr = checkDomain(state);
                 if (isHeaped(maybeErr)) {
@@ -319,18 +350,19 @@ static VMRes run(State* state, ClosureRef selfRef) {
                 }
 
                 if (eq(boolToORef(methodPtr->hasVarArg), boolToORef(True))) {
-                    size_t const arity = (uintptr_t)fixnumToInt(flexLength(method));
+                    size_t const arity = (uintptr_t)fixnumToInt(uncheckedFlexCount(method));
                     size_t const minArity = arity - 1;
                     uint8_t const callArgc = state->entryRegc - firstArgReg;
                     size_t const varargCount = callArgc - minArity;
 
-                    ArrayRef const varargsRef = createArray(state, tagInt((intptr_t)varargCount));
-                    ORef* const varargs = arrayToPtr(varargsRef);
+                    ArrayMutRef const varargsRef =
+                        createArrayMut(state, tagInt((intptr_t)varargCount));
+                    ORef* const varargs = arrayMutToPtr(varargsRef);
                     for (size_t i = 0; i < varargCount; ++i) {
                         varargs[i] = state->regs[firstArgReg + minArity + i];
                     }
 
-                    state->regs[firstArgReg + minArity] = arrayToORef(varargsRef);
+                    state->regs[firstArgReg + minArity] = arrayMutToORef(varargsRef);
                 }
 
                 trampoline = false;
@@ -350,7 +382,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
                         state->method = method;
                         state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
                         state->pc = (size_t)fixnumToInt(ret->pc);
-                        state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
+                        state->consts = arrayMutToPtr(uncheckedORefToArrayMut(methodPtr->consts));
                         trampoline = false;
                     } else { // Exit
                         return (VMRes){.val = state->regs[retReg], .success = true};

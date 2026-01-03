@@ -54,6 +54,8 @@ inline static bool uncheckedORefToBool(ORef v) { return (bool)(v.bits >> tag_wid
 
 inline static ORef fixnumToORef(Fixnum n) { return (ORef){n.bits}; }
 
+inline static Fixnum uncheckedORefToFixnum(ORef v) { return (Fixnum){v.bits}; }
+
 // FIXME: Handle overflow (fixnum is only 61 bits):
 inline static Fixnum tagInt(intptr_t n) { return (Fixnum){(uintptr_t)n << tag_width}; }
 
@@ -141,11 +143,25 @@ inline static FlexHeader flexHeader(Fixnum length, Type const* type) {
 
 static const size_t objectMinAlign;
 
-inline static Fixnum flexLength(ORef v) {
+inline static Fixnum uncheckedFlexCount(ORef v) {
     assert(isHeaped(v)
            && unwrapBool(typeToPtr(headerType(*((Header*)uncheckedORefToPtr(v) - 1)))->isFlex));
     void* const ptr = uncheckedORefToPtr(v);
     return ((FlexHeader*)ptr - 1)->length;
+}
+
+static char const* uncheckedUntypedFlexPtr(ORef v) {
+    assert(isHeaped(v)
+           && unwrapBool(typeToPtr(headerType(*((Header*)uncheckedORefToPtr(v) - 1)))->isFlex));
+    char const* const ptr = uncheckedORefToPtr(v);
+    return ptr + fixnumToInt(typeToPtr(headerType(*((Header*)ptr - 1)))->minSize);
+}
+
+static char* uncheckedUntypedFlexPtrMut(ORef v) {
+    assert(isHeaped(v)
+           && unwrapBool(typeToPtr(headerType(*((Header*)uncheckedORefToPtr(v) - 1)))->isFlex));
+    char* const ptr = uncheckedORefToPtr(v);
+    return ptr + fixnumToInt(typeToPtr(headerType(*((Header*)ptr - 1)))->minSize);
 }
 
 typedef struct StringRef { uintptr_t bits; } StringRef;
@@ -161,7 +177,7 @@ inline static StringRef uncheckedORefToString(ORef v) { return (StringRef){v.bit
 static Str stringStr(StringRef s) {
     return (Str){
         .data = (char*)(void*)(s.bits & ~tag_bits),
-        .len = (size_t)fixnumToInt(flexLength(stringToORef(s)))
+        .len = (size_t)fixnumToInt(uncheckedFlexCount(stringToORef(s)))
     };
 }
 
@@ -183,23 +199,33 @@ inline static Symbol* symbolToPtr(SymbolRef sym) { return (Symbol*)(void*)(sym.b
 inline static Str symbolName(SymbolRef sym) {
     return (Str){
         .data = symbolToPtr(sym)->name,
-        .len = (uintptr_t)fixnumToInt(flexLength(symbolToORef(sym)))
+        .len = (uintptr_t)fixnumToInt(uncheckedFlexCount(symbolToORef(sym)))
     };
 }
 
-typedef struct ArrayRef { uintptr_t bits; } ArrayRef;
-
-inline static ArrayRef tagArray(ORef* xs) {
-    return (ArrayRef){(uintptr_t)(void*)xs | (uintptr_t)TAG_HEAPED};
-}
+typedef struct { uintptr_t bits; } ArrayRef;
 
 inline static ORef arrayToORef(ArrayRef xs) { return (ORef){xs.bits}; }
 
-inline static ArrayRef uncheckedORefToArray(ORef v) { return (ArrayRef){v.bits}; }
+inline static Fixnum arrayCount(ArrayRef xs) { return uncheckedFlexCount(arrayToORef(xs)); }
 
-inline static Fixnum arrayCount(ArrayRef xs) { return flexLength(arrayToORef(xs)); }
+inline static ORef const* arrayToPtr(ArrayRef xs) {
+    return (ORef const*)(void const*)(xs.bits & ~tag_bits);
+}
 
-inline static ORef* arrayToPtr(ArrayRef xs) { return (ORef*)(void*)(xs.bits & ~tag_bits); }
+typedef struct ArrayMutRef { uintptr_t bits; } ArrayMutRef;
+
+inline static ArrayMutRef tagArrayMut(ORef* xs) {
+    return (ArrayMutRef){(uintptr_t)(void*)xs | (uintptr_t)TAG_HEAPED};
+}
+
+inline static ORef arrayMutToORef(ArrayMutRef xs) { return (ORef){xs.bits}; }
+
+inline static ArrayMutRef uncheckedORefToArrayMut(ORef v) { return (ArrayMutRef){v.bits}; }
+
+inline static Fixnum arrayMutCount(ArrayMutRef xs) { return uncheckedFlexCount(arrayMutToORef(xs)); }
+
+inline static ORef* arrayMutToPtr(ArrayMutRef xs) { return (ORef*)(void*)(xs.bits & ~tag_bits); }
 
 typedef struct ByteArrayRef { uintptr_t bits; } ByteArrayRef;
 
@@ -211,10 +237,10 @@ inline static ORef byteArrayToORef(ByteArrayRef bs) { return (ORef){bs.bits}; }
 
 inline static ByteArrayRef uncheckedORefToByteArray(ORef v) { return (ByteArrayRef){v.bits}; }
 
-inline static Fixnum byteArrayCount(ByteArrayRef bs) { return flexLength(byteArrayToORef(bs)); }
+inline static Fixnum byteArrayCount(ByteArrayRef bs) { return uncheckedFlexCount(byteArrayToORef(bs)); }
 
-inline static uint8_t* byteArrayToPtr(ByteArrayRef bs) {
-    return (uint8_t*)(void*)(bs.bits & ~tag_bits);
+inline static uint8_t const* byteArrayToPtr(ByteArrayRef bs) {
+    return (uint8_t const*)(void const*)(bs.bits & ~tag_bits);
 }
 
 typedef struct Pair {
@@ -291,6 +317,20 @@ inline static ClosureRef tagClosure(Closure* ptr) {
     return (ClosureRef){(uintptr_t)(void*)ptr | (uintptr_t)TAG_HEAPED};
 }
 
+typedef struct {
+    ArrayRef methods;
+} Multimethod;
+
+typedef struct { uintptr_t bits; } MultimethodRef;
+
+inline static MultimethodRef uncheckedORefToMultimethod(ORef v) {
+    return (MultimethodRef){v.bits};
+}
+
+inline static Multimethod* multimethodToPtr(MultimethodRef v) {
+    return (Multimethod*)(void*)(v.bits & ~tag_bits);
+}
+
 typedef struct Continuation {
     ORef method;
     Fixnum pc;
@@ -352,8 +392,8 @@ inline static KnotRef tagKnot(Knot* ptr) {
 inline static Knot* knotToPtr(KnotRef v) { return (Knot*)(void*)(v.bits & ~tag_bits); }
 
 typedef struct Namespace {
-    ArrayRef keys;
-    ArrayRef vals;
+    ArrayMutRef keys;
+    ArrayMutRef vals;
     Fixnum count;
 } Namespace;
 
@@ -427,6 +467,16 @@ inline static ArityError* arityErrorToPtr(ArityErrorRef v) {
     return (ArityError*)(void*)(v.bits & ~tag_bits);
 }
 
+typedef struct {
+    MultimethodRef callee;
+} InapplicableError;
+
+typedef struct { uintptr_t bits; } InapplicableErrorRef;
+
+inline static InapplicableErrorRef tagInapplicableError(InapplicableError* ptr) {
+    return (InapplicableErrorRef){(uintptr_t)(void*)ptr | (uintptr_t)TAG_HEAPED};
+}
+
 #define uncheckedToORef(v) (ORef){(v).bits}
 
 #define toORef(v) _Generic((v), \
@@ -434,21 +484,24 @@ inline static ArityError* arityErrorToPtr(ArityErrorRef v) {
     Bool: uncheckedToORef(v), \
     TypeRef: uncheckedToORef(v), \
     SymbolRef: uncheckedToORef(v), \
-    ArrayRef: uncheckedToORef(v), \
+    ArrayMutRef: uncheckedToORef(v), \
     ByteArrayRef: uncheckedToORef(v), \
     MethodRef: uncheckedToORef(v), \
     ClosureRef: uncheckedToORef(v), \
     KnotRef: uncheckedToORef(v), \
     UnboundErrorRef: uncheckedToORef(v), \
-    TypeErrorRef: uncheckedToORef(v))
+    TypeErrorRef: uncheckedToORef(v), \
+    InapplicableErrorRef: uncheckedToORef(v))
 
 #define toPtr(v) _Generic((v), \
     TypeRef: typeToPtr, \
     SymbolRef: symbolToPtr, \
+    ArrayMutRef: arrayMutToPtr, \
     ArrayRef: arrayToPtr, \
     ByteArrayRef: byteArrayToPtr, \
     PairRef: pairToPtr, \
     ClosureRef: closureToPtr, \
+    MultimethodRef: multimethodToPtr, \
     MethodRef: methodToPtr, \
     KnotRef: knotToPtr, \
     UnboundErrorRef: unboundErrorToPtr \

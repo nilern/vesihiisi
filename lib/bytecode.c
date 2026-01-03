@@ -45,7 +45,7 @@ static size_t disassembleNestedInstr(
     Method const* const method = methodToPtr(methodRef);
     assert(isHeaped(method->code));
     uint8_t const* const code = byteArrayToPtr(uncheckedORefToByteArray(method->code));
-    ORef const* const consts = arrayToPtr(uncheckedORefToArray(method->consts));
+    ORef const* const consts = arrayMutToPtr(uncheckedORefToArrayMut(method->consts));
 
     for (size_t j = 0; j < nesting; ++j) { fputc('\t', dest); }
     fprintf(dest, "[%lu]:\t", pc);
@@ -197,7 +197,7 @@ static void disassembleNested(State const* state, FILE* dest, MethodRef methodRe
         putc('_', dest);
     }
 
-    size_t const arity = (uintptr_t)fixnumToInt(flexLength(methodToORef(methodRef)));
+    size_t const arity = (uintptr_t)fixnumToInt(uncheckedFlexCount(methodToORef(methodRef)));
     for (size_t i = 0; i < arity; ++i) {
         putc(' ', dest);
         if (i == arity - 1 && eq(boolToORef(method->hasVarArg), boolToORef(True))) {

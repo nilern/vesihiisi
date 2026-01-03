@@ -11,14 +11,14 @@ static void freeSpecializations(Specializations* specializations) {
 }
 
 // Is `method` the specialization of `generic` with `types`?
-static bool isSpecialized(MethodRef methodRef, MethodRef genericRef, ArrayRef typesRef) {
+static bool isSpecialized(MethodRef methodRef, MethodRef genericRef, ArrayMutRef typesRef) {
     Method const* const method = toPtr(methodRef);
     Method const* const generic = toPtr(genericRef);
 
     if (!eq(method->code, generic->code)) { return false; }
 
     ORef const* const types = toPtr(typesRef);
-    size_t const arity = (uintptr_t)fixnumToInt(flexLength(toORef(genericRef)));
+    size_t const arity = (uintptr_t)fixnumToInt(uncheckedFlexCount(toORef(genericRef)));
     for (size_t i = 0, typeIdx = 0; i < arity; ++i) {
         ORef const maybeType = generic->domain[i];
         if (!isHeaped(maybeType)) {
@@ -30,11 +30,11 @@ static bool isSpecialized(MethodRef methodRef, MethodRef genericRef, ArrayRef ty
     return true;
 }
 
-static Fixnum hashSpecialization(MethodRef generic, ArrayRef typesRef) {
+static Fixnum hashSpecialization(MethodRef generic, ArrayMutRef typesRef) {
     uintptr_t hash = (uintptr_t)fixnumToInt(toPtr(generic)->hash);
 
-    ORef const* const types = toPtr(typesRef);
-    size_t const typeCount = (uintptr_t)fixnumToInt(flexLength(toORef(typesRef)));
+    ORef const* const types = arrayMutToPtr(typesRef);
+    size_t const typeCount = (uintptr_t)fixnumToInt(uncheckedFlexCount(toORef(typesRef)));
     for (size_t i = 0; i < typeCount; ++i) {
         Type const* const type = toPtr(uncheckedORefToTypeRef(types[i]));
         hash = hashCombine(hash, (uintptr_t)fixnumToInt(type->hash));
@@ -46,15 +46,15 @@ static Fixnum hashSpecialization(MethodRef generic, ArrayRef typesRef) {
 static Fixnum hashSpecialized(MethodRef specialization) { return toPtr(specialization)->hash; }
 
 static MethodRef createSpecialization(
-    State* state, MethodRef genericRef, ArrayRef typesRef, Fixnum hash
+    State* state, MethodRef genericRef, ArrayMutRef typesRef, Fixnum hash
 ) {
     Method const* generic = toPtr(genericRef);
-    Fixnum const fxArity = flexLength(toORef(genericRef));
+    Fixnum const fxArity = uncheckedFlexCount(toORef(genericRef));
     pushStackRoot(state, (ORef*)&genericRef);
     pushStackRoot(state, (ORef*)&typesRef);
     MethodRef const specializationRef =
         allocBytecodeMethod(state, uncheckedORefToByteArray(generic->code),
-                            uncheckedORefToArray(generic->consts), fxArity, generic->hasVarArg,
+                            uncheckedORefToArrayMut(generic->consts), fxArity, generic->hasVarArg,
                             hash, generic->maybeName);
     popStackRoots(state, 2);
     Method* const specialization = toPtr(specializationRef);
@@ -77,7 +77,7 @@ typedef struct IndexOfSpecializationRes {
 } IndexOfSpecializationRes;
 
 static IndexOfSpecializationRes indexOfSpecialization(
-    Specializations const* specializations, uintptr_t h, MethodRef generic, ArrayRef types
+    Specializations const* specializations, uintptr_t h, MethodRef generic, ArrayMutRef types
 ) {
     size_t const maxIndex = specializations->cap - 1;
     for (size_t collisions = 0, i = h & maxIndex;; ++collisions, i = (i + collisions) & maxIndex) {
@@ -127,12 +127,12 @@ static void rehashSpecializations(Specializations* specializations) {
     specializations->cap = newCap;
 }
 
-static MethodRef specialize(State* state, MethodRef generic, ArrayRef types) {
+static MethodRef specialize(State* state, MethodRef generic, ArrayMutRef types) {
 #ifndef NDEBUG
     assert(isHeaped(toPtr(generic)->code));
 
     {
-        size_t const typeCount = (uintptr_t)fixnumToInt(flexLength(toORef(types)));
+        size_t const typeCount = (uintptr_t)fixnumToInt(uncheckedFlexCount(toORef(types)));
         for (size_t i = 0; i < typeCount; ++i) {
             assert(isType(state, toPtr(types)[i]));
         }

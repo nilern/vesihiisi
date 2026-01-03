@@ -21,6 +21,7 @@ static char const* const typeNames[] = {
     "<any>",
     "<type>",
     "<string>",
+    "<array>",
     "<array!>",
     "<byte-array!>",
     "<symbol>",
@@ -29,13 +30,15 @@ static char const* const typeNames[] = {
     "<unbound>",
     "<method>",
     "<fn>",
+    "<multimethod>",
     "<continuation>",
     "<var>",
     "<knot>",
     "<ns>",
     "<unbound-error>",
     "<type-error>",
-    "<arity-error>"
+    "<arity-error>",
+    "<inapplicable-error>"
 };
 static_assert(sizeof(typeNames) / sizeof(*typeNames) == BOOTSTRAP_TYPE_COUNT);
 
@@ -63,8 +66,8 @@ static bool tryCreateNamespace(
     if (!ptr) { return false; }
 
     *ptr = (Namespace){
-        .keys = tagArray(keys),
-        .vals = tagArray(vals),
+        .keys = tagArrayMut(keys),
+        .vals = tagArrayMut(vals),
         .count = count
     };
 
@@ -140,7 +143,7 @@ static void initSpecialPurposeRegs(State* state) {
     if (isHeaped(anyMethod)) {
         Method* const methodPtr = methodToPtr(uncheckedORefToMethod(anyMethod));
         state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
-        state->consts = arrayToPtr(uncheckedORefToArray(methodPtr->consts));
+        state->consts = arrayMutToPtr(uncheckedORefToArrayMut(methodPtr->consts));
     }
 }
 
@@ -223,6 +226,22 @@ static Type* tryCreateArrayType(Semispace* semispace, Type const* typeType) {
         .isFlex = True
     };
     
+    return type;
+}
+
+static Type* tryCreateArrayMutType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = tryAlloc(semispace, typeType);
+    if (!maybeType) { return nullptr; }
+
+    Type* const type = (Type*)maybeType;
+    *type = (Type){
+        .minSize = tagInt(0),
+        .align = tagInt((intptr_t)alignof(ORef)),
+        .isBytes = False,
+        .hasCodePtr = False,
+        .isFlex = True
+    };
+
     return type;
 }
 
@@ -317,6 +336,22 @@ static Type* tryCreateClosureType(Semispace* semispace, Type const* typeType) {
         .isBytes = False,
         .hasCodePtr = False,
         .isFlex = True
+    };
+
+    return type;
+}
+
+static Type* tryCreateMultimethodType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = tryAlloc(semispace, typeType);
+    if (!maybeType) { return nullptr; }
+
+    Type* const type = (Type*)maybeType;
+    *type = (Type){
+        .minSize = tagInt(sizeof(Multimethod)),
+        .align = tagInt(alignof(Multimethod)),
+        .isBytes = False,
+        .hasCodePtr = False,
+        .isFlex = False
     };
 
     return type;
@@ -434,6 +469,22 @@ static Type* tryCreateArityErrorType(Semispace* semispace, Type const* typeType)
     return type;
 }
 
+static Type* tryCreateInapplicableErrorType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = tryAlloc(semispace, typeType);
+    if (!maybeType) { return nullptr; }
+
+    Type* const type = (Type*)maybeType;
+    *type = (Type){
+        .minSize = tagInt(sizeof(InapplicableError)),
+        .align = tagInt(alignof(InapplicableError)),
+        .isBytes = False,
+        .hasCodePtr = False,
+        .isFlex = False
+    };
+
+    return type;
+}
+
 static Type* tryCreateImmType(Semispace* semispace, Type const* typeType) {
     void* const maybeType = tryAlloc(semispace, typeType);
     if (!maybeType) { return nullptr; }
@@ -473,8 +524,10 @@ static PrimopRes primopContinue(State* state);
 static PrimopRes primopIdentical(State* state);
 static PrimopRes primopMake(State* state);
 static PrimopRes primopSlotGet(State* state);
+static PrimopRes primopMakeFlex(State* state);
 static PrimopRes primopFlexCount(State* state);
 static PrimopRes primopFlexGet(State* state);
+static PrimopRes primopFlexCopy(State* state);
 static PrimopRes primopFxAdd(State* state);
 static PrimopRes primopFxSub(State* state);
 static PrimopRes primopFxMul(State* state);
@@ -518,6 +571,8 @@ static void installPrimop(
 static Var* tryCreateUnboundVar(Semispace* semispace, Type const* unboundType, UnboundRef unbound);
 
 static void nameType(State* state, TypeRef typeRef, Str name) {
+    printf("`nameType` %.*s\n", (int)name.len, name.data);
+
     pushStackRoot(state, (ORef*)&typeRef);
     SymbolRef const nameSym = intern(state, name);
     popStackRoots(state, 1);
@@ -539,6 +594,8 @@ State* tryCreateState(size_t heapSize) {
     if (!stringTypePtr) { return nullptr; }
     Type const* const arrayTypePtr = tryCreateArrayType(&heap.tospace, typeTypePtr);
     if (!arrayTypePtr) { return nullptr; }
+    Type const* const arrayMutTypePtr = tryCreateArrayMutType(&heap.tospace, typeTypePtr);
+    if (!arrayMutTypePtr) { return nullptr; }
     Type const* const byteArrayType = tryCreateByteArrayType(&heap.tospace, typeTypePtr);
     if (!byteArrayType) { return nullptr; }
     Type const* const symbolTypePtr = tryCreateSymbolType(&heap.tospace, typeTypePtr);
@@ -551,6 +608,8 @@ State* tryCreateState(size_t heapSize) {
     if (!methodType) { return nullptr; }
     Type const* const closureType = tryCreateClosureType(&heap.tospace, typeTypePtr);
     if (!closureType) { return nullptr; }
+    Type const* const multimethodType = tryCreateMultimethodType(&heap.tospace, typeTypePtr);
+    if (!multimethodType) { return nullptr; }
     Type const* const continuationType = tryCreateContinuationType(&heap.tospace, typeTypePtr);
     if (!continuationType) { return nullptr; }
     Type const* const unboundType = tryCreateUnboundType(&heap.tospace, typeTypePtr);
@@ -567,6 +626,9 @@ State* tryCreateState(size_t heapSize) {
     if (!typeErrorType) { return nullptr; }
     Type const* const arityErrorType = tryCreateArityErrorType(&heap.tospace, typeTypePtr);
     if (!arityErrorType) { return nullptr; }
+    Type const* const inapplicableErrorType =
+        tryCreateInapplicableErrorType(&heap.tospace, typeTypePtr);
+    if (!inapplicableErrorType) { return nullptr; }
     
     Type const* const fixnumType = tryCreateFixnumType(&heap.tospace, typeTypePtr);
     if (!fixnumType) { return nullptr; }
@@ -606,12 +668,14 @@ State* tryCreateState(size_t heapSize) {
         .typeType = tagType(typeTypePtr),
         .stringType = tagType(stringTypePtr),
         .arrayType = tagType(arrayTypePtr),
+        .arrayMutType = tagType(arrayMutTypePtr),
         .byteArrayType = tagType(byteArrayType),
         .symbolType = tagType(symbolTypePtr),
         .pairType = tagType(pairTypePtr),
         .emptyListType = tagType(emptyListTypePtr),
         .methodType = tagType(methodType),
         .closureType = tagType(closureType),
+        .multimethodType = tagType(multimethodType),
         .continuationType = tagType(continuationType),
         .unboundType = tagType(unboundType),
         .varType = tagType(varType),
@@ -620,6 +684,7 @@ State* tryCreateState(size_t heapSize) {
         .unboundErrorType = tagType(unboundErrorType),
         .typeErrorType = tagType(typeErrorType),
         .arityErrorType = tagType(arityErrorType),
+        .inapplicableErrorType = tagType(inapplicableErrorType),
         
         .fixnumType = tagType(fixnumType),
         .charType = tagType(charType),
@@ -668,9 +733,14 @@ State* tryCreateState(size_t heapSize) {
                   tagInt(2), true, dest->typeType, dest->anyType);
     installPrimop(dest, strLit("slot-get"), primopSlotGet,
                   tagInt(2), false, dest->anyType, dest->fixnumType);
+    installPrimop(dest, strLit("make-flex"), primopMakeFlex,
+                  tagInt(2), true, dest->typeType, dest->fixnumType);
     installPrimop(dest, strLit("flex-count"), primopFlexCount, tagInt(1), false, dest->anyType);
     installPrimop(dest, strLit("flex-get"), primopFlexGet,
                   tagInt(2), false, dest->anyType, dest->fixnumType);
+    installPrimop(dest, strLit("flex-copy!"), primopFlexCopy,
+                  tagInt(5), false, dest->anyType, dest->fixnumType,
+                  dest->anyType, dest->fixnumType, dest->fixnumType);
     installPrimop(dest, strLit("fx+"), primopFxAdd,
                   tagInt(2), false, dest->fixnumType, dest->fixnumType);
     installPrimop(dest, strLit("fx-"), primopFxSub,
@@ -817,14 +887,14 @@ static StringRef createString(State* state, Str str) {
     return tagString(stringPtr);
 }
 
-static ArrayRef createArray(State* state, Fixnum count) {
-    ORef* ptr = tryAllocArray(state, count);
+static ArrayMutRef createArrayMut(State* state, Fixnum count) {
+    ORef* ptr = tryAllocArrayMut(state, count);
     if (mustCollect(ptr)) {
         collect(state);
-        ptr = allocArrayOrDie(state, count);
+        ptr = allocArrayMutOrDie(state, count);
     }
-    
-    return tagArray(ptr);
+
+    return tagArrayMut(ptr);
 }
 
 static SymbolRef createUninternedSymbol(State* state, Fixnum hash, Str name) {
@@ -946,7 +1016,7 @@ static PairRef allocPair(State* state) {
 }
 
 static Method* tryAllocBytecodeMethod(
-    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash,
+    State* state, ByteArrayRef code, ArrayMutRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash,
     ORef maybeName
 ) {
     Method* ptr = tryAllocFlex(&state->heap.tospace, typeToPtr(state->methodType), arity);
@@ -955,7 +1025,7 @@ static Method* tryAllocBytecodeMethod(
     *ptr = (Method){
         .nativeCode = callBytecode,
         .code = byteArrayToORef(code),
-        .consts = arrayToORef(consts),
+        .consts = arrayMutToORef(consts),
         .hasVarArg = hasVarArg,
         .hash = hash,
         .maybeName = maybeName
@@ -965,7 +1035,7 @@ static Method* tryAllocBytecodeMethod(
 }
 
 static Method* allocBytecodeMethodOrDie(
-    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash,
+    State* state, ByteArrayRef code, ArrayMutRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash,
     ORef maybeName
 ) {
     Method* ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->methodType), arity);
@@ -973,7 +1043,7 @@ static Method* allocBytecodeMethodOrDie(
     *ptr = (Method){
         .nativeCode = callBytecode,
         .code = byteArrayToORef(code),
-        .consts = arrayToORef(consts),
+        .consts = arrayMutToORef(consts),
         .hasVarArg = hasVarArg,
         .hash = hash,
         .maybeName = maybeName
@@ -983,7 +1053,7 @@ static Method* allocBytecodeMethodOrDie(
 }
 
 static MethodRef allocBytecodeMethod(
-    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash,
+    State* state, ByteArrayRef code, ArrayMutRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash,
     ORef maybeName
 ) {
     Method* ptr = tryAllocFlex(&state->heap.tospace, typeToPtr(state->methodType), arity);
@@ -999,7 +1069,7 @@ static MethodRef allocBytecodeMethod(
     *ptr = (Method){
         .nativeCode = callBytecode,
         .code = byteArrayToORef(code),
-        .consts = arrayToORef(consts),
+        .consts = arrayMutToORef(consts),
         .hasVarArg = hasVarArg,
         .hash = hash,
         .maybeName = maybeName
@@ -1147,4 +1217,19 @@ static ArityErrorRef createArityError(State* state, ClosureRef callee, Fixnum ca
     *ptr = (ArityError){.callee = callee, .callArgc = callArgc};
 
     return tagArityError(ptr);
+}
+
+static InapplicableErrorRef createInapplicableError(State* state, MultimethodRef callee) {
+    InapplicableError* ptr =
+        tryAlloc(&state->heap.tospace, typeToPtr(state->inapplicableErrorType));
+    if (mustCollect(ptr)) {
+        pushStackRoot(state, (ORef*)&callee);
+        collect(state);
+        popStackRoots(state, 1);
+        ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->inapplicableErrorType));
+    }
+
+    *ptr = (InapplicableError){.callee = callee};
+
+    return tagInapplicableError(ptr);
 }

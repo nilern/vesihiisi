@@ -25,7 +25,7 @@ typedef struct Shadowstack {
 
 #define REG_COUNT 256
 
-#define BOOTSTRAP_TYPE_COUNT 26
+#define BOOTSTRAP_TYPE_COUNT 29
 #define BOOTSTRAP_SINGLETON_COUNT 4
 
 typedef struct State {
@@ -54,6 +54,7 @@ typedef struct State {
             TypeRef typeType;
             TypeRef stringType;
             TypeRef arrayType;
+            TypeRef arrayMutType;
             TypeRef byteArrayType;
             TypeRef symbolType;
             TypeRef pairType;
@@ -61,6 +62,7 @@ typedef struct State {
             TypeRef unboundType;
             TypeRef methodType;
             TypeRef closureType;
+            TypeRef multimethodType;
             TypeRef continuationType;
             TypeRef varType;
             TypeRef knotType;
@@ -68,6 +70,7 @@ typedef struct State {
             TypeRef unboundErrorType;
             TypeRef typeErrorType;
             TypeRef arityErrorType;
+            TypeRef inapplicableErrorType;
         };
         ORef types[BOOTSTRAP_TYPE_COUNT];
     };
@@ -125,6 +128,10 @@ inline static bool isClosure(State const* state, ORef v) {
     return isHeaped(v) && isa(state, state->closureType, v);
 }
 
+inline static bool isMultimethod(State const* state, ORef v) {
+    return isHeaped(v) && isa(state, state->multimethodType, v);
+}
+
 inline static bool isContinuation(State const* state, ORef v) {
     return isHeaped(v) && isa(state, state->continuationType, v);
 }
@@ -142,15 +149,15 @@ static StringRef createString(State* state, Str str);
 // `name` must not point into GC heap:
 static SymbolRef intern(State* state, Str name);
 
-inline static ORef* tryAllocArray(State* state, Fixnum count) {
-    return (ORef*)tryAllocFlex(&state->heap.tospace, typeToPtr(state->arrayType), count);
+inline static ORef* tryAllocArrayMut(State* state, Fixnum count) {
+    return (ORef*)tryAllocFlex(&state->heap.tospace, typeToPtr(state->arrayMutType), count);
 }
 
-inline static ORef* allocArrayOrDie(State* state, Fixnum count) {
-    return (ORef*)allocFlexOrDie(&state->heap.tospace, typeToPtr(state->arrayType), count);
+inline static ORef* allocArrayMutOrDie(State* state, Fixnum count) {
+    return (ORef*)allocFlexOrDie(&state->heap.tospace, typeToPtr(state->arrayMutType), count);
 }
 
-static ArrayRef createArray(State* state, Fixnum count);
+static ArrayMutRef createArrayMut(State* state, Fixnum count);
 
 inline static uint8_t* tryAllocByteArray(State* state, Fixnum count) {
     return (uint8_t*)tryAllocFlex(&state->heap.tospace, typeToPtr(state->byteArrayType), count);
@@ -163,15 +170,15 @@ inline static uint8_t* allocByteArrayOrDie(State* state, Fixnum count) {
 static PairRef allocPair(State* state);
 
 static Method* tryAllocBytecodeMethod(
-    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash,
+    State* state, ByteArrayRef code, ArrayMutRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash,
     ORef maybeName);
 
 static Method* allocBytecodeMethodOrDie(
-    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash,
+    State* state, ByteArrayRef code, ArrayMutRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash,
     ORef maybeName);
 
 static MethodRef allocBytecodeMethod(
-    State* state, ByteArrayRef code, ArrayRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash,
+    State* state, ByteArrayRef code, ArrayMutRef consts, Fixnum arity, Bool hasVarArg, Fixnum hash,
     ORef maybeName);
 
 static ClosureRef allocClosure(State* state, MethodRef method, Fixnum cloverCount);
@@ -186,6 +193,8 @@ static UnboundErrorRef createUnboundError(State* state, SymbolRef name);
 static TypeErrorRef createTypeError(State* state, TypeRef type, ORef val);
 
 static ArityErrorRef createArityError(State* state, ClosureRef callee, Fixnum callArgc);
+
+static InapplicableErrorRef createInapplicableError(State* state, MultimethodRef callee);
 
 static void collect(State* state);
 

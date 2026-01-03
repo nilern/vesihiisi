@@ -57,10 +57,10 @@ void print(State const* state, FILE* dest, ORef v) {
             fputc(')', dest);
         } else if (isEmptyList(state, v)) {
             fprintf(dest, "()");
-        } else if (isa(state, state->arrayType, v)) {
-            ORef const* const vs = arrayToPtr(uncheckedORefToArray(v));
+        } else if (isa(state, state->arrayMutType, v)) {
+            ORef const* const vs = arrayMutToPtr(uncheckedORefToArrayMut(v));
             fprintf(dest, "#<array!");
-            size_t const count = (uintptr_t)fixnumToInt(flexLength(v));
+            size_t const count = (uintptr_t)fixnumToInt(uncheckedFlexCount(v));
             for (size_t i = 0; i < count; ++i) {
                 fputc(' ', dest);
                 print(state, dest, vs[i]);
@@ -92,6 +92,8 @@ void print(State const* state, FILE* dest, ORef v) {
             }
 
             putc('>', dest);
+        } else if (isMultimethod(state, v)) {
+            fprintf(dest, "#<multimethod>");
         } else if (isContinuation(state, v)) {
             fprintf(dest, "#<continuation>");
         } else if (isType(state, v)) {

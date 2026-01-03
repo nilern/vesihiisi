@@ -25,14 +25,14 @@ static VarRef createUnboundVar(State* state) {
 
 static FindVarRes findVar(NamespaceRef nsRef, SymbolRef name) {
     Namespace const* ns = namespaceToPtr(nsRef);
-    ORef const* keys = arrayToPtr(ns->keys);
+    ORef const* keys = arrayMutToPtr(ns->keys);
     size_t const h = (uintptr_t)fixnumToInt(symbolToPtr(name)->hash);
 
-    size_t const maxIdx = (uintptr_t)fixnumToInt(arrayCount(ns->keys)) - 1;
+    size_t const maxIdx = (uintptr_t)fixnumToInt(arrayMutCount(ns->keys)) - 1;
     for (size_t collisions = 0, i = h & maxIdx;; ++collisions, i = (i + collisions) & maxIdx) {
         ORef const k = keys[i];
         if (eq(k, symbolToORef(name))) {
-            VarRef const var = uncheckedORefToVar(arrayToPtr(ns->vals)[i]);
+            VarRef const var = uncheckedORefToVar(arrayMutToPtr(ns->vals)[i]);
             return (FindVarRes){NS_FOUND_VAR, .var = var};
         } else if (eq(k, fixnumToORef(Zero))) {
             return (FindVarRes){NS_FOUND_VAR_DEST_IDX, .destIndex = i};
@@ -41,18 +41,18 @@ static FindVarRes findVar(NamespaceRef nsRef, SymbolRef name) {
 }
 
 static void rehashNamespace(State* state, NamespaceRef const* nsHandle) {
-    size_t const oldCap = (uintptr_t)fixnumToInt(arrayCount(namespaceToPtr(*nsHandle)->keys));
+    size_t const oldCap = (uintptr_t)fixnumToInt(arrayMutCount(namespaceToPtr(*nsHandle)->keys));
     size_t const newCap = oldCap << 1;
-    ArrayRef newKeysRef = createArray(state, tagInt((intptr_t)newCap)); // May GC
+    ArrayMutRef newKeysRef = createArrayMut(state, tagInt((intptr_t)newCap)); // May GC
     pushStackRoot(state, (ORef*)&newKeysRef);
-    ArrayRef const newValsRef = createArray(state, tagInt((intptr_t)newCap)); // May GC
+    ArrayMutRef const newValsRef = createArrayMut(state, tagInt((intptr_t)newCap)); // May GC
     popStackRoots(state, 1);
 
     Namespace* const ns = namespaceToPtr(*nsHandle);
-    ORef* const oldKeys = arrayToPtr(ns->keys);
-    ORef* const oldVals = arrayToPtr(ns->vals);
-    ORef* const newKeys = arrayToPtr(newKeysRef);
-    ORef* const newVals = arrayToPtr(newValsRef);
+    ORef* const oldKeys = arrayMutToPtr(ns->keys);
+    ORef* const oldVals = arrayMutToPtr(ns->vals);
+    ORef* const newKeys = arrayMutToPtr(newKeysRef);
+    ORef* const newVals = arrayMutToPtr(newValsRef);
     for (size_t i = 0; i < oldCap; ++i) {
         ORef const k = oldKeys[i];
         if (!eq(k, fixnumToORef(Zero))) {
@@ -84,7 +84,7 @@ static VarRef getVar(State* state, NamespaceRef nsRef, SymbolRef name) {
     case NS_FOUND_VAR_DEST_IDX: {
         Namespace* ns = namespaceToPtr(nsRef);
         size_t const newCount = (uintptr_t)fixnumToInt(ns->count) + 1;
-        size_t const cap = (uintptr_t)fixnumToInt(arrayCount(ns->keys));
+        size_t const cap = (uintptr_t)fixnumToInt(arrayMutCount(ns->keys));
 
         pushStackRoot(state, (ORef*)&nsRef);
         pushStackRoot(state, (ORef*)&name);
@@ -100,8 +100,8 @@ static VarRef getVar(State* state, NamespaceRef nsRef, SymbolRef name) {
         ns = namespaceToPtr(nsRef);
         findRes = findVar(nsRef, name);
         assert(findRes.type == NS_FOUND_VAR_DEST_IDX);
-        arrayToPtr(ns->keys)[findRes.destIndex] = symbolToORef(name);
-        arrayToPtr(ns->vals)[findRes.destIndex] = varToORef(var);
+        arrayMutToPtr(ns->keys)[findRes.destIndex] = symbolToORef(name);
+        arrayMutToPtr(ns->vals)[findRes.destIndex] = varToORef(var);
         ns->count = tagInt((intptr_t)newCount);
 
         return var;

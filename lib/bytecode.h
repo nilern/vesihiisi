@@ -7,9 +7,10 @@
 
 // TODO: Bigger (only when necessary?) displacements for BR(F)?
 
-// OPTIMIZE: 4-bit opcodes and arguments whenever possible
-
-// OPTIMIZE: `rep` prefix (for e.g. mov, swap, clover)
+// OPTIMIZE: Save cache (and memory in general) with:
+// * 4-bit opcodes and arguments whenever possible
+// * Encode bitmaps as (lastByte? bit{7})+ instead of count byte{count}
+// * `rep` prefix (for e.g. mov, swap, clover)
 
 typedef enum Opcode : uint8_t {
     OP_MOVE,        // rx = mov ry

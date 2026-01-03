@@ -172,3 +172,23 @@
         0 methods)
 
       (make <multimethod> (array!->array methods)))))
+
+(def +
+  (make-multimethod
+    (fn () 0) ; Additive identity
+    (fn ((: x <fixnum>)) x)
+    fx+
+    (fn (x y z . ns) (array!-fold-left (fn (v acc) (+ acc v)) (+ (+ x y) z) ns))))
+
+(def -
+  (make-multimethod
+    (fn ((: x <fixnum>)) (fx- 0 x)) ; OPTIMIZE: `fx-neg`?
+    fx-
+    (fn (x y z . ns) (array!-fold-left (fn (v acc) (- acc v)) (- (- x y) z) ns))))
+
+(def *
+  (make-multimethod
+    (fn () 1) ; Multiplicative identity
+    (fn ((: x <fixnum>)) x)
+    fx*
+    (fn (x y z . ns) (array!-fold-left (fn (v acc) (* acc v)) (* (* x y) z) ns))))

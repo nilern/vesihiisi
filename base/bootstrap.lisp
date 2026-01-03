@@ -79,46 +79,53 @@
            (call-with-current-continuation
              (fn (return)
                (letfn (((meet-domain-tails i)
-                          (if (fx< i min-arity1)
+                          (if (fx< i min-arity1) ; In fixed params of `method1`
                             (let ((param-type1 (flex-get method1 i))
                                   (param-type2 (flex-get method2
-                                                         (if (fx< i min-arity2) i min-arity2))))
+                                                         (if (fx< i min-arity2)
+                                                           i              ; Fixed param
+                                                           min-arity2)))) ; `method2` vararg
                               (let ((met-param (meet param-type1 param-type2)))
                                 (if (not met-param)
                                   (continue return #f)
                                   (cons met-param (meet-domain-tails (fx+ i 1))))))
-                            (let ((param-type1 (flex-get method1 min-arity1)))
-                              (if (fx< i min-arity2)
-                                (let ((met-param (meet param-type1 (flex-get method2 i))))
-                                  (if (not met-param)
-                                    (continue return #f)
-                                    (cons met-param (meet-domain-tails (fx+ i 1)))))
-                                (if (if (not has-vararg1) #t (not has-vararg2))
-                                  ()
-                                  (let ((met-tail (meet param-type1 (flex-get method2 min-arity2))))
-                                    (if (not met-tail)
+                            (if (not has-vararg1)
+                              ()
+                              (let ((param-type1 (flex-get method1 min-arity1)))
+                                (if (fx< i min-arity2) ; In fixed params of `method2`
+                                  (let ((param-type2 (flex-get method2 i))
+                                        (met-param (meet param-type1 param-type2)))
+                                    (if (not met-param)
                                       (continue return #f)
-                                      (meet param-type1 (flex-get method2 min-arity2))))))))))
+                                      (cons met-param (meet-domain-tails (fx+ i 1)))))
+                                  (if (not has-vararg2)
+                                    ()
+                                    (let ((param-type2 (flex-get method2 min-arity2))
+                                          (met-tail (meet param-type1 param-type2)))
+                                      (if (not met-tail)
+                                        (continue return #f)
+                                        (meet param-type1 (flex-get method2 min-arity2)))))))))))
                  (meet-domain-tails 0)))))))
     (fn (f1 f2)
       (let ((method1 (fn-method f1))
             (has-vararg1 (has-vararg? method1))
-            (min-arity1 (min-arity method1 has-vararg1))
+            (min-arity1 (min-arity method1 has-vararg1)) ; OPTIMIZE: not needed on all paths
 
             (method2 (fn-method f2))
             (has-vararg2 (has-vararg? method2))
-            (min-arity2 (min-arity method2 has-vararg2)))
+            (min-arity2 (min-arity method2 has-vararg2))) ; OPTIMIZE: not needed on all paths
+        ;; If arities are compatible call `meet-domains*` to produce try and produce meet list:
         (if (not has-vararg1)
           (if (not has-vararg2)
             (if (identical? min-arity1 min-arity2)
               (meet-domains* method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2)
-              #f)
-             (if (fx< min-arity1 min-arity2)
-              #f
+              #f) ; Different fixed arities
+            (if (fx< min-arity1 min-arity2)
+              #f ; Only `method2` is varargs and always requires more args than `method1`
               (meet-domains* method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2)))
           (if (not has-vararg2)
             (if (fx> min-arity1 min-arity2)
-              #f
+              #f ; Only `method1` is varargs and always requires more args than `method2`
               (meet-domains* method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2))
             (meet-domains* method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2)))))))
 

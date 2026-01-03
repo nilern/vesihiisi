@@ -1,5 +1,7 @@
 (def not (fn (x) (if x #f #t)))
 
+(def fx> (fn (x y) (fx< y x))) ; OPTIMIZE: separate primop?
+
 (def cons (fn (x xs) (make <pair> x xs)))
 
 (def car (fn ((: xs <pair>)) (slot-get xs 0)))
@@ -51,6 +53,21 @@
                    (loop (f (array!-get xs i) acc) (fx+ i 1))
                    acc)))
         (loop acc 0)))))
+
+(def array!-fold-right
+  (fn (f acc xs)
+    (letfn (((loop acc i)
+               (if (fx> i 0)
+                 (let ((i (fx- i 1)))
+                   (loop (f (array!-get xs i) acc) i))
+                 acc)))
+      (loop acc (array!-count xs)))))
+
+(def array!->list (fn (arr) (array!-fold-right cons () arr)))
+
+(def error
+  (fn (name . irritants)
+    (abort (cons name (array!->list irritants))))) ; HACK: Using a list as error
 
 (def fn-method (fn ((: f <fn>)) (slot-get f 0)))
 
@@ -138,9 +155,9 @@
                  (if (not (identical? j i))
                    (let ((met-domain (meet-domains f f*)))
                      (if (not met-domain)
-                       (fx+ i 1)
+                       (fx+ j 1)
                        (error (quote ambiguous-methods) f f* met-domain)))
-                   (fx+ i 1)))
+                   (fx+ j 1)))
                0 methods))))
       (array!-fold-left
         (fn (f i)

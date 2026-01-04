@@ -1,23 +1,25 @@
 #include "dispatch.h"
 
 #include "bytecode.h"
+#include "primops.h"
 
 [[nodiscard]]
-static ORef checkDomain(State* state) {
-    assert(isClosure(state, state->regs[calleeReg]));
-    ClosureRef const calleeRef = uncheckedORefToClosure(state->regs[calleeReg]);
+static ORef doCheckDomain(
+    State* state, ClosureRef calleeRef, ORef const* args, size_t argc
+) {
     Closure const* const callee = closureToPtr(calleeRef);
     assert(isMethod(state, callee->method));
     MethodRef const methodRef = uncheckedORefToMethod(callee->method);
     Method const* const method = methodToPtr(methodRef);
     size_t const arity = (uintptr_t)fixnumToInt(uncheckedFlexCount(methodToORef(methodRef)));
 
-    uint8_t const callArity = state->entryRegc - firstArgReg;
-    if (callArity != arity) {
-        if (!(unwrapBool(method->hasVarArg) && callArity >= arity - 1)) {
-            return arityErrorToORef(createArityError(state, calleeRef, tagInt(callArity)));
+    if (argc != arity) {
+        if (!(unwrapBool(method->hasVarArg) && argc >= arity - 1)) {
+            return arityErrorToORef(createArityError(state, calleeRef, tagInt((intptr_t)argc)));
         }
     }
+
+    // OPTIMIZE: Skip these loops if no typed params (= not a specialization):
 
     bool const hasVarArg = unwrapBool(method->hasVarArg);
     size_t const minArity = !hasVarArg ? arity : arity - 1;
@@ -25,7 +27,7 @@ static ORef checkDomain(State* state) {
     for (size_t i = 0; i < minArity; ++i) {
         assert(isType(state, method->domain[i]));
         TypeRef const type = uncheckedORefToTypeRef(method->domain[i]);
-        ORef const v = state->regs[firstArgReg + i];
+        ORef const v = args[i];
         if (!isa(state, type, v)) {
             return typeErrorToORef(createTypeError(state, type, v));
         }
@@ -34,8 +36,8 @@ static ORef checkDomain(State* state) {
     if (hasVarArg) {
         assert(isType(state, method->domain[minArity]));
         TypeRef const type = uncheckedORefToTypeRef(method->domain[minArity]);
-        for (size_t i = minArity; i < callArity; ++i) {
-            ORef const v = state->regs[firstArgReg + i];
+        for (size_t i = minArity; i < argc; ++i) {
+            ORef const v = args[i];
             if (!isa(state, type, v)) {
                 return typeErrorToORef(createTypeError(state, type, v));
             }
@@ -45,20 +47,23 @@ static ORef checkDomain(State* state) {
     return fixnumToORef(Zero);
 }
 
-// TODO: Can we somehow (efficiently!) DRY this wrt. `checkDomain`?
+// TODO: Can we somehow (efficiently!) DRY this wrt. `doCheckDomain`?
 [[nodiscard]]
-static bool closureIsApplicable(State const* state, Closure const* callee) {
+static bool closureIsApplicable(
+    State const* state, Closure const* callee, ORef const* args, size_t argc
+) {
     assert(isMethod(state, callee->method));
     MethodRef const methodRef = uncheckedORefToMethod(callee->method);
     Method const* const method = methodToPtr(methodRef);
     size_t const arity = (uintptr_t)fixnumToInt(uncheckedFlexCount(methodToORef(methodRef)));
 
-    uint8_t const callArity = state->entryRegc - firstArgReg;
-    if (callArity != arity) {
-        if (!(unwrapBool(method->hasVarArg) && callArity >= arity - 1)) {
+    if (argc != arity) {
+        if (!(unwrapBool(method->hasVarArg) && argc >= arity - 1)) {
             return false;
         }
     }
+
+    // OPTIMIZE: Skip these loops if no typed params (= not a specialization):
 
     bool const hasVarArg = unwrapBool(method->hasVarArg);
     size_t const minArity = !hasVarArg ? arity : arity - 1;
@@ -66,7 +71,7 @@ static bool closureIsApplicable(State const* state, Closure const* callee) {
     for (size_t i = 0; i < minArity; ++i) {
         assert(isType(state, method->domain[i]));
         TypeRef const type = uncheckedORefToTypeRef(method->domain[i]);
-        ORef const v = state->regs[firstArgReg + i];
+        ORef const v = args[i];
         if (!isa(state, type, v)) {
             return false;
         }
@@ -75,8 +80,8 @@ static bool closureIsApplicable(State const* state, Closure const* callee) {
     if (hasVarArg) {
         assert(isType(state, method->domain[minArity]));
         TypeRef const type = uncheckedORefToTypeRef(method->domain[minArity]);
-        for (size_t i = minArity; i < callArity; ++i) {
-            ORef const v = state->regs[firstArgReg + i];
+        for (size_t i = minArity; i < argc; ++i) {
+            ORef const v = args[i];
             if (!isa(state, type, v)) {
                 return false;
             }
@@ -86,7 +91,36 @@ static bool closureIsApplicable(State const* state, Closure const* callee) {
     return true;
 }
 
-static ORef applicableClosure(State const* state, Multimethod const* callee) {
+[[nodiscard]]
+static ORef checkDomainForArgs(
+    State* state, ClosureRef calleeRef, ORef const* args, size_t argc
+) {
+    if (!state->checkDomain) {
+        state->checkDomain = true;
+        return toORef(Zero);
+    }
+
+    return doCheckDomain(state, calleeRef, args, argc);
+}
+
+[[nodiscard]]
+static ORef checkDomain(State* state) {
+    if (!state->checkDomain) {
+        state->checkDomain = true;
+        return toORef(Zero);
+    }
+
+    assert(isClosure(state, state->regs[calleeReg]));
+    ClosureRef const calleeRef = uncheckedORefToClosure(state->regs[calleeReg]);
+    ORef const* const args = state->regs + firstArgReg;
+    size_t const argc = state->entryRegc - firstArgReg;
+    return doCheckDomain(state, calleeRef, args, argc);
+}
+
+/// Returns applicable closure from `callee`, `Zero` if none is found.
+static ORef applicableClosureForArgs(
+    State* state, Multimethod const* callee, ORef const* args, size_t argc
+) {
     ArrayRef const methodsRef = callee->methods;
     ORef const* const methods = toPtr(methodsRef);
 
@@ -94,12 +128,54 @@ static ORef applicableClosure(State const* state, Multimethod const* callee) {
     for (size_t i = 0; i < methodCount; ++i) {
         assert(isa(state, state->closureType, (methods[i])));
         ClosureRef const methodRef = uncheckedORefToClosure(methods[i]);
-        Closure const* const method = toPtr(methodRef);
 
-        if (closureIsApplicable(state, method)) {
+        if (closureIsApplicable(state, toPtr(methodRef), args, argc)) {
+            state->checkDomain = false;
             return toORef(methodRef);
         }
     }
 
     return toORef(Zero);
+}
+
+static bool calleeClosureForArgs(State* state, ORef callee, ORef const* args, size_t argc) {
+    // TODO: Make continuations directly callable?
+    // TODO: Make this extensible (à la JVM `invokedynamic`)?:
+
+    if (isClosure(state, callee)) {
+        state->regs[calleeReg] = callee;
+        return true;
+    } else if (isMultimethod(state, callee)) {
+        MultimethodRef const multiCalleeRef = uncheckedORefToMultimethod(callee);
+
+        ORef const maybeClosure =
+            applicableClosureForArgs(state, toPtr(multiCalleeRef), args, argc);
+        if (isHeaped(maybeClosure)) {
+            state->regs[calleeReg] = maybeClosure;
+            return true;
+        } else {
+            state->regs[calleeReg] = getErrorHandler(state);
+            state->regs[firstArgReg] =
+                toORef(createInapplicableError(state, multiCalleeRef));
+            state->entryRegc = firstArgReg + 1;
+
+            assert(isClosure(state, state->regs[calleeReg]));
+            return false;
+        }
+    } else { // TODO: DRY with "inapplicable" directly above:
+        state->regs[calleeReg] = getErrorHandler(state);
+        // TODO: `UncallableError` as closure is no longer the only callable type:
+        state->regs[firstArgReg] =
+            typeErrorToORef(createTypeError(state, state->closureType, callee));
+        state->entryRegc = firstArgReg + 1;
+
+        assert(isClosure(state, state->regs[calleeReg]));
+        return false;
+    }
+}
+
+static bool calleeClosure(State* state, ORef callee) {
+    ORef const* const args = state->regs + firstArgReg;
+    size_t const argc = state->entryRegc - firstArgReg;
+    return calleeClosureForArgs(state, callee, args, argc);
 }

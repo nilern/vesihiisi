@@ -39,6 +39,57 @@ static PrimopRes primopAbort(State* state) {
     return PRIMOP_RES_ABORT;
 }
 
+static PrimopRes primopApplyArray(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    ORef const callee = state->regs[firstArgReg];
+    // Could also be an `<array!>`, but we "illegally" cast that here to avoid duplicating this
+    // function for no actual benefit:
+    ArrayRef const argsRef = uncheckedORefToArray(state->regs[firstArgReg + 1]);
+    ORef const* args = toPtr(argsRef);
+    size_t argc = (uintptr_t)fixnumToInt(uncheckedFlexCount(toORef(argsRef)));
+
+    if (!calleeClosureForArgs(state, callee, args, argc)) {
+        return PRIMOP_RES_TAILCALL; // Finish panic setup
+    }
+    ClosureRef const closure = uncheckedORefToClosure(state->regs[calleeReg]);
+
+    ORef const maybeCalleeErr = checkDomainForArgs(state, closure, args, argc);
+    if (isHeaped(maybeCalleeErr)) {
+        state->regs[calleeReg] = getErrorHandler(state);
+        state->regs[firstArgReg] = maybeCalleeErr;
+        state->entryRegc = firstArgReg + 1;
+        return PRIMOP_RES_TAILCALL;
+    }
+
+    ORef const method = toPtr(closure)->method;
+    assert(isMethod(state, method));
+    Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
+    if (!isHeaped(methodPtr->code) || !eq(boolToORef(methodPtr->hasVarArg), boolToORef(True))){
+        memcpy(state->regs + firstArgReg, args, argc * sizeof(ORef));
+    } else { // Non-primop with varargs:
+        size_t const arity = (uintptr_t)fixnumToInt(uncheckedFlexCount(method));
+        size_t const minArity = arity - 1;
+        size_t const varargCount = argc - minArity;
+
+        memcpy(state->regs + firstArgReg, args, minArity * sizeof(ORef));
+        pushStackRoot(state, (ORef*)&argsRef);
+        ArrayMutRef const varargsRef = createArrayMut(state, tagInt((intptr_t)varargCount));
+        popStackRoots(state, 1);
+        args = toPtr(argsRef); // Post-GC reload
+        memcpy(arrayMutToPtr(varargsRef), args + minArity, varargCount * sizeof(ORef));
+
+        state->regs[firstArgReg + minArity] = arrayMutToORef(varargsRef);
+
+        argc = arity;
+    }
+
+    state->entryRegc = (uint8_t)(firstArgReg + argc);
+    state->checkDomain = false;
+    return PRIMOP_RES_TAILAPPLY;
+}
+
 static PrimopRes primopCallCC(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }

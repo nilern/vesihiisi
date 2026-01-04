@@ -36,6 +36,7 @@ typedef struct State {
     ORef const* consts;
     NamespaceRef ns;
     uint8_t entryRegc;
+    bool checkDomain;
 
     Heap heap;
 

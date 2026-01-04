@@ -207,6 +207,8 @@ typedef struct { uintptr_t bits; } ArrayRef;
 
 inline static ORef arrayToORef(ArrayRef xs) { return (ORef){xs.bits}; }
 
+inline static ArrayRef uncheckedORefToArray(ORef v) { return (ArrayRef){v.bits}; }
+
 inline static Fixnum arrayCount(ArrayRef xs) { return uncheckedFlexCount(arrayToORef(xs)); }
 
 inline static ORef const* arrayToPtr(ArrayRef xs) {
@@ -271,6 +273,7 @@ inline static ORef emptyListToORef(EmptyListRef v) { return (ORef){v.bits}; }
 typedef enum PrimopRes {
     PRIMOP_RES_CONTINUE,
     PRIMOP_RES_TAILCALL,
+    PRIMOP_RES_TAILAPPLY,
     PRIMOP_RES_ABORT
 } PrimopRes;
 
@@ -492,6 +495,7 @@ inline static InapplicableError* inapplicableErrorToPtr(InapplicableErrorRef v) 
     Bool: uncheckedToORef(v), \
     TypeRef: uncheckedToORef(v), \
     SymbolRef: uncheckedToORef(v), \
+    ArrayRef: uncheckedToORef(v), \
     ArrayMutRef: uncheckedToORef(v), \
     ByteArrayRef: uncheckedToORef(v), \
     MethodRef: uncheckedToORef(v), \

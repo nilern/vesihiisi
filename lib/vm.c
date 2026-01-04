@@ -1,4 +1,5 @@
 #include <stdbit.h>
+#include <string.h>
 
 #include "vesihiisi.h"
 #include "state.h"
@@ -11,17 +12,19 @@
 static VMRes run(State* state, ClosureRef selfRef) {
     // TODO: Debug index & type checks & bytecode verifier
 
-    Closure const* const self = closureToPtr(selfRef);
-    ORef const method = self->method;
-    Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
-    assert(isHeaped(methodPtr->code));
-    state->method = method;
-    state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
-    state->pc = 0;
-    state->consts = arrayMutToPtr(uncheckedORefToArrayMut(methodPtr->consts));
-    state->regs[calleeReg] = closureToORef(selfRef);
-    state->regs[retContReg] = closureToORef(state->exit); // Return continuation
-    state->entryRegc = 2;
+    {
+        Closure const* const self = closureToPtr(selfRef);
+        ORef const method = self->method;
+        Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
+        assert(isHeaped(methodPtr->code));
+        state->method = method;
+        state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
+        state->pc = 0;
+        state->consts = arrayMutToPtr(uncheckedORefToArrayMut(methodPtr->consts));
+        state->regs[calleeReg] = closureToORef(selfRef);
+        state->regs[retContReg] = closureToORef(state->exit); // Return continuation
+        state->entryRegc = 2;
+    }
 
     for (;/*ever*/;) {
         switch ((Opcode)state->code[state->pc++]) {
@@ -293,46 +296,13 @@ static VMRes run(State* state, ClosureRef selfRef) {
         apply:
         bool trampoline = true;
         while (trampoline) {
-            ORef callee = state->regs[calleeReg];
+            // Do not need return value here as a call is set up even in case of error:
+            calleeClosure(state, state->regs[calleeReg]);
+            Closure const* closure = closureToPtr(uncheckedORefToClosure(state->regs[calleeReg]));
 
-            // TODO: Make continuations directly callable?
-            // TODO: Make this extensible (à la JVM `invokedynamic`):
-            Closure const* closure;
-            if (isClosure(state, callee)) {
-                closure = closureToPtr(uncheckedORefToClosure(callee));
-            } else if (isMultimethod(state, callee)) {
-                MultimethodRef const multiCalleeRef = uncheckedORefToMultimethod(callee);
-                Multimethod const* const multiCallee = toPtr(multiCalleeRef);
-                ORef const maybeClosure = applicableClosure(state, multiCallee);
-                if (isHeaped(maybeClosure)) {
-                    state->regs[calleeReg] = maybeClosure;
-                    closure = closureToPtr(uncheckedORefToClosure(maybeClosure));
-                } else {
-                    state->regs[calleeReg] = getErrorHandler(state);
-                    state->regs[firstArgReg] =
-                        toORef(createInapplicableError(state, multiCalleeRef));
-                    state->entryRegc = firstArgReg + 1;
-
-                    assert(isClosure(state, state->regs[calleeReg]));
-                    closure = closureToPtr(uncheckedORefToClosure(state->regs[calleeReg]));
-                }
-            } else { // TODO: DRY with "inapplicable" directly above:
-                state->regs[calleeReg] = getErrorHandler(state);
-                // TODO: `UncallableError` as closure is no longer the only callable type:
-                state->regs[firstArgReg] =
-                    typeErrorToORef(createTypeError(state, state->closureType, callee));
-                state->entryRegc = firstArgReg + 1;
-
-                assert(isClosure(state, state->regs[calleeReg]));
-                closure = closureToPtr(uncheckedORefToClosure(state->regs[calleeReg]));
-            }
-
-            // OPTIMIZE: If we came here by multimethod dispatch, disable domain checking (easy for
-            // bytecode methods but primops (and eventually JIT:ed methods) have the checks compiled
-            // into themselves instead of here to (also eventually) support inline caching.
-            ORef const method = closure->method;
+            ORef method = closure->method;
             assert(isMethod(state, method));
-            Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
+            Method const* methodPtr = methodToPtr(uncheckedORefToMethod(method));
             if (isHeaped(methodPtr->code)) {
                 state->method = method;
                 state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
@@ -355,16 +325,15 @@ static VMRes run(State* state, ClosureRef selfRef) {
 
                     ArrayMutRef const varargsRef =
                         createArrayMut(state, tagInt((intptr_t)varargCount));
-                    ORef* const varargs = arrayMutToPtr(varargsRef);
-                    for (size_t i = 0; i < varargCount; ++i) {
-                        varargs[i] = state->regs[firstArgReg + minArity + i];
-                    }
+                    memcpy(arrayMutToPtr(varargsRef), state->regs + firstArgReg + minArity,
+                           varargCount * sizeof(ORef));
 
                     state->regs[firstArgReg + minArity] = arrayMutToORef(varargsRef);
                 }
 
                 trampoline = false;
             } else {
+                applyPrimop:
                 switch (methodPtr->nativeCode(state)) {
                 case PRIMOP_RES_CONTINUE: { // TODO: DRY wrt. OP_RET:
                     assert(eq(typeToORef(typeOf(state, state->regs[retContReg])),
@@ -388,6 +357,26 @@ static VMRes run(State* state, ClosureRef selfRef) {
                 }; break;
 
                 case PRIMOP_RES_TAILCALL: break; // All is in place, just keep trampolining
+
+                // TODO: DRY with loop head:
+                case PRIMOP_RES_TAILAPPLY: {
+                    closure = closureToPtr(uncheckedORefToClosure(state->regs[calleeReg]));
+                    method = closure->method;
+                    assert(isMethod(state, method));
+                    methodPtr = methodToPtr(uncheckedORefToMethod(method));
+                    if (isHeaped(methodPtr->code)) {
+                        state->method = method;
+                        state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
+                        state->pc = 0;
+                        state->consts = arrayMutToPtr(uncheckedORefToArrayMut(methodPtr->consts));
+
+                        state->checkDomain = true;
+
+                        trampoline = false;
+                    } else {
+                        goto applyPrimop;
+                    }
+                }; break;
 
                 case PRIMOP_RES_ABORT: return (VMRes){};
                 }

@@ -3,6 +3,7 @@
 #include "vesihiisi.h"
 #include "state.h"
 #include "bytecode.h"
+#include "dispatch.h"
 #include "primops.h"
 #include "namespace.h"
 #include "flyweights.h"

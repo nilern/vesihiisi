@@ -12,6 +12,7 @@
 #include "print.c"
 #include "bytecode.c"
 #include "namespace.c"
+#include "dispatch.c"
 #include "primops.c"
 #include "vm.c"
 #include "compiler/compiler.c"

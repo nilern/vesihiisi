@@ -12,6 +12,8 @@
 // * Encode bitmaps as (lastByte? bit{7})+ instead of count byte{count}
 // * `rep` prefix (for e.g. mov, swap, clover)
 
+// OPTIMIZE: `(tail)call-method` to allow direct calls to (lambda-lifted) local functions
+
 typedef enum Opcode : uint8_t {
     OP_MOVE,        // rx = mov ry
     OP_SWAP,        // swap rx ry
@@ -26,7 +28,7 @@ typedef enum Opcode : uint8_t {
     OP_BRF,         // brf rx d
     OP_BR,          // br d
     OP_RET,         // ret
-    OP_CLOSURE,     // rx = closure ry #bi*
+    OP_CLOSURE,     // rx = closure ry #bi* ; OPTIMIZE: fuse `specialize`(/`const`) into this
     OP_CLOVER,      // rx = clover rx i
     // TODO: OP_CONT_CLOVER / OP_RESTORE
     OP_CALL,        // call n #bi*

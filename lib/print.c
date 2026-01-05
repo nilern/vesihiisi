@@ -57,14 +57,29 @@ void print(State const* state, FILE* dest, ORef v) {
             fputc(')', dest);
         } else if (isEmptyList(state, v)) {
             fprintf(dest, "()");
-        } else if (isa(state, state->arrayMutType, v)) {
-            ORef const* const vs = arrayMutToPtr(uncheckedORefToArrayMut(v));
-            fprintf(dest, "#<array!");
+        } else if (isa(state, state->arrayType, v)) {
+            ORef const* const vs = arrayToPtr(uncheckedORefToArray(v));
+
+            fprintf(dest, "#<array");
+
             size_t const count = (uintptr_t)fixnumToInt(uncheckedFlexCount(v));
             for (size_t i = 0; i < count; ++i) {
                 fputc(' ', dest);
                 print(state, dest, vs[i]);
             }
+
+            putc('>', dest);
+        } else if (isa(state, state->arrayMutType, v)) {
+            ORef const* const vs = arrayMutToPtr(uncheckedORefToArrayMut(v));
+
+            fprintf(dest, "#<array!");
+
+            size_t const count = (uintptr_t)fixnumToInt(uncheckedFlexCount(v));
+            for (size_t i = 0; i < count; ++i) {
+                fputc(' ', dest);
+                print(state, dest, vs[i]);
+            }
+
             putc('>', dest);
         } else if (isa(state, state->methodType, v)) {
             Method const* const method = toPtr(uncheckedORefToMethod(v));

@@ -175,6 +175,15 @@
 
       (make <multimethod> (array!->array methods)))))
 
+;; TODO: Support `(apply f x y zs)` (needs to be done in native code to be efficient for
+;; `apply-array(!)`:
+(def apply
+  (make-multimethod
+    apply-array
+    apply-array!
+    (fn (f (: xs <pair>)) (apply-list f xs))
+    (fn (f (: xs <empty-list>)) (f))))
+
 (def +
   (make-multimethod
     (fn () 0) ; Additive identity

@@ -203,3 +203,21 @@
     (fn ((: x <fixnum>)) x)
     fx*
     (fn (x y z . ns) (array!-fold-left (fn (v acc) (* acc v)) (* (* x y) z) ns))))
+
+(def concat
+  (make-multimethod
+    (fn () ())
+    (fn (xs) xs)
+    (fn (xs ys) (fold-right cons xs ys))
+    (letfn (((concat-nonempty-array! xss)
+               (let ((last-idx (fx- (array!-count xss) 1)))
+                 (letfn (((loop i acc)
+                            (if (fx> i 0)
+                              (let ((i (fx- i 1)))
+                                (loop i (concat (array!-get xss i) acc)))
+                              acc)))
+                   (loop last-idx (array!-get xss last-idx))))))
+      (fn (xs ys zs . xss)
+        (if (identical? (array!-count xss) 0)
+          (concat xs (concat ys zs))
+          (concat xs (concat ys (concat zs (concat-nonempty-array! xss)))))))))

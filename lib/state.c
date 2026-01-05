@@ -573,8 +573,6 @@ static void installPrimop(
 static Var* tryCreateUnboundVar(Semispace* semispace, Type const* unboundType, UnboundRef unbound);
 
 static void nameType(State* state, TypeRef typeRef, Str name) {
-    printf("`nameType` %.*s\n", (int)name.len, name.data);
-
     pushStackRoot(state, (ORef*)&typeRef);
     SymbolRef const nameSym = intern(state, name);
     popStackRoots(state, 1);

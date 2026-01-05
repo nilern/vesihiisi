@@ -11,17 +11,17 @@ static void testBootstrap(void) {
     
     TypeRef const typeType = state->typeType;
     Type const* typeTypePtr = typeToPtr(typeType);
-    assert(eq(typeToORef(typeOf(state, typeToORef(typeType))), typeToORef(typeType)));
-    assert(eq(fixnumToORef(typeTypePtr->minSize), fixnumToORef(tagInt(sizeof(Type)))));
-    assert(eq(fixnumToORef(typeTypePtr->align), fixnumToORef(tagInt(alignof(Type)))));
+    assert(eq(toORef(typeOf(state, toORef(typeType))), toORef(typeType)));
+    assert(eq(toORef(typeTypePtr->minSize), toORef(tagInt(sizeof(Type)))));
+    assert(eq(toORef(typeTypePtr->align), toORef(tagInt(alignof(Type)))));
     assert(!unwrapBool(typeTypePtr->isBytes));
     assert(!unwrapBool(typeTypePtr->isFlex));
     
     TypeRef const stringType = state->stringType;
     Type const* stringTypePtr = typeToPtr(stringType);
-    assert(eq(typeToORef(typeOf(state, typeToORef(stringType))), typeToORef(typeType)));
-    assert(eq(fixnumToORef(stringTypePtr->minSize), fixnumToORef(tagInt(0))));
-    assert(eq(fixnumToORef(stringTypePtr->align), fixnumToORef(tagInt((intptr_t)objectMinAlign))));
+    assert(eq(toORef(typeOf(state, toORef(stringType))), toORef(typeType)));
+    assert(eq(toORef(stringTypePtr->minSize), toORef(tagInt(0))));
+    assert(eq(toORef(stringTypePtr->align), toORef(tagInt((intptr_t)objectMinAlign))));
     assert(unwrapBool(stringTypePtr->isBytes));
     assert(unwrapBool(stringTypePtr->isFlex));
 
@@ -37,13 +37,13 @@ static void testIntern(void) {
     SymbolRef const sym = intern(state, name);
     Symbol const* symPtr = symbolToPtr(sym);
     
-    assert(eq(typeToORef(typeOf(state, symbolToORef(sym))), typeToORef(state->symbolType)));
-    assert(eq(fixnumToORef(symPtr->hash), fixnumToORef(tagInt((intptr_t)fnv1aHash(name)))));
+    assert(eq(toORef(typeOf(state, toORef(sym))), toORef(state->symbolType)));
+    assert(eq(toORef(symPtr->hash), toORef(tagInt((intptr_t)fnv1aHash(name)))));
     assert(strEq(symbolName(sym), name));
     
     SymbolRef const dupSym = intern(state, name);
     
-    assert(eq(symbolToORef(dupSym), symbolToORef(sym)));
+    assert(eq(toORef(dupSym), toORef(sym)));
 
     freeState(state);
 }

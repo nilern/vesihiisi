@@ -9,7 +9,7 @@
 
 static ORef getErrorHandler(State const* state) {
     ORef const v = varToPtr(state->errorHandler)->val;
-    if (eq(v, unboundToORef(state->unbound))) {
+    if (eq(v, toORef(state->unbound))) {
         exit(EXIT_FAILURE); // FIXME
     }
 
@@ -70,7 +70,7 @@ static PrimopRes primopApplyArray(State* state) {
     Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
 
     // Put args in place:
-    if (!isHeaped(methodPtr->code) || !eq(boolToORef(methodPtr->hasVarArg), boolToORef(True))){
+    if (!isHeaped(methodPtr->code) || !eq(toORef(methodPtr->hasVarArg), toORef(True))){
         memcpy(state->regs + firstArgReg, args, argc * sizeof(ORef));
     } else { // Non-primop with varargs:
         size_t const arity = (uintptr_t)fixnumToInt(uncheckedFlexCount(method));
@@ -87,7 +87,7 @@ static PrimopRes primopApplyArray(State* state) {
         args = toPtr(argsRef); // Post-GC reload
         memcpy(arrayMutToPtr(varargsRef), args + minArity, varargCount * sizeof(ORef));
 
-        state->regs[firstArgReg + minArity] = arrayMutToORef(varargsRef);
+        state->regs[firstArgReg + minArity] = toORef(varargsRef);
 
         argc = arity;
     }
@@ -130,9 +130,9 @@ static PrimopRes primopApplyList(State* state) {
 
                 // OPTIMIZE: Skip type check if no typed params (= not a specialization):
                 assert(isa(state, state->typeType, methodPtr->domain[argc]));
-                TypeRef const type = uncheckedORefToTypeRef(methodPtr->domain[argc]);
+                TypeRef const type = uncheckedORefToType(methodPtr->domain[argc]);
                 if (!isa(state, type, arg)) {
-                    ORef const err = typeErrorToORef(createTypeError(state, type, arg));
+                    ORef const err = toORef(createTypeError(state, type, arg));
                     return primopError(state, err);
                 }
 
@@ -141,7 +141,7 @@ static PrimopRes primopApplyList(State* state) {
                 args = argsPair->cdr;
             } else if (isEmptyList(state, args)) {
                 ORef const err = // Insufficient args
-                    arityErrorToORef(createArityError(state, closure, tagInt((intptr_t)argc)));
+                    toORef(createArityError(state, closure, tagInt((intptr_t)argc)));
                 return primopError(state, err);
             } else {
                 assert(false); // TODO: Proper improper args error
@@ -162,12 +162,12 @@ static PrimopRes primopApplyList(State* state) {
                 }
 
                 ORef const err = // Excessive args
-                    arityErrorToORef(createArityError(state, closure, tagInt((intptr_t)argc)));
+                    toORef(createArityError(state, closure, tagInt((intptr_t)argc)));
                 return primopError(state, err);
             }
         } else if (!isHeaped(methodPtr->code)) { // Primop varargs:
             assert(isa(state, state->typeType, methodPtr->domain[minArity]));
-            TypeRef type = uncheckedORefToTypeRef(methodPtr->domain[minArity]);
+            TypeRef type = uncheckedORefToType(methodPtr->domain[minArity]);
             for (; true; ++argc) {
                 if (isPair(state, args)) {
                     Pair const* const argsPair = toPtr(uncheckedORefToPair(args));
@@ -176,7 +176,7 @@ static PrimopRes primopApplyList(State* state) {
 
                     // OPTIMIZE: Skip type check if no typed params (= not a specialization):
                     if (!isa(state, type, arg)) {
-                        ORef const err = typeErrorToORef(createTypeError(state, type, arg));
+                        ORef const err = toORef(createTypeError(state, type, arg));
                         return primopError(state, err);
                     }
 
@@ -193,7 +193,7 @@ static PrimopRes primopApplyList(State* state) {
             pushStackRoot(state, &args);
 
             assert(isa(state, state->typeType, methodPtr->domain[minArity]));
-            TypeRef type = uncheckedORefToTypeRef(methodPtr->domain[minArity]);
+            TypeRef type = uncheckedORefToType(methodPtr->domain[minArity]);
             pushStackRoot(state, (ORef*)&type);
             size_t bufCap = 10;
             ArrayMutRef varargsBufRef = createArrayMut(state, tagInt((intptr_t)bufCap));
@@ -208,7 +208,7 @@ static PrimopRes primopApplyList(State* state) {
 
                     // OPTIMIZE: Skip type check if no typed params (= not a specialization):
                     if (!isa(state, type, arg)) {
-                        ORef const err = typeErrorToORef(createTypeError(state, type, arg));
+                        ORef const err = toORef(createTypeError(state, type, arg));
                         popStackRoots(state, 3); // `&type`, `&args` & `&varargsBufRef`
                         return primopError(state, err);
                     }
@@ -250,7 +250,7 @@ static PrimopRes primopApplyList(State* state) {
 
             popStackRoots(state, 3); // `&type, `&args` & `&varargsBufRef`
 
-            state->regs[firstArgReg + minArity] = arrayMutToORef(varargsRef);
+            state->regs[firstArgReg + minArity] = toORef(varargsRef);
 
             argc = minArity + varargCount;
         }
@@ -326,7 +326,7 @@ static PrimopRes primopApplyList(State* state) {
 
                 popStackRoots(state, 2); // `&args` & `&varargsBufRef`
 
-                state->regs[firstArgReg + minArity] = arrayMutToORef(varargsRef);
+                state->regs[firstArgReg + minArity] = toORef(varargsRef);
 
                 argc = minArity + varargCount;
             }
@@ -364,7 +364,7 @@ static PrimopRes primopIdentical(State* state) {
     ORef const x = state->regs[firstArgReg];
     ORef const y = state->regs[firstArgReg + 1];
 
-    state->regs[retReg] = boolToORef(tagBool(eq(x, y)));
+    state->regs[retReg] = toORef(tagBool(eq(x, y)));
 
     return PRIMOP_RES_CONTINUE;
 }
@@ -373,7 +373,7 @@ static PrimopRes primopMake(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
 
-    TypeRef typeRef = uncheckedORefToTypeRef(state->regs[firstArgReg]);
+    TypeRef typeRef = uncheckedORefToType(state->regs[firstArgReg]);
     uint8_t const callArity = state->entryRegc - firstArgReg;
 
     Type const* type = toPtr(typeRef);
@@ -382,7 +382,7 @@ static PrimopRes primopMake(State* state) {
         void* ptr = tryAlloc(&state->heap.tospace, type);
         if (mustCollect(ptr)) {
             collect(state);
-            typeRef = uncheckedORefToTypeRef(state->regs[firstArgReg]);
+            typeRef = uncheckedORefToType(state->regs[firstArgReg]);
             type = toPtr(typeRef);
             ptr = allocOrDie(&state->heap.tospace, type);
         }
@@ -439,7 +439,7 @@ static PrimopRes primopMakeFlex(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
 
-    TypeRef typeRef = uncheckedORefToTypeRef(state->regs[firstArgReg]);
+    TypeRef typeRef = uncheckedORefToType(state->regs[firstArgReg]);
     Fixnum const count = uncheckedORefToFixnum(state->regs[firstArgReg + 1]);
 
     Type const* type = toPtr(typeRef);
@@ -447,7 +447,7 @@ static PrimopRes primopMakeFlex(State* state) {
         void* ptr = tryAllocFlex(&state->heap.tospace, type, count);
         if (mustCollect(ptr)) {
             collect(state);
-            typeRef = uncheckedORefToTypeRef(state->regs[firstArgReg]);
+            typeRef = uncheckedORefToType(state->regs[firstArgReg]);
             type = toPtr(typeRef);
             ptr = allocFlexOrDie(&state->heap.tospace, type, count);
         }
@@ -553,7 +553,7 @@ static PrimopRes primopFxAdd(State* state) {
     intptr_t const x = uncheckedFixnumToInt(state->regs[firstArgReg]);
     intptr_t const y = uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
 
-    state->regs[retReg] = fixnumToORef(tagInt(x + y)); // TODO: Overflow check
+    state->regs[retReg] = toORef(tagInt(x + y)); // TODO: Overflow check
 
     return PRIMOP_RES_CONTINUE;
 }
@@ -565,7 +565,7 @@ static PrimopRes primopFxSub(State* state) {
     intptr_t const x = uncheckedFixnumToInt(state->regs[firstArgReg]);
     intptr_t const y = uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
 
-    state->regs[retReg] = fixnumToORef(tagInt(x - y)); // TODO: Underflow check
+    state->regs[retReg] = toORef(tagInt(x - y)); // TODO: Underflow check
 
     return PRIMOP_RES_CONTINUE;
 }
@@ -577,7 +577,7 @@ static PrimopRes primopFxMul(State* state) {
     intptr_t const x = uncheckedFixnumToInt(state->regs[firstArgReg]);
     intptr_t const y = uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
 
-    state->regs[retReg] = fixnumToORef(tagInt(x * y)); // TODO: Overflow check
+    state->regs[retReg] = toORef(tagInt(x * y)); // TODO: Overflow check
 
     return PRIMOP_RES_CONTINUE;
 }
@@ -590,7 +590,7 @@ static PrimopRes primopFxQuot(State* state) {
     intptr_t const y = uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
 
     if (y == 0) { assert(false); } // TODO: Proper error
-    state->regs[retReg] = fixnumToORef(tagInt(x / y)); // TODO: Overflow check
+    state->regs[retReg] = toORef(tagInt(x / y)); // TODO: Overflow check
 
     return PRIMOP_RES_CONTINUE;
 }

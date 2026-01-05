@@ -21,8 +21,8 @@ static VMRes run(State* state, ClosureRef selfRef) {
         state->code = byteArrayToPtr(uncheckedORefToByteArray(methodPtr->code));
         state->pc = 0;
         state->consts = arrayMutToPtr(uncheckedORefToArrayMut(methodPtr->consts));
-        state->regs[calleeReg] = closureToORef(selfRef);
-        state->regs[retContReg] = closureToORef(state->exit); // Return continuation
+        state->regs[calleeReg] = toORef(selfRef);
+        state->regs[retContReg] = toORef(state->exit); // Return continuation
         state->entryRegc = 2;
     }
 
@@ -90,7 +90,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
             }
 
             ORef const v = varToPtr(var)->val;
-            if (eq(v, unboundToORef(state->unbound))) {
+            if (eq(v, toORef(state->unbound))) {
                 assert(false); // FIXME: use of unbound var
             }
             state->regs[destReg] = v;
@@ -175,18 +175,18 @@ static VMRes run(State* state, ClosureRef selfRef) {
             uint16_t displacement = state->code[state->pc++];
             displacement = (uint16_t)(displacement << UINT8_WIDTH) | state->code[state->pc++];
 
-            if (eq(state->regs[condReg], boolToORef(False))) {
+            if (eq(state->regs[condReg], toORef(False))) {
                 state->pc += displacement;
             }
         }; continue;
 
         case OP_RET: {
-            assert(eq(typeToORef(typeOf(state, state->regs[retContReg])),
-                      typeToORef(state->continuationType)));
+            assert(eq(toORef(typeOf(state, state->regs[retContReg])),
+                      toORef(state->continuationType)));
             ContinuationRef const retRef = uncheckedORefToContinuation(state->regs[retContReg]);
             Continuation const* const ret = continuationToPtr(retRef);
             ORef const method = ret->method;
-            if (!eq(method, fixnumToORef(Zero))) {
+            if (!eq(method, toORef(Zero))) {
                 assert(isMethod(state, method));
                 Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
                 state->method = method;
@@ -228,7 +228,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
                 }
             }
 
-            state->regs[destReg] = closureToORef(closure);
+            state->regs[destReg] = toORef(closure);
         }; continue;
 
         case OP_CLOVER: {
@@ -279,7 +279,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
                 }
             }
 
-            state->regs[retContReg] = continuationToORef(cont);
+            state->regs[retContReg] = toORef(cont);
 
             state->entryRegc = regCount;
             goto apply;
@@ -317,7 +317,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
                     continue;
                 }
 
-                if (eq(boolToORef(methodPtr->hasVarArg), boolToORef(True))) {
+                if (eq(toORef(methodPtr->hasVarArg), toORef(True))) {
                     size_t const arity = (uintptr_t)fixnumToInt(uncheckedFlexCount(method));
                     size_t const minArity = arity - 1;
                     uint8_t const callArgc = state->entryRegc - firstArgReg;
@@ -328,7 +328,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
                     memcpy(arrayMutToPtr(varargsRef), state->regs + firstArgReg + minArity,
                            varargCount * sizeof(ORef));
 
-                    state->regs[firstArgReg + minArity] = arrayMutToORef(varargsRef);
+                    state->regs[firstArgReg + minArity] = toORef(varargsRef);
                 }
 
                 trampoline = false;
@@ -336,13 +336,13 @@ static VMRes run(State* state, ClosureRef selfRef) {
                 applyPrimop:
                 switch (methodPtr->nativeCode(state)) {
                 case PRIMOP_RES_CONTINUE: { // TODO: DRY wrt. OP_RET:
-                    assert(eq(typeToORef(typeOf(state, state->regs[retContReg])),
-                            typeToORef(state->continuationType)));
+                    assert(eq(toORef(typeOf(state, state->regs[retContReg])),
+                            toORef(state->continuationType)));
                     ContinuationRef const retRef =
                         uncheckedORefToContinuation(state->regs[retContReg]);
                     Continuation const* const ret = continuationToPtr(retRef);
                     ORef const method = ret->method;
-                    if (!eq(method, fixnumToORef(Zero))) {
+                    if (!eq(method, toORef(Zero))) {
                         assert(isMethod(state, method));
                         Method const* const methodPtr =
                             methodToPtr(uncheckedORefToMethod(method));

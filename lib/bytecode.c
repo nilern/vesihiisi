@@ -197,10 +197,10 @@ static void disassembleNested(State const* state, FILE* dest, MethodRef methodRe
         putc('_', dest);
     }
 
-    size_t const arity = (uintptr_t)fixnumToInt(uncheckedFlexCount(methodToORef(methodRef)));
+    size_t const arity = (uintptr_t)fixnumToInt(uncheckedFlexCount(toORef(methodRef)));
     for (size_t i = 0; i < arity; ++i) {
         putc(' ', dest);
-        if (i == arity - 1 && eq(boolToORef(method->hasVarArg), boolToORef(True))) {
+        if (i == arity - 1 && eq(toORef(method->hasVarArg), toORef(True))) {
             fputs(". ", dest);
         }
 

@@ -23,7 +23,7 @@ typedef struct Shadowstack {
 
 #define REG_COUNT 256
 
-#define BOOTSTRAP_TYPE_COUNT 29
+#define BOOTSTRAP_TYPE_COUNT 25
 #define BOOTSTRAP_SINGLETON_COUNT 4
 
 typedef struct State {
@@ -40,14 +40,10 @@ typedef struct State {
 
     union {
         struct {
-            TypeRef fixnumType; // TAG_FIXNUM = 0b000 = 0
-            ORef immTypesPadding1;
-            TypeRef charType; // TAG_CHAR = 0b010 = 2
-            ORef immTypesPadding2;
-            TypeRef flonumType; // TAG_FLONUM = 0b100 = 4
-            ORef immTypesPadding3;
-            TypeRef boolType; // TAG_BOOL = 0b110 = 6
-            ORef immTypesPadding4;
+            TypeRef flonumType;
+            TypeRef fixnumType; // fixnumTag = 0b01 = 1
+            TypeRef charType; // charTag = 0b10 = 2
+            TypeRef boolType; // boolTag = 0b11 = 3
 
             TypeRef anyType;
             TypeRef typeType;
@@ -71,7 +67,7 @@ typedef struct State {
             TypeRef arityErrorType;
             TypeRef inapplicableErrorType;
         };
-        ORef types[BOOTSTRAP_TYPE_COUNT];
+        TypeRef types[BOOTSTRAP_TYPE_COUNT];
     };
 
     SymbolTable symbols;
@@ -116,7 +112,7 @@ inline static bool isPair(State const* state, ORef v) {
 }
 
 inline static bool isEmptyList(State const* state, ORef v) {
-    return eq(v, emptyListToORef(state->emptyList));
+    return eq(v, toORef(state->emptyList));
 }
 
 inline static bool isMethod(State const* state, ORef v) {

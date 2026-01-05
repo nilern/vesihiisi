@@ -3,19 +3,19 @@
 
 void print(State const* state, FILE* dest, ORef v) {
     switch (getTag(v)) {
-    case TAG_FIXNUM:
+    case TYPE_FIXNUM:
         fprintf(dest, "%ld", uncheckedFixnumToInt(v));
         break;
         
-    case TAG_FLONUM:
-        assert(false); // FIXME
+    case TYPE_FLONUM:
+        fprintf(dest, "%f", uncheckedFlonumToDouble(v));
         break;
         
-    case TAG_CHAR:
+    case TYPE_CHAR:
         fprintf(dest, "#\"%c\"", uncheckedORefToChar(v));
         break;
         
-    case TAG_BOOL:
+    case TYPE_BOOL:
         if (uncheckedORefToBool(v)) {
             fprintf(dest, "#t");
         } else {
@@ -23,7 +23,7 @@ void print(State const* state, FILE* dest, ORef v) {
         }
         break;
         
-    case TAG_HEAPED:
+    case TYPE_HEAPED:
         if (isString(state, v)) {
             StringRef const s = uncheckedORefToString(v);
             
@@ -97,7 +97,7 @@ void print(State const* state, FILE* dest, ORef v) {
         } else if (isContinuation(state, v)) {
             fprintf(dest, "#<continuation>");
         } else if (isType(state, v)) {
-            Type const* const type = toPtr(uncheckedORefToTypeRef(v));
+            Type const* const type = toPtr(uncheckedORefToType(v));
 
             fprintf(dest, "#<type ");
             print(state, dest, toORef(type->name));
@@ -112,7 +112,7 @@ void print(State const* state, FILE* dest, ORef v) {
             TypeError const* const err = typeErrorToPtr(uncheckedORefToTypeError(v));
 
             fputs("#<type-error ", dest);
-            print(state, dest, typeToORef(err->type));
+            print(state, dest, toORef(err->type));
             putc(' ', dest);
             print(state, dest, err->val);
             putc('>', dest);
@@ -120,9 +120,9 @@ void print(State const* state, FILE* dest, ORef v) {
             ArityError const* const err = arityErrorToPtr(uncheckedORefToArityError(v));
 
             fputs("#<arity-error ", dest);
-            print(state, dest, closureToORef(err->callee));
+            print(state, dest, toORef(err->callee));
             putc(' ', dest);
-            print(state, dest, fixnumToORef(err->callArgc));
+            print(state, dest, toORef(err->callArgc));
             putc('>', dest);
         } else if (isa(state, state->inapplicableErrorType, v)) {
             InapplicableError const* const err = toPtr(uncheckedORefToInapplicableError(v));
@@ -134,8 +134,6 @@ void print(State const* state, FILE* dest, ORef v) {
             assert(false); // FIXME
         }
         break;
-
-    case TAG_BROKEN_HEART: assert(false); break; // Unreachable
     }
 }
 

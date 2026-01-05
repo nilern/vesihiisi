@@ -6,7 +6,7 @@ static Var* tryCreateUnboundVar(Semispace* semispace, Type const* varType, Unbou
     Var* ptr = tryAlloc(semispace, varType);
     if (!ptr) { return ptr; }
 
-    *ptr = (Var){.val = unboundToORef(unbound)};
+    *ptr = (Var){.val = toORef(unbound)};
 
     return ptr;
 }
@@ -18,7 +18,7 @@ static VarRef createUnboundVar(State* state) {
         ptr = allocOrDie(&state->heap.tospace, typeToPtr(state->varType));
     }
 
-    *ptr = (Var){.val = unboundToORef(state->unbound)};
+    *ptr = (Var){.val = toORef(state->unbound)};
 
     return tagVar(ptr);
 }
@@ -31,10 +31,10 @@ static FindVarRes findVar(NamespaceRef nsRef, SymbolRef name) {
     size_t const maxIdx = (uintptr_t)fixnumToInt(arrayMutCount(ns->keys)) - 1;
     for (size_t collisions = 0, i = h & maxIdx;; ++collisions, i = (i + collisions) & maxIdx) {
         ORef const k = keys[i];
-        if (eq(k, symbolToORef(name))) {
+        if (eq(k, toORef(name))) {
             VarRef const var = uncheckedORefToVar(arrayMutToPtr(ns->vals)[i]);
             return (FindVarRes){NS_FOUND_VAR, .var = var};
-        } else if (eq(k, fixnumToORef(Zero))) {
+        } else if (eq(k, toORef(Zero))) {
             return (FindVarRes){NS_FOUND_VAR_DEST_IDX, .destIndex = i};
         }
     }
@@ -55,7 +55,7 @@ static void rehashNamespace(State* state, NamespaceRef const* nsHandle) {
     ORef* const newVals = arrayMutToPtr(newValsRef);
     for (size_t i = 0; i < oldCap; ++i) {
         ORef const k = oldKeys[i];
-        if (!eq(k, fixnumToORef(Zero))) {
+        if (!eq(k, toORef(Zero))) {
             size_t const h = (uintptr_t)fixnumToInt(symbolToPtr(uncheckedORefToSymbol(k))->hash);
 
             size_t const maxIndex = newCap - 1;
@@ -63,7 +63,7 @@ static void rehashNamespace(State* state, NamespaceRef const* nsHandle) {
                 ++collisions, j = (j + collisions) & maxIndex
             ) {
                 ORef* const maybeK = newKeys + j;
-                if (eq(*maybeK, fixnumToORef(Zero))) {
+                if (eq(*maybeK, toORef(Zero))) {
                     *maybeK = k;
                     newVals[j] = oldVals[i];
                     break;
@@ -100,8 +100,8 @@ static VarRef getVar(State* state, NamespaceRef nsRef, SymbolRef name) {
         ns = namespaceToPtr(nsRef);
         findRes = findVar(nsRef, name);
         assert(findRes.type == NS_FOUND_VAR_DEST_IDX);
-        arrayMutToPtr(ns->keys)[findRes.destIndex] = symbolToORef(name);
-        arrayMutToPtr(ns->vals)[findRes.destIndex] = varToORef(var);
+        arrayMutToPtr(ns->keys)[findRes.destIndex] = toORef(name);
+        arrayMutToPtr(ns->vals)[findRes.destIndex] = toORef(var);
         ns->count = tagInt((intptr_t)newCount);
 
         return var;

@@ -187,7 +187,7 @@ static ORef mark(Heap* heap, ORef oref) {
 
 [[nodiscard]]
 static Header markHeader(Heap* heap, Header header) {
-    TypeRef const type = uncheckedORefToTypeRef(mark(heap, typeToORef(headerType(header))));
+    TypeRef const type = uncheckedORefToType(mark(heap, toORef(headerType(header))));
     return fixedHeader(typeToPtr(type));
 }
 
@@ -219,10 +219,10 @@ static void* scanObj(Heap* heap, void* const scan) {
 
     char* byteScan = (char*)scan;
 
-    if (eq(boolToORef(type->isBytes), boolToORef(True))) {
+    if (eq(toORef(type->isBytes), toORef(True))) {
         byteScan += (uintptr_t)fixnumToInt(type->minSize); // Skip fixed portion
 
-        if (eq(boolToORef(type->isFlex), boolToORef(True))) {
+        if (eq(toORef(type->isFlex), toORef(True))) {
             FlexHeader const flexHeader = *((FlexHeader*)scan - 1);
             byteScan += (uintptr_t)fixnumToInt(flexHeader.length); // Skip flex portion
         }
@@ -230,12 +230,12 @@ static void* scanObj(Heap* heap, void* const scan) {
         return (void*)byteScan;
     } else {
         size_t slotCount = (uintptr_t)fixnumToInt(type->minSize) / sizeof(ORef); // Fixed slot count
-        if (eq(boolToORef(type->isFlex), boolToORef(True))) {
+        if (eq(toORef(type->isFlex), toORef(True))) {
             FlexHeader const flexHeader = *((FlexHeader*)scan - 1);
             slotCount += (uintptr_t)fixnumToInt(flexHeader.length); // Add flex slot count
         }
 
-        if (eq(boolToORef(type->hasCodePtr), boolToORef(True))) {
+        if (eq(toORef(type->hasCodePtr), toORef(True))) {
             // Skip code pointer:
             byteScan += sizeof(MethodCode);
             --slotCount; // Assuming that code pointer is ORef-sized...

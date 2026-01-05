@@ -10,14 +10,10 @@
 #include "flyweights.h"
 
 static char const* const typeNames[] = {
-    "<fixnum>",
-    "",
-    "<char>",
-    "",
     "<flonum>",
-    "",
+    "<fixnum>",
+    "<char>",
     "<bool>",
-    "",
     "<any>",
     "<type>",
     "<string>",
@@ -111,17 +107,17 @@ static void markRoots(State* state) {
         state->regs[i] = mark(&state->heap, state->regs[i]);
     }
 
-    state->ns = uncheckedORefToNamespace(mark(&state->heap, namespaceToORef(state->ns)));
+    state->ns = uncheckedORefToNamespace(mark(&state->heap, toORef(state->ns)));
 
     for (size_t i = 0; i < BOOTSTRAP_TYPE_COUNT; ++i) {
-        state->types[i] = mark(&state->heap, state->types[i]);
+        state->types[i] = uncheckedORefToType(mark(&state->heap, toORef(state->types[i])));
     }
 
     for (size_t i = 0; i < BOOTSTRAP_SINGLETON_COUNT; ++i) {
         state->singletons[i] = mark(&state->heap, state->singletons[i]);
     }
 
-    state->errorHandler = uncheckedORefToVar(mark(&state->heap, varToORef(state->errorHandler)));
+    state->errorHandler = uncheckedORefToVar(mark(&state->heap, toORef(state->errorHandler)));
 
     {
         size_t const stackRootCount = state->shadowstack.count;
@@ -653,7 +649,7 @@ State* tryCreateState(size_t heapSize) {
     State* const dest = malloc(sizeof *dest);
     if (!dest) { return dest; }
     *dest = (State){
-        .method = fixnumToORef(Zero),
+        .method = toORef(Zero),
         .code = nullptr,
         .pc = 0,
         .consts = nullptr,
@@ -709,16 +705,16 @@ State* tryCreateState(size_t heapSize) {
         if (nameLen > 0) {
             Str const nameStr = (Str){name, nameLen};
             // `ORef const type = dest->types[i];` would not pay off since `nameType` may GC:
-            nameType(dest, uncheckedORefToTypeRef(dest->types[i]), nameStr);
-            installPrimordial(dest, nameStr, dest->types[i]);
+            nameType(dest, dest->types[i], nameStr);
+            installPrimordial(dest, nameStr, toORef(dest->types[i]));
         }
     }
 
     MethodRef const abortMethod =
-        createPrimopMethod(dest, strLit("abort"), primopAbort, One, false, dest->anyType);
+        createPrimopMethod(dest, strLit("abort"), primopAbort, tagInt(1), false, dest->anyType);
     ClosureRef abortClosure = allocClosure(dest, abortMethod, Zero);
     pushStackRoot(dest, (ORef*)&abortClosure);
-    varToPtr(dest->errorHandler)->val = closureToORef(abortClosure);
+    varToPtr(dest->errorHandler)->val = toORef(abortClosure);
 
     installPrimordial(dest, strLit("abort"), toORef(abortClosure));
     popStackRoots(dest, 1);
@@ -765,10 +761,10 @@ State* tryCreateState(size_t heapSize) {
 inline static bool typeEq(TypeRef type1, TypeRef type2) { return type1.bits == type2.bits; }
 
 static TypeRef typeOf(State const* state, ORef v) {
-    Tag const tag = getTag(v);
-    return tag == TAG_HEAPED
+    TaggedType const tag = getTag(v);
+    return tag == TYPE_HEAPED
         ? headerType(*((Header*)uncheckedORefToPtr(v) - 1))
-        : uncheckedORefToTypeRef(state->types[tag]);
+        : state->types[(size_t)tag];
 }
 
 static bool isa(State const* state, TypeRef type, ORef v) {
@@ -797,10 +793,7 @@ static void assertStateInTospace(State const* state) {
     assert(allocatedInSemispace(&state->heap.tospace, namespaceToPtr(state->ns)));
 
     for (size_t i = 0; i < BOOTSTRAP_TYPE_COUNT; ++i) {
-        ORef const v = state->types[i];
-        if (isHeaped(v)) {
-            assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(v)));
-        }
+        assert(allocatedInSemispace(&state->heap.tospace, toPtr(state->types[i])));
     }
 
     for (size_t i = 0; i < state->symbols.cap; ++i) {
@@ -932,12 +925,12 @@ static IndexOfSymbolRes indexOfSymbol(SymbolTable const* symbols, Fixnum hash, S
     for (size_t collisions = 0, i = h & maxIndex;; ++collisions, i = (i + collisions) & maxIndex) {
         ORef* const entry = symbols->entries + i;
         
-        if (eq(*entry, fixnumToORef(Zero))) { return (IndexOfSymbolRes){i, false}; }
+        if (eq(*entry, toORef(Zero))) { return (IndexOfSymbolRes){i, false}; }
 
         if (isHeaped(*entry)) {
             SymbolRef const symbol = uncheckedORefToSymbol(*entry);
             Symbol const* const symbolPtr = symbolToPtr(symbol);
-            if (eq(fixnumToORef(symbolPtr->hash), fixnumToORef(hash))
+            if (eq(toORef(symbolPtr->hash), toORef(hash))
                 && strEq(symbolName(symbol), name)
             ) {
                 return (IndexOfSymbolRes){i, true};
@@ -963,7 +956,7 @@ static void rehashSymbols(State* state) {
                 ++collisions, j = (j + collisions) & maxIndex
             ) {
                 ORef* const entry = newEntries + j;
-                if (eq(*entry, fixnumToORef(Zero))) {
+                if (eq(*entry, toORef(Zero))) {
                     *entry = v;
                     ++newCount;
                     break;
@@ -994,7 +987,7 @@ static SymbolRef intern(State* state, Str name) {
         }
         
         SymbolRef const symbol = createUninternedSymbol(state, hash, name);
-        state->symbols.entries[ires.index] = symbolToORef(symbol);
+        state->symbols.entries[ires.index] = toORef(symbol);
         state->symbols.count = newCount;
         return symbol;
     }
@@ -1030,8 +1023,8 @@ static Method* tryAllocBytecodeMethod(
 
     *ptr = (Method){
         .nativeCode = callBytecode,
-        .code = byteArrayToORef(code),
-        .consts = arrayMutToORef(consts),
+        .code = toORef(code),
+        .consts = toORef(consts),
         .hasVarArg = hasVarArg,
         .hash = hash,
         .maybeName = maybeName
@@ -1048,8 +1041,8 @@ static Method* allocBytecodeMethodOrDie(
 
     *ptr = (Method){
         .nativeCode = callBytecode,
-        .code = byteArrayToORef(code),
-        .consts = arrayMutToORef(consts),
+        .code = toORef(code),
+        .consts = toORef(consts),
         .hasVarArg = hasVarArg,
         .hash = hash,
         .maybeName = maybeName
@@ -1074,8 +1067,8 @@ static MethodRef allocBytecodeMethod(
 
     *ptr = (Method){
         .nativeCode = callBytecode,
-        .code = byteArrayToORef(code),
-        .consts = arrayMutToORef(consts),
+        .code = toORef(code),
+        .consts = toORef(consts),
         .hasVarArg = hasVarArg,
         .hash = hash,
         .maybeName = maybeName
@@ -1111,8 +1104,8 @@ static MethodRef vcreatePrimopMethod(
 
     *ptr = (Method){
         .nativeCode = nativeCode,
-        .code = fixnumToORef(Zero),
-        .consts = fixnumToORef(Zero),
+        .code = toORef(Zero),
+        .consts = toORef(Zero),
         .hasVarArg = tagBool(hasVarArg),
         .hash = tagInt((intptr_t)hash)
     };
@@ -1149,7 +1142,7 @@ static ClosureRef allocClosure(State* state, MethodRef method, Fixnum cloverCoun
         ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->closureType), cloverCount);
     }
 
-    ptr->method = methodToORef(method);
+    ptr->method = toORef(method);
 
     return tagClosure(ptr);
 }
@@ -1166,7 +1159,7 @@ static ContinuationRef allocContinuation(
         ptr = allocFlexOrDie(&state->heap.tospace, typeToPtr(state->continuationType), cloverCount);
     }
 
-    ptr->method = methodToORef(method);
+    ptr->method = toORef(method);
     ptr->pc = pc;
 
     return tagContinuation(ptr);

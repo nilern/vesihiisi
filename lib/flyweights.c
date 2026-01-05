@@ -1,5 +1,9 @@
 #include "flyweights.h"
 
+#include <stdlib.h>
+
+#include "util/util.h"
+
 static Specializations newSpecializations(void) {
     size_t const cap = 2;
     ORef* const entries = calloc(cap, sizeof *entries);
@@ -36,7 +40,7 @@ static Fixnum hashSpecialization(MethodRef generic, ArrayMutRef typesRef) {
     ORef const* const types = arrayMutToPtr(typesRef);
     size_t const typeCount = (uintptr_t)fixnumToInt(uncheckedFlexCount(toORef(typesRef)));
     for (size_t i = 0; i < typeCount; ++i) {
-        Type const* const type = toPtr(uncheckedORefToTypeRef(types[i]));
+        Type const* const type = toPtr(uncheckedORefToType(types[i]));
         hash = hashCombine(hash, (uintptr_t)fixnumToInt(type->hash));
     }
 
@@ -83,7 +87,7 @@ static IndexOfSpecializationRes indexOfSpecialization(
     for (size_t collisions = 0, i = h & maxIndex;; ++collisions, i = (i + collisions) & maxIndex) {
         ORef* const entry = specializations->entries + i;
 
-        if (eq(*entry, fixnumToORef(Zero))) { return (IndexOfSpecializationRes){i, false}; }
+        if (eq(*entry, toORef(Zero))) { return (IndexOfSpecializationRes){i, false}; }
 
         if (isHeaped(*entry)) {
             MethodRef const methodRef = uncheckedORefToMethod(*entry);
@@ -112,7 +116,7 @@ static void rehashSpecializations(Specializations* specializations) {
                  ++collisions, j = (j + collisions) & maxIndex
                  ) {
                 ORef* const entry = newEntries + j;
-                if (eq(*entry, fixnumToORef(Zero))) {
+                if (eq(*entry, toORef(Zero))) {
                     *entry = v;
                     ++newCount;
                     break;

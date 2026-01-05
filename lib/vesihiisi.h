@@ -9,7 +9,7 @@ typedef struct Str {
     size_t len;
 } Str;
 
-typedef struct ORef { uintptr_t bits; } ORef;
+typedef struct ORef { uint64_t bits; } ORef;
 
 // OPTIMIZE: Could use tagged nullptr instead of !.hasVal:
 typedef struct MaybeORef {

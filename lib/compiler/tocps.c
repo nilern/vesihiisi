@@ -59,7 +59,7 @@ static void rehashToCpsFrame(ToCpsFrame* frame) {
     for (size_t i = 0; i < oldCap; ++i) {
         ORef const k = oldKeys[i];
 
-        if (!eq(k, fixnumToORef(Zero))) {
+        if (!eq(k, toORef(Zero))) {
             size_t const h = (uintptr_t)fixnumToInt(symbolToPtr(uncheckedORefToSymbol(k))->hash);
 
             size_t const maxIndex = newCap - 1;
@@ -68,7 +68,7 @@ static void rehashToCpsFrame(ToCpsFrame* frame) {
             ) {
                 ORef* const maybeK = newKeys + j;
 
-                if (eq(*maybeK, fixnumToORef(Zero))) {
+                if (eq(*maybeK, toORef(Zero))) {
                     *maybeK = k;
                     newVals[j] = oldVals[i];
                     break;
@@ -91,9 +91,9 @@ static BucketIdx toCpsFrameFindIdx(ToCpsFrame const* frame, SymbolRef sym) {
     for (size_t collisions = 0, i = h & maxIdx;; ++collisions, i = (i + collisions) & maxIdx) {
         ORef const k = frame->keys[i];
 
-        if (eq(k, symbolToORef(sym))) {
+        if (eq(k, toORef(sym))) {
             return (BucketIdx){.idx = i, .occupied = true};
-        } else if (eq(k, fixnumToORef(Zero))) {
+        } else if (eq(k, toORef(Zero))) {
             return (BucketIdx){.idx = i, .occupied = false};
         }
     }
@@ -121,7 +121,7 @@ static void toCpsFrameSet(ToCpsFrame* frame, SymbolRef sym, ToCpsFrameDef def) {
             idx = bucketIdx.idx;
         }
 
-        frame->keys[idx] = symbolToORef(sym);
+        frame->keys[idx] = toORef(sym);
         frame->vals[idx] = def;
         frame->count = newCount;
     }

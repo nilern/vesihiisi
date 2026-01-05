@@ -46,7 +46,7 @@ static bool readExpr(State* state, ORef* dest, Parser* parser) {
         
         if (*parser->curr == ')') { // Empty list
             ++parser->curr; // Discard ')'
-            *dest = emptyListToORef(state->emptyList);
+            *dest = toORef(state->emptyList);
             return true;
         }
         
@@ -65,7 +65,7 @@ static bool readExpr(State* state, ORef* dest, Parser* parser) {
         while (*parser->curr != ')') {
             if (*parser->curr != '.') {
                 PairRef const newPair = allocPair(state);
-                pairToPtr(pair)->cdr = pairToORef(newPair);
+                pairToPtr(pair)->cdr = toORef(newPair);
                 pair = newPair;
                 
                 // <expr>
@@ -92,7 +92,7 @@ static bool readExpr(State* state, ORef* dest, Parser* parser) {
                     return false;
                 }
                 ++parser->curr; // Discard ')'
-                *dest = pairToORef(firstPair);
+                *dest = toORef(firstPair);
                 popStackRoots(state, 2);
                 return true;
             }
@@ -102,8 +102,8 @@ static bool readExpr(State* state, ORef* dest, Parser* parser) {
         
         ++parser->curr; // Discard ')'
         
-        pairToPtr(pair)->cdr = emptyListToORef(state->emptyList);
-        *dest = pairToORef(firstPair);
+        pairToPtr(pair)->cdr = toORef(state->emptyList);
+        *dest = toORef(firstPair);
         popStackRoots(state, 2);
         return true;
     } else if (isInitial(c)) {
@@ -113,7 +113,7 @@ static bool readExpr(State* state, ORef* dest, Parser* parser) {
             c = *++parser->curr;
          } while (isSubsequent(c));
         
-        *dest = symbolToORef(intern(state, stringBuilderStr(&builder)));
+        *dest = toORef(intern(state, stringBuilderStr(&builder)));
         freeStringBuilder(&builder); // OPTIMIZE: Reuse same builder
         return true;
     } else if (c == '#') {
@@ -127,17 +127,17 @@ static bool readExpr(State* state, ORef* dest, Parser* parser) {
             ++parser->curr;
             if (*parser->curr != '"') { return false; }
             
-            *dest = charToORef(tagChar(c));
+            *dest = toORef(tagChar(c));
             return true;
         
         case 't':
             ++parser->curr;
-            *dest = boolToORef(tagBool(true));
+            *dest = toORef(tagBool(true));
             return true;
         
         case 'f':
             ++parser->curr;
-            *dest = boolToORef(tagBool(false));
+            *dest = toORef(tagBool(false));
             return true;
         
         default: return false;
@@ -151,7 +151,7 @@ static bool readExpr(State* state, ORef* dest, Parser* parser) {
             c = *++parser->curr;
         } while (isdigit(c));
         
-        *dest = fixnumToORef(tagInt(n));
+        *dest = toORef(tagInt(n));
         return true;
     } else if (c == '"') {
         ++parser->curr;
@@ -178,7 +178,7 @@ static bool readExpr(State* state, ORef* dest, Parser* parser) {
 
         ++parser->curr; // Discard '"'
         
-        *dest = stringToORef(createString(state, stringBuilderStr(&builder)));
+        *dest = toORef(createString(state, stringBuilderStr(&builder)));
         freeStringBuilder(&builder); // OPTIMIZE: Reuse same builder
         return true;
     }

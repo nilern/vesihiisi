@@ -44,7 +44,7 @@ static ORef doCheckDomain(
         }
     }
 
-    return toORef(Zero);
+    return Default;
 }
 
 // TODO: Can we somehow (efficiently!) DRY this wrt. `doCheckDomain`?
@@ -157,7 +157,7 @@ static ORef checkDomainForArgs(
 ) {
     if (!state->checkDomain) {
         state->checkDomain = true;
-        return toORef(Zero);
+        return Default;
     }
 
     return doCheckDomain(state, calleeRef, args, argc);
@@ -167,7 +167,7 @@ static ORef checkDomainForArgs(
 static ORef checkDomain(State* state) {
     if (!state->checkDomain) {
         state->checkDomain = true;
-        return toORef(Zero);
+        return Default;
     }
 
     assert(isClosure(state, state->regs[calleeReg]));
@@ -177,7 +177,7 @@ static ORef checkDomain(State* state) {
     return doCheckDomain(state, calleeRef, args, argc);
 }
 
-/// Returns applicable closure from `callee`, `Zero` if none is found.
+/// Returns applicable closure from `callee`, `Default` if none is found.
 static ORef applicableClosureForArgs(
     State* state, Multimethod const* callee, ORef const* args, size_t argc
 ) {
@@ -195,11 +195,11 @@ static ORef applicableClosureForArgs(
         }
     }
 
-    return toORef(Zero);
+    return Default;
 }
 
 // TODO: DRY wrt. `applicableClosureForArgs`:
-/// Returns applicable closure from `callee`, `Zero` if none is found.
+/// Returns applicable closure from `callee`, `Default` if none is found.
 static ORef applicableClosureForArglist(State* state, Multimethod const* callee, ORef args) {
     ArrayRef const methodsRef = callee->methods;
     ORef const* const methods = toPtr(methodsRef);
@@ -215,7 +215,7 @@ static ORef applicableClosureForArglist(State* state, Multimethod const* callee,
         }
     }
 
-    return toORef(Zero);
+    return Default;
 }
 
 static bool calleeClosureForArgs(State* state, ORef callee, ORef const* args, size_t argc) {

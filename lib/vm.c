@@ -186,7 +186,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
             ContinuationRef const retRef = uncheckedORefToContinuation(state->regs[retContReg]);
             Continuation const* const ret = continuationToPtr(retRef);
             ORef const method = ret->method;
-            if (!eq(method, toORef(Zero))) {
+            if (isHeaped(method)) {
                 assert(isMethod(state, method));
                 Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
                 state->method = method;
@@ -342,7 +342,7 @@ static VMRes run(State* state, ClosureRef selfRef) {
                         uncheckedORefToContinuation(state->regs[retContReg]);
                     Continuation const* const ret = continuationToPtr(retRef);
                     ORef const method = ret->method;
-                    if (!eq(method, toORef(Zero))) {
+                    if (isHeaped(method)) {
                         assert(isMethod(state, method));
                         Method const* const methodPtr =
                             methodToPtr(uncheckedORefToMethod(method));

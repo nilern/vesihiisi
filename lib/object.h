@@ -65,8 +65,7 @@ static inline TaggedType getTag(ORef v) {
     return (TaggedType)((v.bits >> payloadWidth) & 0b11);
 }
 
-static Fixnum const Zero;
-static Fixnum const One;
+static ORef const Default;
 
 static Bool const True;
 static Bool const False;

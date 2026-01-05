@@ -2,7 +2,7 @@
 
 #include "state.h"
 
-/// Returns (first) error, `Zero` if none.
+/// Returns (first) error, `Default` if none.
 [[nodiscard]]
 static ORef checkDomainForArgs(
     State* state, ClosureRef calleeRef, ORef const* args, size_t argc);

@@ -560,7 +560,7 @@ static void installPrimop(
     va_start(domain, arity);
     MethodRef const method = vcreatePrimopMethod(state, name, nativeCode, arity, hasVarArg, domain);
     va_end(domain);
-    ClosureRef const closure = allocClosure(state, method, Zero);
+    ClosureRef const closure = allocClosure(state, method, tagInt(0));
     installPrimordial(state, name, toORef(closure));
 }
 
@@ -637,7 +637,7 @@ State* tryCreateState(size_t heapSize) {
     if (!emptyListPtr) { return nullptr; }
     void const* const unbound = tryAlloc(&heap.tospace, unboundType);
     if (!unbound) { return nullptr; }
-    void* const exitPtr = tryAllocFlex(&heap.tospace, continuationType, Zero);
+    void* const exitPtr = tryAllocFlex(&heap.tospace, continuationType, tagInt(0));
     if (!exitPtr) { return nullptr; }
 
     Var* const errorHandler = tryCreateUnboundVar(&heap.tospace, varType, tagUnbound(unbound));
@@ -649,7 +649,7 @@ State* tryCreateState(size_t heapSize) {
     State* const dest = malloc(sizeof *dest);
     if (!dest) { return dest; }
     *dest = (State){
-        .method = toORef(Zero),
+        .method = Default,
         .code = nullptr,
         .pc = 0,
         .consts = nullptr,
@@ -712,7 +712,7 @@ State* tryCreateState(size_t heapSize) {
 
     MethodRef const abortMethod =
         createPrimopMethod(dest, strLit("abort"), primopAbort, tagInt(1), false, dest->anyType);
-    ClosureRef abortClosure = allocClosure(dest, abortMethod, Zero);
+    ClosureRef abortClosure = allocClosure(dest, abortMethod, tagInt(0));
     pushStackRoot(dest, (ORef*)&abortClosure);
     varToPtr(dest->errorHandler)->val = toORef(abortClosure);
 
@@ -925,7 +925,7 @@ static IndexOfSymbolRes indexOfSymbol(SymbolTable const* symbols, Fixnum hash, S
     for (size_t collisions = 0, i = h & maxIndex;; ++collisions, i = (i + collisions) & maxIndex) {
         ORef* const entry = symbols->entries + i;
         
-        if (eq(*entry, toORef(Zero))) { return (IndexOfSymbolRes){i, false}; }
+        if (eq(*entry, Default)) { return (IndexOfSymbolRes){i, false}; }
 
         if (isHeaped(*entry)) {
             SymbolRef const symbol = uncheckedORefToSymbol(*entry);
@@ -956,7 +956,7 @@ static void rehashSymbols(State* state) {
                 ++collisions, j = (j + collisions) & maxIndex
             ) {
                 ORef* const entry = newEntries + j;
-                if (eq(*entry, toORef(Zero))) {
+                if (eq(*entry, Default)) {
                     *entry = v;
                     ++newCount;
                     break;
@@ -1104,8 +1104,8 @@ static MethodRef vcreatePrimopMethod(
 
     *ptr = (Method){
         .nativeCode = nativeCode,
-        .code = toORef(Zero),
-        .consts = toORef(Zero),
+        .code = Default,
+        .consts = Default,
         .hasVarArg = tagBool(hasVarArg),
         .hash = tagInt((intptr_t)hash)
     };

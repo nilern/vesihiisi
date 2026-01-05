@@ -87,7 +87,7 @@ static IndexOfSpecializationRes indexOfSpecialization(
     for (size_t collisions = 0, i = h & maxIndex;; ++collisions, i = (i + collisions) & maxIndex) {
         ORef* const entry = specializations->entries + i;
 
-        if (eq(*entry, toORef(Zero))) { return (IndexOfSpecializationRes){i, false}; }
+        if (eq(*entry, Default)) { return (IndexOfSpecializationRes){i, false}; }
 
         if (isHeaped(*entry)) {
             MethodRef const methodRef = uncheckedORefToMethod(*entry);
@@ -116,7 +116,7 @@ static void rehashSpecializations(Specializations* specializations) {
                  ++collisions, j = (j + collisions) & maxIndex
                  ) {
                 ORef* const entry = newEntries + j;
-                if (eq(*entry, toORef(Zero))) {
+                if (eq(*entry, Default)) {
                     *entry = v;
                     ++newCount;
                     break;

@@ -15,7 +15,7 @@ static uint64_t const boolTag = nonFlonumTag | ((uint64_t)TYPE_BOOL << payloadWi
 // pointers anyway:
 static uint64_t const heapedTag = nonFlonumTag | ((uint64_t)0b00 << payloadWidth);
 
-static Fixnum const Zero = {0};
+static ORef const Default = {0}; // 0.0
 
 static Bool const True = {boolTag | (uint64_t)true};
 static Bool const False = {boolTag | (uint64_t)false};

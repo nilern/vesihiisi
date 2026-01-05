@@ -34,7 +34,7 @@ static FindVarRes findVar(NamespaceRef nsRef, SymbolRef name) {
         if (eq(k, toORef(name))) {
             VarRef const var = uncheckedORefToVar(arrayMutToPtr(ns->vals)[i]);
             return (FindVarRes){NS_FOUND_VAR, .var = var};
-        } else if (eq(k, toORef(Zero))) {
+        } else if (eq(k, Default)) {
             return (FindVarRes){NS_FOUND_VAR_DEST_IDX, .destIndex = i};
         }
     }
@@ -55,7 +55,7 @@ static void rehashNamespace(State* state, NamespaceRef const* nsHandle) {
     ORef* const newVals = arrayMutToPtr(newValsRef);
     for (size_t i = 0; i < oldCap; ++i) {
         ORef const k = oldKeys[i];
-        if (!eq(k, toORef(Zero))) {
+        if (!eq(k, Default)) {
             size_t const h = (uintptr_t)fixnumToInt(symbolToPtr(uncheckedORefToSymbol(k))->hash);
 
             size_t const maxIndex = newCap - 1;
@@ -63,7 +63,7 @@ static void rehashNamespace(State* state, NamespaceRef const* nsHandle) {
                 ++collisions, j = (j + collisions) & maxIndex
             ) {
                 ORef* const maybeK = newKeys + j;
-                if (eq(*maybeK, toORef(Zero))) {
+                if (eq(*maybeK, Default)) {
                     *maybeK = k;
                     newVals[j] = oldVals[i];
                     break;

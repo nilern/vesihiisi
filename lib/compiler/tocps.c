@@ -59,7 +59,7 @@ static void rehashToCpsFrame(ToCpsFrame* frame) {
     for (size_t i = 0; i < oldCap; ++i) {
         ORef const k = oldKeys[i];
 
-        if (!eq(k, toORef(Zero))) {
+        if (!eq(k, Default)) {
             size_t const h = (uintptr_t)fixnumToInt(symbolToPtr(uncheckedORefToSymbol(k))->hash);
 
             size_t const maxIndex = newCap - 1;
@@ -68,7 +68,7 @@ static void rehashToCpsFrame(ToCpsFrame* frame) {
             ) {
                 ORef* const maybeK = newKeys + j;
 
-                if (eq(*maybeK, toORef(Zero))) {
+                if (eq(*maybeK, Default)) {
                     *maybeK = k;
                     newVals[j] = oldVals[i];
                     break;
@@ -93,7 +93,7 @@ static BucketIdx toCpsFrameFindIdx(ToCpsFrame const* frame, SymbolRef sym) {
 
         if (eq(k, toORef(sym))) {
             return (BucketIdx){.idx = i, .occupied = true};
-        } else if (eq(k, toORef(Zero))) {
+        } else if (eq(k, Default)) {
             return (BucketIdx){.idx = i, .occupied = false};
         }
     }
@@ -210,10 +210,10 @@ static ORef toCpsContDestSymbol(ToCpsCont k) {
     case TO_CPS_CONT_EFF: // fallthrough
     case TO_CPS_CONT_VAL: // fallthrough
     case TO_CPS_CONT_JOIN: // fallthrough
-    case TO_CPS_CONT_RETURN: return toORef(Zero);
+    case TO_CPS_CONT_RETURN: return Default;
     }
 
-    return toORef(Zero); // Unreachable
+    return Default; // Unreachable
 }
 
 static IRName constToCPS(Compiler* compiler, IRBlock* block, ORef expr, ToCpsCont k) {
@@ -830,7 +830,7 @@ static IRName exprToIR(
 }
 
 static IRFn topLevelExprToIR(State const* state, Compiler* compiler, ORef expr) {
-    IRFn fn = createIRFn(compiler, toORef(Zero));
+    IRFn fn = createIRFn(compiler, Default);
 
     IRBlock* entryBlock = createIRBlock(compiler, &fn, 0);
 

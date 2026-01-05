@@ -20,7 +20,7 @@ static Compiler createCompiler(void) {
 
     // Reserve (IRName){0} as invalid:
     size_t const nameCount = 1;
-    nameSyms[0] = toORef(Zero);
+    nameSyms[0] = Default;
     
     return (Compiler){
         .arena = newArena(defaultArenaBlockSize),
@@ -52,7 +52,7 @@ static IRName renameSymbol(Compiler* compiler, SymbolRef sym) {
 }
 
 static IRName freshName(Compiler* compiler) {
-    return renameSymbolImpl(compiler, toORef(Zero));
+    return renameSymbolImpl(compiler, Default);
 }
 
 static IRName renameIRName(Compiler* compiler, IRName name) {

@@ -25,6 +25,6 @@
 
 VMRes eval(State* state, ORef expr, bool debug) {
     MethodRef const method = compile(state, expr, debug);
-    ClosureRef const closure = allocClosure(state, method, Zero);
+    ClosureRef const closure = allocClosure(state, method, tagInt(0));
     return run(state, closure);
 }

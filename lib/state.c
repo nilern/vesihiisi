@@ -520,6 +520,7 @@ inline static Type* tryCreateBoolType(Semispace* semispace, Type const* typeType
 static PrimopRes callBytecode(State* state);
 static PrimopRes primopAbort(State* state);
 static PrimopRes primopApplyArray(State* state);
+static PrimopRes primopApplyList(State* state);
 static PrimopRes primopCallCC(State* state);
 static PrimopRes primopContinue(State* state);
 static PrimopRes primopIdentical(State* state);
@@ -730,6 +731,8 @@ State* tryCreateState(size_t heapSize) {
     // TODO: `array!` -> `array-mut` (everywhere):
     installPrimop(dest, strLit("apply-array!"), primopApplyArray,
                   tagInt(2), false, dest->anyType, dest->arrayMutType);
+    installPrimop(dest, strLit("apply-list"), primopApplyList,
+                  tagInt(2), false, dest->anyType, dest->anyType);
     installPrimop(dest, strLit("call-with-current-continuation"), primopCallCC,
                   tagInt(1), false, dest->closureType);
     installPrimop(dest, strLit("continue"), primopContinue,

@@ -68,6 +68,7 @@ static bool closureIsApplicable(
     bool const hasVarArg = unwrapBool(method->hasVarArg);
     size_t const minArity = !hasVarArg ? arity : arity - 1;
 
+    // Fixed args:
     for (size_t i = 0; i < minArity; ++i) {
         assert(isType(state, method->domain[i]));
         TypeRef const type = uncheckedORefToTypeRef(method->domain[i]);
@@ -77,7 +78,7 @@ static bool closureIsApplicable(
         }
     }
 
-    if (hasVarArg) {
+    if (hasVarArg) { // Vararg:
         assert(isType(state, method->domain[minArity]));
         TypeRef const type = uncheckedORefToTypeRef(method->domain[minArity]);
         for (size_t i = minArity; i < argc; ++i) {
@@ -86,6 +87,65 @@ static bool closureIsApplicable(
                 return false;
             }
         }
+    }
+
+    return true;
+}
+
+// TODO: DRY wrt. `closureIsApplicable`:
+[[nodiscard]]
+static bool closureIsApplicableToList(State const* state, Closure const* callee, ORef args) {
+    assert(isMethod(state, callee->method));
+    MethodRef const methodRef = uncheckedORefToMethod(callee->method);
+    Method const* const method = methodToPtr(methodRef);
+    size_t const arity = (uintptr_t)fixnumToInt(uncheckedFlexCount(methodToORef(methodRef)));
+
+    bool const hasVarArg = unwrapBool(method->hasVarArg);
+    size_t const minArity = !hasVarArg ? arity : arity - 1;
+
+    // Fixed args:
+    for (size_t i = 0; i < minArity; ++i) {
+        if (isPair(state, args)) {
+            Pair const* const argsPair = toPtr(uncheckedORefToPair(args));
+
+            assert(isType(state, method->domain[i]));
+            TypeRef const type = uncheckedORefToTypeRef(method->domain[i]);
+            ORef const v = argsPair->car;
+            if (!isa(state, type, v)) {
+                return false;
+            }
+
+            args = argsPair->cdr;
+        } else if (isEmptyList(state, args)) {
+            return false; // Insufficient argc
+        } else {
+            assert(false); // TODO: Proper improper args error
+        }
+    }
+
+    if (hasVarArg) { // Vararg:
+        assert(isType(state, method->domain[minArity]));
+        TypeRef const type = uncheckedORefToTypeRef(method->domain[minArity]);
+        for (;/*ever*/;) {
+            if (isPair(state, args)) {
+                Pair const* const argsPair = toPtr(uncheckedORefToPair(args));
+
+                ORef const v = argsPair->car;
+                if (!isa(state, type, v)) {
+                    return false;
+                }
+
+                args = argsPair->cdr;
+            } else if (isEmptyList(state, args)) {
+                break;
+            } else {
+                assert(false); // TODO: Proper improper args error
+            }
+        }
+    }
+
+    if (!isEmptyList(state, args)) {
+        return false; // Excessive argc
     }
 
     return true;
@@ -138,6 +198,26 @@ static ORef applicableClosureForArgs(
     return toORef(Zero);
 }
 
+// TODO: DRY wrt. `applicableClosureForArgs`:
+/// Returns applicable closure from `callee`, `Zero` if none is found.
+static ORef applicableClosureForArglist(State* state, Multimethod const* callee, ORef args) {
+    ArrayRef const methodsRef = callee->methods;
+    ORef const* const methods = toPtr(methodsRef);
+
+    size_t const methodCount = (uintptr_t)fixnumToInt(arrayCount(methodsRef));
+    for (size_t i = 0; i < methodCount; ++i) {
+        assert(isa(state, state->closureType, (methods[i])));
+        ClosureRef const methodRef = uncheckedORefToClosure(methods[i]);
+
+        if (closureIsApplicableToList(state, toPtr(methodRef), args)) {
+            state->checkDomain = false;
+            return toORef(methodRef);
+        }
+    }
+
+    return toORef(Zero);
+}
+
 static bool calleeClosureForArgs(State* state, ORef callee, ORef const* args, size_t argc) {
     // TODO: Make continuations directly callable?
     // TODO: Make this extensible (à la JVM `invokedynamic`)?:
@@ -150,6 +230,43 @@ static bool calleeClosureForArgs(State* state, ORef callee, ORef const* args, si
 
         ORef const maybeClosure =
             applicableClosureForArgs(state, toPtr(multiCalleeRef), args, argc);
+        if (isHeaped(maybeClosure)) {
+            state->regs[calleeReg] = maybeClosure;
+            return true;
+        } else {
+            state->regs[calleeReg] = getErrorHandler(state);
+            state->regs[firstArgReg] =
+                toORef(createInapplicableError(state, multiCalleeRef));
+            state->entryRegc = firstArgReg + 1;
+
+            assert(isClosure(state, state->regs[calleeReg]));
+            return false;
+        }
+    } else { // TODO: DRY with "inapplicable" directly above:
+        state->regs[calleeReg] = getErrorHandler(state);
+        // TODO: `UncallableError` as closure is no longer the only callable type:
+        state->regs[firstArgReg] =
+            typeErrorToORef(createTypeError(state, state->closureType, callee));
+        state->entryRegc = firstArgReg + 1;
+
+        assert(isClosure(state, state->regs[calleeReg]));
+        return false;
+    }
+}
+
+// TODO: DRY wrt. `calleeClosureForArgs`:
+static bool calleeClosureForArglist(State* state, ORef callee, ORef args) {
+    // TODO: Make continuations directly callable?
+    // TODO: Make this extensible (à la JVM `invokedynamic`)?:
+
+    if (isClosure(state, callee)) {
+        state->regs[calleeReg] = callee;
+        return true;
+    } else if (isMultimethod(state, callee)) {
+        MultimethodRef const multiCalleeRef = uncheckedORefToMultimethod(callee);
+
+        ORef const maybeClosure =
+            applicableClosureForArglist(state, toPtr(multiCalleeRef), args);
         if (isHeaped(maybeClosure)) {
             state->regs[calleeReg] = maybeClosure;
             return true;

@@ -16,5 +16,7 @@ static ORef checkDomain(State* state);
 /// inapplicable to the given arguments, sets up error call and returns `false`.
 static bool calleeClosureForArgs(State* state, ORef callee, ORef const* args, size_t argc);
 
+static bool calleeClosureForArglist(State* state, ORef callee, ORef args);
+
 /// A wrapper for `calleeClosureForArgs` that assumes args are in `state->regs[firstArgReg...]`.
 static bool calleeClosure(State* state, ORef callee);

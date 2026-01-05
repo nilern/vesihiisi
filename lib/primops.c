@@ -50,11 +50,13 @@ static PrimopRes primopApplyArray(State* state) {
     ORef const* args = toPtr(argsRef);
     size_t argc = (uintptr_t)fixnumToInt(uncheckedFlexCount(toORef(argsRef)));
 
+    // Dispatch:
     if (!calleeClosureForArgs(state, callee, args, argc)) {
         return PRIMOP_RES_TAILCALL; // Finish panic setup
     }
     ClosureRef const closure = uncheckedORefToClosure(state->regs[calleeReg]);
 
+    // Check domain (if not already checked by dispatch):
     ORef const maybeCalleeErr = checkDomainForArgs(state, closure, args, argc);
     if (isHeaped(maybeCalleeErr)) {
         state->regs[calleeReg] = getErrorHandler(state);
@@ -66,6 +68,8 @@ static PrimopRes primopApplyArray(State* state) {
     ORef const method = toPtr(closure)->method;
     assert(isMethod(state, method));
     Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
+
+    // Put args in place:
     if (!isHeaped(methodPtr->code) || !eq(boolToORef(methodPtr->hasVarArg), boolToORef(True))){
         memcpy(state->regs + firstArgReg, args, argc * sizeof(ORef));
     } else { // Non-primop with varargs:
@@ -73,7 +77,10 @@ static PrimopRes primopApplyArray(State* state) {
         size_t const minArity = arity - 1;
         size_t const varargCount = argc - minArity;
 
+        // Fixed args:
         memcpy(state->regs + firstArgReg, args, minArity * sizeof(ORef));
+
+        // Varargs:
         pushStackRoot(state, (ORef*)&argsRef);
         ArrayMutRef const varargsRef = createArrayMut(state, tagInt((intptr_t)varargCount));
         popStackRoots(state, 1);
@@ -83,6 +90,247 @@ static PrimopRes primopApplyArray(State* state) {
         state->regs[firstArgReg + minArity] = arrayMutToORef(varargsRef);
 
         argc = arity;
+    }
+
+    state->entryRegc = (uint8_t)(firstArgReg + argc);
+    state->checkDomain = false;
+    return PRIMOP_RES_TAILAPPLY;
+}
+
+static PrimopRes primopApplyList(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    ORef const callee = state->regs[firstArgReg];
+    ORef args = state->regs[firstArgReg + 1];
+
+    // Dispatch:
+    if (!calleeClosureForArglist(state, callee, args)) {
+        return PRIMOP_RES_TAILCALL; // Finish panic setup
+    }
+    ClosureRef const closure = uncheckedORefToClosure(state->regs[calleeReg]);
+
+    ORef const method = toPtr(closure)->method;
+    assert(isMethod(state, method));
+    Method const* const methodPtr = methodToPtr(uncheckedORefToMethod(method));
+
+    // Put args in place and check them (if not already checked by dispatch):
+    size_t const arity = (uintptr_t)fixnumToInt(uncheckedFlexCount(method));
+    size_t argc = 0;
+    if (state->checkDomain) {
+        bool const hasVarArg = unwrapBool(methodPtr->hasVarArg);
+        size_t const minArity = !hasVarArg ? arity : arity - 1;
+
+        // Fixed args:
+        for (; argc < minArity; ++argc) {
+            if (isPair(state, args)) {
+                Pair const* const argsPair = toPtr(uncheckedORefToPair(args));
+
+                ORef const arg = argsPair->car;
+
+                // OPTIMIZE: Skip type check if no typed params (= not a specialization):
+                assert(isa(state, state->typeType, methodPtr->domain[argc]));
+                TypeRef const type = uncheckedORefToTypeRef(methodPtr->domain[argc]);
+                if (!isa(state, type, arg)) {
+                    ORef const err = typeErrorToORef(createTypeError(state, type, arg));
+                    return primopError(state, err);
+                }
+
+                state->regs[firstArgReg + argc] = arg;
+
+                args = argsPair->cdr;
+            } else if (isEmptyList(state, args)) {
+                ORef const err = // Insufficient args
+                    arityErrorToORef(createArityError(state, closure, tagInt((intptr_t)argc)));
+                return primopError(state, err);
+            } else {
+                assert(false); // TODO: Proper improper args error
+            }
+        }
+
+        if (!hasVarArg){ // Fixed arity => check that no more args remain:
+            if (!isEmptyList(state, args)) {
+                for (; true; ++argc) {
+                    if (isPair(state, args)) {
+                        Pair const* const argsPair = toPtr(uncheckedORefToPair(args));
+                        args = argsPair->cdr;
+                    } else if (isEmptyList(state, args)) {
+                        break;
+                    } else {
+                        assert(false); // TODO: Proper improper args error
+                    }
+                }
+
+                ORef const err = // Excessive args
+                    arityErrorToORef(createArityError(state, closure, tagInt((intptr_t)argc)));
+                return primopError(state, err);
+            }
+        } else if (!isHeaped(methodPtr->code)) { // Primop varargs:
+            assert(isa(state, state->typeType, methodPtr->domain[minArity]));
+            TypeRef type = uncheckedORefToTypeRef(methodPtr->domain[minArity]);
+            for (; true; ++argc) {
+                if (isPair(state, args)) {
+                    Pair const* const argsPair = toPtr(uncheckedORefToPair(args));
+
+                    ORef const arg = argsPair->car;
+
+                    // OPTIMIZE: Skip type check if no typed params (= not a specialization):
+                    if (!isa(state, type, arg)) {
+                        ORef const err = typeErrorToORef(createTypeError(state, type, arg));
+                        return primopError(state, err);
+                    }
+
+                    state->regs[firstArgReg + argc] = arg;
+
+                    args = argsPair->cdr;
+                } else if (isEmptyList(state, args)) {
+                    break;
+                } else {
+                    assert(false); // TODO: Proper improper args error
+                }
+            }
+        } else { // Non-primop varargs:
+            pushStackRoot(state, &args);
+
+            assert(isa(state, state->typeType, methodPtr->domain[minArity]));
+            TypeRef type = uncheckedORefToTypeRef(methodPtr->domain[minArity]);
+            pushStackRoot(state, (ORef*)&type);
+            size_t bufCap = 10;
+            ArrayMutRef varargsBufRef = createArrayMut(state, tagInt((intptr_t)bufCap));
+            pushStackRoot(state, (ORef*)&varargsBufRef);
+            ORef* varargsBuf = toPtr(varargsBufRef);
+            size_t varargCount = 0;
+            for (size_t i = 0; true; ++i, ++varargCount) {
+                if (isPair(state, args)) {
+                    Pair const* argsPair = toPtr(uncheckedORefToPair(args));
+
+                    ORef arg = argsPair->car;
+
+                    // OPTIMIZE: Skip type check if no typed params (= not a specialization):
+                    if (!isa(state, type, arg)) {
+                        ORef const err = typeErrorToORef(createTypeError(state, type, arg));
+                        popStackRoots(state, 3); // `&type`, `&args` & `&varargsBufRef`
+                        return primopError(state, err);
+                    }
+
+                    if (i == bufCap) {
+                        size_t const newBufCap = bufCap + bufCap * 2;
+
+                        pushStackRoot(state, &arg);
+                        ArrayMutRef const newVarargsBufRef =
+                            createArrayMut(state, tagInt((intptr_t)newBufCap));
+                        popStackRoots(state, 1);
+                        argsPair = toPtr(uncheckedORefToPair(args)); // Post-GC reload
+                        varargsBuf = toPtr(varargsBufRef); // Post-GC reload
+                        ORef* const newVarargsBuf = toPtr(newVarargsBufRef);
+                        memcpy(newVarargsBuf, varargsBuf, bufCap * sizeof(ORef));
+
+                        bufCap = newBufCap;
+                        varargsBufRef = newVarargsBufRef;
+                        varargsBuf = newVarargsBuf;
+                    }
+                    varargsBuf[i] = arg;
+
+                    args = argsPair->cdr;
+                } else if (isEmptyList(state, args)) {
+                    break;
+                } else {
+                    assert(false); // TODO: Proper improper args error
+                }
+            }
+
+            ArrayMutRef varargsRef;
+            if (varargCount != bufCap) {
+                varargsRef = createArrayMut(state, tagInt((intptr_t)varargCount));
+                varargsBuf = toPtr(varargsBufRef); // Post-GC reload
+                memcpy(toPtr(varargsRef), varargsBuf, varargCount * sizeof(ORef));
+            } else {
+                varargsRef = varargsBufRef;
+            }
+
+            popStackRoots(state, 3); // `&type, `&args` & `&varargsBufRef`
+
+            state->regs[firstArgReg + minArity] = arrayMutToORef(varargsRef);
+
+            argc = minArity + varargCount;
+        }
+    } else { // `state->checkDomain == false`
+        bool const hasVarArg = unwrapBool(methodPtr->hasVarArg);
+        size_t const minArity = !hasVarArg ? arity : arity - 1;
+
+        // Fixed args:
+        for (size_t i = 0; i < minArity; ++i) {
+            // Arity already checked to be correct so `args` *must* be a pair:
+            assert(isa(state, state->pairType, args));
+            Pair const* const argsPair = toPtr(uncheckedORefToPair(args));
+
+            state->regs[firstArgReg + i] = argsPair->car;
+
+            args = argsPair->cdr;
+        }
+
+        if (hasVarArg){ // Vararg:
+            if (!isHeaped(methodPtr->code)) { // Primop:
+                // Arity already checked to be correct so `args` *must* be a proper list:
+                for (size_t i = minArity; isPair(state, args); ++i) {
+                    Pair const* const argsPair = toPtr(uncheckedORefToPair(args));
+
+                    state->regs[firstArgReg + i] = argsPair->car;
+
+                    args = argsPair->cdr;
+                }
+            } else { // Non-primop:
+                pushStackRoot(state, &args);
+
+                size_t bufCap = 10;
+                ArrayMutRef varargsBufRef = createArrayMut(state, tagInt((intptr_t)bufCap));
+                pushStackRoot(state, (ORef*)&varargsBufRef);
+                ORef* varargsBuf = toPtr(varargsBufRef);
+                size_t varargCount = 0;
+                for (size_t i = 0; true; ++i, ++varargCount) {
+                    if (isPair(state, args)) {
+                        Pair const* argsPair = toPtr(uncheckedORefToPair(args));
+
+                        if (i == bufCap) {
+                            size_t const newBufCap = bufCap + bufCap * 2;
+
+                            ArrayMutRef const newVarargsBufRef =
+                                createArrayMut(state, tagInt((intptr_t)newBufCap));
+                            argsPair = toPtr(uncheckedORefToPair(args)); // Post-GC reload
+                            varargsBuf = toPtr(varargsBufRef); // Post-GC reload
+                            ORef* const newVarargsBuf = toPtr(newVarargsBufRef);
+                            memcpy(newVarargsBuf, varargsBuf, bufCap * sizeof(ORef));
+
+                            bufCap = newBufCap;
+                            varargsBufRef = newVarargsBufRef;
+                            varargsBuf = newVarargsBuf;
+                        }
+                        varargsBuf[i] = argsPair->car;
+
+                        args = argsPair->cdr;
+                    } else if (isEmptyList(state, args)) {
+                        break;
+                    } else {
+                        assert(false); // TODO: Proper improper args error
+                    }
+                }
+
+                ArrayMutRef varargsRef;
+                if (varargCount != bufCap) {
+                    varargsRef = createArrayMut(state, tagInt((intptr_t)varargCount));
+                    varargsBuf = toPtr(varargsBufRef); // Post-GC reload
+                    memcpy(toPtr(varargsRef), varargsBuf, varargCount * sizeof(ORef));
+                } else {
+                    varargsRef = varargsBufRef;
+                }
+
+                popStackRoots(state, 2); // `&args` & `&varargsBufRef`
+
+                state->regs[firstArgReg + minArity] = arrayMutToORef(varargsRef);
+
+                argc = minArity + varargCount;
+            }
+        }
     }
 
     state->entryRegc = (uint8_t)(firstArgReg + argc);

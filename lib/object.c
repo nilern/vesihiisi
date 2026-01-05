@@ -29,22 +29,3 @@ static ORef const Tombstone = {boolTag | (uint64_t)false};
 static uint64_t const markBit = (uint64_t)0b01 << payloadWidth;
 
 static const size_t objectMinAlign = alignof(Header);
-
-/*
-static uintptr_t const tag_width = 3;
-static uintptr_t const tag_bits = (1 << tag_width) - 1; // `tag_width` ones
-
-static uintptr_t const markBit = 0b10;
-
-static Fixnum const Zero = {0};
-static Fixnum const One = {(uintptr_t)1 << tag_width | (uintptr_t)TAG_FIXNUM};
-
-static Bool const True = {((uintptr_t)true << tag_width) | (uintptr_t)TAG_BOOL};
-static Bool const False = {((uintptr_t)false << tag_width) | (uintptr_t)TAG_BOOL};
-
-static ORef const AlignmentHole = {(uintptr_t)(void*)nullptr | (uintptr_t)TAG_HEAPED};
-
-static ORef const Tombstone = {((uintptr_t)false << tag_width) | (uintptr_t)TAG_BOOL};
-
-static const size_t objectMinAlign = alignof(Header);
-*/

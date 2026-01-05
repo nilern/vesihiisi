@@ -55,7 +55,7 @@
         (loop acc 0)))))
 
 (def array!-fold-right
-  (fn (f acc xs)
+  (fn (f xs acc)
     (letfn (((loop acc i)
                (if (fx> i 0)
                  (let ((i (fx- i 1)))
@@ -69,7 +69,7 @@
           (imm-arr (make-flex <array> len)))
       (flex-copy! imm-arr 0 arr 0 len))))
 
-(def array!->list (fn (arr) (array!-fold-right cons () arr)))
+(def array!->list (fn (arr) (array!-fold-right cons arr ())))
 
 (def list (fn xs (array!->list xs)))
 

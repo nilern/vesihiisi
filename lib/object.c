@@ -13,4 +13,6 @@ static Bool const False = {((uintptr_t)false << tag_width) | (uintptr_t)TAG_BOOL
 
 static ORef const AlignmentHole = {(uintptr_t)(void*)nullptr | (uintptr_t)TAG_HEAPED};
 
+static ORef const Tombstone = {((uintptr_t)false << tag_width) | (uintptr_t)TAG_BOOL};
+
 static const size_t objectMinAlign = alignof(Header);

@@ -168,7 +168,7 @@ static void pruneSpecializations(Specializations* specializations) {
         ORef* const v = &specializations->entries[i];
         if (isHeaped(*v)) {
             void* const fwdPtr = tryForwarded(uncheckedORefToPtr(*v));
-            *v = fwdPtr ? tagHeaped(fwdPtr) : SymbolTableTombstone; // TODO: Not Symbol-specific
+            *v = fwdPtr ? tagHeaped(fwdPtr) : Tombstone;
         }
     }
 }

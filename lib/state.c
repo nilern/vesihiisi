@@ -42,8 +42,6 @@ static char const* const typeNames[] = {
 };
 static_assert(sizeof(typeNames) / sizeof(*typeNames) == BOOTSTRAP_TYPE_COUNT);
 
-static ORef const SymbolTableTombstone = {((uintptr_t)false << tag_width) | (uintptr_t)TAG_BOOL};
-
 inline static void freeSymbols(SymbolTable* symbols) { free(symbols->entries); }
 
 static SymbolTable newSymbolTable(void) {
@@ -1008,7 +1006,7 @@ static void pruneSymbols(SymbolTable* symbols) {
         ORef* const v = &symbols->entries[i];
         if (isHeaped(*v)) {
             void* const fwdPtr = tryForwarded(uncheckedORefToPtr(*v));
-            *v = fwdPtr ? tagHeaped(fwdPtr) : SymbolTableTombstone;
+            *v = fwdPtr ? tagHeaped(fwdPtr) : Tombstone;
         }
     }
 }

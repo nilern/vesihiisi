@@ -48,6 +48,8 @@ static Bool const False;
 
 static ORef const AlignmentHole;
 
+static ORef const Tombstone;
+
 inline static ORef boolToORef(Bool b) { return (ORef){b.bits}; }
 
 inline static bool uncheckedORefToBool(ORef v) { return (bool)(v.bits >> tag_width); }

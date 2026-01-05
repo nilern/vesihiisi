@@ -9,8 +9,6 @@ typedef struct SymbolTable {
     size_t cap;
 } SymbolTable;
 
-static ORef const SymbolTableTombstone;
-
 typedef struct Specializations {
     ORef* entries;
     size_t count;

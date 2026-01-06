@@ -3,7 +3,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdckdint.h>
 
+#include "util/util.h"
 #include "bytecode.h"
 #include "dispatch.h"
 
@@ -550,10 +552,22 @@ static PrimopRes primopFxAdd(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
 
-    intptr_t const x = uncheckedFixnumToInt(state->regs[firstArgReg]);
-    intptr_t const y = uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
+    int64_t const x = uncheckedFixnumToInt(state->regs[firstArgReg]);
+    int64_t const y = uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
 
-    state->regs[retReg] = toORef(tagInt(x + y)); // TODO: Overflow check
+    int64_t const res = x + y;
+    if (((res ^ x) & (res ^ y)) >> (payloadWidth - 1)) {
+        // Overflow has occurred when `x` and `y` have the same sign and the sign of the
+        // result is the opposite.
+        // `ckd_add` is not useful because the carry *does* fit in `int64_t`.
+
+        ClosureRef const f = uncheckedORefToClosure(state->regs[calleeReg]);
+        Fixnum const xRef = uncheckedORefToFixnum(state->regs[firstArgReg]);
+        Fixnum const yRef = uncheckedORefToFixnum(state->regs[firstArgReg + 1]);
+        return primopError(state, toORef(createOverflowError(state, f, xRef, yRef)));
+    }
+
+    state->regs[retReg] = toORef(tagInt(res));
 
     return PRIMOP_RES_CONTINUE;
 }
@@ -562,10 +576,22 @@ static PrimopRes primopFxSub(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
 
-    intptr_t const x = uncheckedFixnumToInt(state->regs[firstArgReg]);
-    intptr_t const y = uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
+    int64_t const x = uncheckedFixnumToInt(state->regs[firstArgReg]);
+    int64_t const y = uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
 
-    state->regs[retReg] = toORef(tagInt(x - y)); // TODO: Underflow check
+    int64_t const res = x - y;
+    if (((x ^ y) & (res ^ x)) >> (payloadWidth - 1)) {
+        // Overflow has occurred when `x` and `y` have different signs and the sign of the result
+        // is different from the sign of `x` (or equivalently, the same as the sign of `y`).
+        // `ckd_sub` is not useful because the carry *does* fit in `int64_t`.
+
+        ClosureRef const f = uncheckedORefToClosure(state->regs[calleeReg]);
+        Fixnum const xRef = uncheckedORefToFixnum(state->regs[firstArgReg]);
+        Fixnum const yRef = uncheckedORefToFixnum(state->regs[firstArgReg + 1]);
+        return primopError(state, toORef(createOverflowError(state, f, xRef, yRef)));
+    }
+
+    state->regs[retReg] = toORef(tagInt(res));
 
     return PRIMOP_RES_CONTINUE;
 }
@@ -574,10 +600,23 @@ static PrimopRes primopFxMul(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
 
-    intptr_t const x = uncheckedFixnumToInt(state->regs[firstArgReg]);
-    intptr_t const y = uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
+    int64_t const x = uncheckedFixnumToInt(state->regs[firstArgReg]);
+    int64_t const y = uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
 
-    state->regs[retReg] = toORef(tagInt(x * y)); // TODO: Overflow check
+    int64_t res;
+    if (ckd_mul(&res, x, y)
+        || (res >> payloadWidth) != ((res & (int64_t)payloadMask) >> (payloadWidth - 1))
+    ) {
+        // Overflow has occurred if we overflowed `int64_t` or the extra bits of `res` are not all
+        // equal to the sign bit of the payload.
+
+        ClosureRef const f = uncheckedORefToClosure(state->regs[calleeReg]);
+        Fixnum const xRef = uncheckedORefToFixnum(state->regs[firstArgReg]);
+        Fixnum const yRef = uncheckedORefToFixnum(state->regs[firstArgReg + 1]);
+        return primopError(state, toORef(createOverflowError(state, f, xRef, yRef)));
+    }
+
+    state->regs[retReg] = toORef(tagInt(res));
 
     return PRIMOP_RES_CONTINUE;
 }
@@ -589,8 +628,24 @@ static PrimopRes primopFxQuot(State* state) {
     intptr_t const x = uncheckedFixnumToInt(state->regs[firstArgReg]);
     intptr_t const y = uncheckedFixnumToInt(state->regs[firstArgReg + 1]);
 
-    if (y == 0) { assert(false); } // TODO: Proper error
-    state->regs[retReg] = toORef(tagInt(x / y)); // TODO: Overflow check
+    if (y == 0) {
+        ClosureRef const f = uncheckedORefToClosure(state->regs[calleeReg]);
+        Fixnum const xRef = uncheckedORefToFixnum(state->regs[firstArgReg]);
+        Fixnum const yRef = uncheckedORefToFixnum(state->regs[firstArgReg + 1]);
+        return primopError(state, toORef(createDivByZeroError(state, f, xRef, yRef)));
+    }
+
+    if (x == fixnumMin && y == -1) {
+        // Due to two's complement `-fixnumMin == fixnumMax + 1` but this is the only overflowing
+        // combination.
+
+        ClosureRef const f = uncheckedORefToClosure(state->regs[calleeReg]);
+        Fixnum const xRef = uncheckedORefToFixnum(state->regs[firstArgReg]);
+        Fixnum const yRef = uncheckedORefToFixnum(state->regs[firstArgReg + 1]);
+        return primopError(state, toORef(createOverflowError(state, f, xRef, yRef)));
+    }
+
+    state->regs[retReg] = toORef(tagInt(x / y));
 
     return PRIMOP_RES_CONTINUE;
 }

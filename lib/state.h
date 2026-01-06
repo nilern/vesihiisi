@@ -23,7 +23,7 @@ typedef struct Shadowstack {
 
 #define REG_COUNT 256
 
-#define BOOTSTRAP_TYPE_COUNT 25
+#define BOOTSTRAP_TYPE_COUNT 26
 #define BOOTSTRAP_SINGLETON_COUNT 4
 
 typedef struct State {
@@ -62,6 +62,7 @@ typedef struct State {
             TypeRef varType;
             TypeRef knotType;
             TypeRef nsType;
+            TypeRef fatalErrorType;
             TypeRef unboundErrorType;
             TypeRef typeErrorType;
             TypeRef arityErrorType;
@@ -190,6 +191,10 @@ static TypeErrorRef createTypeError(State* state, TypeRef type, ORef val);
 static ArityErrorRef createArityError(State* state, ClosureRef callee, Fixnum callArgc);
 
 static InapplicableErrorRef createInapplicableError(State* state, MultimethodRef callee);
+
+static FatalErrorRef createOverflowError(State* state, ClosureRef callee, Fixnum x, Fixnum y);
+
+static FatalErrorRef createDivByZeroError(State* state, ClosureRef callee, Fixnum x, Fixnum y);
 
 static void collect(State* state);
 

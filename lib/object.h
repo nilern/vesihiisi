@@ -76,12 +76,19 @@ static ORef const Tombstone;
 
 inline static Fixnum uncheckedORefToFixnum(ORef v) { return (Fixnum){v.bits}; }
 
-// FIXME: Handle overflow (fixnum is only 61 bits):
-inline static Fixnum tagInt(int64_t n) { return (Fixnum){fixnumTag | (uint64_t)n}; }
+// FIXME: Handle overflow (fixnum is only 48 bits):
+inline static Fixnum tagInt(int64_t n) {
+    return (Fixnum){fixnumTag | ((uint64_t)n & payloadMask)};
+}
 
-inline static int64_t fixnumToInt(Fixnum n) { return (int64_t)(n.bits & payloadMask); }
+inline static int64_t fixnumToInt(Fixnum n) {
+    uint64_t const nonPayloadWidth = UINT64_WIDTH - payloadWidth;
+    return (int64_t)(n.bits << nonPayloadWidth) >> nonPayloadWidth; // Sign extension
+}
 
-inline static int64_t uncheckedFixnumToInt(ORef v) { return (int64_t)(v.bits & payloadMask); }
+inline static int64_t uncheckedFixnumToInt(ORef v) { return fixnumToInt(uncheckedORefToFixnum(v)); }
+
+static int64_t const fixnumMin;
 
 inline static Flonum tagFlonum(double n) { return (Flonum){n}; }
 
@@ -411,6 +418,24 @@ inline static Namespace* namespaceToPtr(NamespaceRef v) {
     return (Namespace*)(void*)(v.bits & payloadMask);
 }
 
+// TODO: Eliminate all the other error types:
+typedef struct FatalError {
+    SymbolRef name;
+    ORef irritants[];
+} FatalError;
+
+typedef struct FatalErrorRef { uint64_t bits; } FatalErrorRef;
+
+inline static FatalErrorRef uncheckedORefToFatalError(ORef v) { return (FatalErrorRef){v.bits}; }
+
+inline static FatalErrorRef tagFatalError(FatalError* ptr) {
+    return (FatalErrorRef){heapedTag | (uint64_t)(void*)ptr};
+}
+
+inline static FatalError* fatalErrorToPtr(FatalErrorRef v) {
+    return (FatalError*)(void*)(v.bits & payloadMask);
+}
+
 typedef struct {
     SymbolRef name;
 } UnboundError;
@@ -504,6 +529,7 @@ inline static InapplicableError* inapplicableErrorToPtr(InapplicableErrorRef v) 
     NamespaceRef: uncheckedToORef(v), \
     UnboundRef: uncheckedToORef(v), \
     VarRef: uncheckedToORef(v), \
+    FatalErrorRef: uncheckedToORef(v), \
     UnboundErrorRef: uncheckedToORef(v), \
     ArityErrorRef: uncheckedToORef(v), \
     TypeErrorRef: uncheckedToORef(v), \
@@ -520,6 +546,7 @@ inline static InapplicableError* inapplicableErrorToPtr(InapplicableErrorRef v) 
     MultimethodRef: multimethodToPtr, \
     MethodRef: methodToPtr, \
     KnotRef: knotToPtr, \
+    FatalErrorRef: fatalErrorToPtr, \
     UnboundErrorRef: unboundErrorToPtr, \
     InapplicableErrorRef: inapplicableErrorToPtr \
     )(v)

@@ -117,6 +117,20 @@ void print(State const* state, FILE* dest, ORef v) {
             fprintf(dest, "#<type ");
             print(state, dest, toORef(type->name));
             putc('>', dest);
+        } else if (isa(state, state->fatalErrorType, v)) {
+            FatalError const* const err = toPtr(uncheckedORefToFatalError(v));
+
+            fputs("#<fatal-error ", dest);
+
+            print(state, dest, toORef(err->name));
+
+            size_t const count = (uint64_t)fixnumToInt(uncheckedFlexCount(v));
+            for (size_t i = 0; i < count; ++i) {
+                putc(' ', dest);
+                print(state, dest, err->irritants[i]);
+            }
+
+            putc('>', dest);
         } else if (isa(state, state->unboundErrorType, v)) {
             UnboundError const* const err = toPtr(uncheckedORefToUnboundError(v));
 

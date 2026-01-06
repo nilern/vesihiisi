@@ -198,7 +198,7 @@
 (def -
   (make-multimethod
     (fn ((: x <fixnum>)) (fx- 0 x)) ; OPTIMIZE: `fx-neg`?
-    (fn ((: x <flonum>)) (fl- 0 x)) ; OPTIMIZE: `fl-neg`?
+    (fn ((: x <flonum>)) (fl- 0.0 x)) ; OPTIMIZE: `fl-neg`?
     fx-
     fl-
     (fn ((: x <flonum>) (: y <fixnum>)) (fl- x (fixnum->flonum y)))

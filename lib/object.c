@@ -26,6 +26,9 @@ static ORef const AlignmentHole = {0};
 
 static ORef const Tombstone = {boolTag | (uint64_t)false};
 
+static int64_t const fixnumMax = ((int64_t)1 << (payloadWidth - 1)) - 1;
+static int64_t const fixnumMin = -(fixnumMax + 1);
+
 static uint64_t const markBit = (uint64_t)0b01 << payloadWidth;
 
 static const size_t objectMinAlign = alignof(Header);

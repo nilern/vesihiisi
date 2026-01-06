@@ -31,6 +31,7 @@ static char const* const typeNames[] = {
     "<var>",
     "<knot>",
     "<ns>",
+    "<fatal-error>",
     "<unbound-error>",
     "<type-error>",
     "<arity-error>",
@@ -415,6 +416,22 @@ static Type* tryCreateNamespaceType(Semispace* semispace, Type const* typeType) 
     return type;
 }
 
+static Type* tryCreateFatalErrorType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = tryAlloc(semispace, typeType);
+    if (!maybeType) { return nullptr; }
+
+    Type* const type = (Type*)maybeType;
+    *type = (Type){
+        .minSize = tagInt(sizeof(FatalError)),
+        .align = tagInt(alignof(FatalError)),
+        .isBytes = False,
+        .hasCodePtr = False,
+        .isFlex = True
+    };
+
+    return type;
+}
+
 static Type* tryCreateUnboundErrorType(Semispace* semispace, Type const* typeType) {
     void* const maybeType = tryAlloc(semispace, typeType);
     if (!maybeType) { return nullptr; }
@@ -619,6 +636,8 @@ State* tryCreateState(size_t heapSize) {
     if (!knotType) { return nullptr; }
     Type const* const nsType = tryCreateNamespaceType(&heap.tospace, typeTypePtr);
     if (!nsType) { return nullptr; }
+    Type const* const fatalErrorType = tryCreateFatalErrorType(&heap.tospace, typeTypePtr);
+    if (!fatalErrorType) { return nullptr; }
     Type const* const unboundErrorType = tryCreateUnboundErrorType(&heap.tospace, typeTypePtr);
     if (!unboundType) { return nullptr; }
     Type const* const typeErrorType = tryCreateTypeErrorType(&heap.tospace, typeTypePtr);
@@ -681,6 +700,7 @@ State* tryCreateState(size_t heapSize) {
         .varType = tagType(varType),
         .knotType = tagType(knotType),
         .nsType = tagType(nsType),
+        .fatalErrorType = tagType(fatalErrorType),
         .unboundErrorType = tagType(unboundErrorType),
         .typeErrorType = tagType(typeErrorType),
         .arityErrorType = tagType(arityErrorType),
@@ -1246,4 +1266,58 @@ static InapplicableErrorRef createInapplicableError(State* state, MultimethodRef
     *ptr = (InapplicableError){.callee = callee};
 
     return tagInapplicableError(ptr);
+}
+
+static FatalErrorRef createOverflowError(State* state, ClosureRef callee, Fixnum x, Fixnum y) {
+    Fixnum const count = tagInt(3);
+
+    FatalError* ptr =
+        tryAllocFlex(&state->heap.tospace, toPtr(state->fatalErrorType), count);
+    if (mustCollect(ptr)) {
+        pushStackRoot(state, (ORef*)&callee);
+        collect(state);
+        popStackRoots(state, 1);
+        ptr = allocFlexOrDie(&state->heap.tospace, toPtr(state->fatalErrorType), count);
+    }
+    FatalErrorRef res = tagFatalError(ptr);
+
+    pushStackRoot(state, (ORef*)&callee);
+    pushStackRoot(state, (ORef*)&res);
+    SymbolRef const name = intern(state, strLit("overflow"));
+    popStackRoots(state, 2);
+    ptr = toPtr(res);
+
+    *ptr = (FatalError){.name = name};
+    ptr->irritants[0] = toORef(callee);
+    ptr->irritants[1] = toORef(x);
+    ptr->irritants[2] = toORef(y);
+
+    return res;
+}
+
+static FatalErrorRef createDivByZeroError(State* state, ClosureRef callee, Fixnum x, Fixnum y) {
+    Fixnum const count = tagInt(3);
+
+    FatalError* ptr =
+        tryAllocFlex(&state->heap.tospace, toPtr(state->fatalErrorType), count);
+    if (mustCollect(ptr)) {
+        pushStackRoot(state, (ORef*)&callee);
+        collect(state);
+        popStackRoots(state, 1);
+        ptr = allocFlexOrDie(&state->heap.tospace, toPtr(state->fatalErrorType), count);
+    }
+    FatalErrorRef res = tagFatalError(ptr);
+
+    pushStackRoot(state, (ORef*)&callee);
+    pushStackRoot(state, (ORef*)&res);
+    SymbolRef const name = intern(state, strLit("divide-by-zero"));
+    popStackRoots(state, 2);
+    ptr = toPtr(res);
+
+    *ptr = (FatalError){.name = name};
+    ptr->irritants[0] = toORef(callee);
+    ptr->irritants[1] = toORef(x);
+    ptr->irritants[2] = toORef(y);
+
+    return res;
 }

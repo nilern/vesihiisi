@@ -22,28 +22,26 @@ Yet another Lisp.
     - Functions `(def id (fn (x) x))` and calls `(id (quote ego))` including varargs
       `(fn (x y . zs) zs)`.
         * Full tail call optimization
-    - Stop-and-copy GC using the elegant Cheney algorithm
-    - Also debug printing from compilation (can't even be turned off)
+    - Also debug printing from compilation (with `-d`)
+* Stop-and-copy GC using the elegant Cheney algorithm
 
 ## Immediate Goals
 
-* Multimethods to underpin e.g. `+` but also for their own sake
-    - The design requires first adding (dynamically checked) parameter types and in turn for those
-      to have sensible scoping efficiently, "templated methods" (e.g.
-      `(fn (<t>) (fn ((: x <t>)) x))` should work but create only one method per `<t>`).
-* `letfn` for local recursion
+* Standard library (roughly to par with R4RS Scheme)
+* Complete reader
+    - Missing `'`, negative and hex literals char escapes etc.
+* Macroexpansion and `quasiquote`
+* Delimited continuations (with winders)
 * Safe for space
-
-## And Then
-
-* Primitive procedures e.g. `new`/`make`, `apply`
-* Standard library
-* Macroexpansion
+    - Seems like the only thing remaining is not tracing dead roots in VM
+      registers
 
 ## Lofty ambitions
 
-* Delimited continuations (with winders)
 * Non-blocking IO etc. (Concurrent ML)
 * Get to a JIT, even if it is just a simple method JIT.
+* Generational GC
 * FFI
 * Native threads
+    - Parallel GC
+* Concurrent (or just incremental) GC

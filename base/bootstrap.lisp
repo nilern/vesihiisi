@@ -188,21 +188,38 @@
   (make-multimethod
     (fn () 0) ; Additive identity
     (fn ((: x <fixnum>)) x)
+    (fn ((: x <flonum>)) x)
     fx+
+    fl+
+    (fn ((: x <flonum>) (: y <fixnum>)) (fl+ x (fixnum->flonum y)))
+    (fn ((: x <fixnum>) (: y <flonum>)) (fl+ (fixnum->flonum x) y))
     (fn (x y z . ns) (array!-fold-left (fn (v acc) (+ acc v)) (+ (+ x y) z) ns))))
 
 (def -
   (make-multimethod
     (fn ((: x <fixnum>)) (fx- 0 x)) ; OPTIMIZE: `fx-neg`?
+    (fn ((: x <flonum>)) (fl- 0 x)) ; OPTIMIZE: `fl-neg`?
     fx-
+    fl-
+    (fn ((: x <flonum>) (: y <fixnum>)) (fl- x (fixnum->flonum y)))
+    (fn ((: x <fixnum>) (: y <flonum>)) (fl- (fixnum->flonum x) y))
     (fn (x y z . ns) (array!-fold-left (fn (v acc) (- acc v)) (- (- x y) z) ns))))
 
 (def *
   (make-multimethod
     (fn () 1) ; Multiplicative identity
     (fn ((: x <fixnum>)) x)
+    (fn ((: x <flonum>)) x)
     fx*
+    fl*
+    (fn ((: x <flonum>) (: y <fixnum>)) (fl* x (fixnum->flonum y)))
+    (fn ((: x <fixnum>) (: y <flonum>)) (fl* (fixnum->flonum x) y))
     (fn (x y z . ns) (array!-fold-left (fn (v acc) (* acc v)) (* (* x y) z) ns))))
+
+(def /
+  (make-multimethod
+    (fn ((: x <flonum>)) (fl/ 1.0 x))
+    fl/))
 
 (def concat
   (make-multimethod

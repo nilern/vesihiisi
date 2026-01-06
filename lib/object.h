@@ -83,8 +83,16 @@ inline static int64_t fixnumToInt(Fixnum n) { return (int64_t)(n.bits & payloadM
 
 inline static int64_t uncheckedFixnumToInt(ORef v) { return (int64_t)(v.bits & payloadMask); }
 
+inline static Flonum tagFlonum(double n) { return (Flonum){n}; }
+
+union DoubleBitCaster {uint64_t i; double f;};
+
+inline static ORef flonumToORef(Flonum n) {
+    return (ORef){((union DoubleBitCaster){.f = n.bits}).i}; // Might not fly in C++
+}
+
 inline static double uncheckedFlonumToDouble(ORef v) {
-    return ((union {uint64_t i; double f;}){.i = v.bits}).f; // Might not fly in C++
+    return ((union DoubleBitCaster){.i = v.bits}).f; // Might not fly in C++
 }
 
 inline static Char tagChar(char c) { return (Char){charTag | (uint64_t)c}; }
@@ -475,6 +483,7 @@ inline static InapplicableError* inapplicableErrorToPtr(InapplicableErrorRef v) 
 
 #define uncheckedToORef(v) (ORef){(v).bits}
 
+// TODO: Add `Flonum` (doing that breaks this macro for some reason):
 #define toORef(v) _Generic((v), \
     Fixnum: uncheckedToORef(v), \
     Char: uncheckedToORef(v), \

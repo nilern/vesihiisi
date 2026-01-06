@@ -482,6 +482,9 @@ static void regAllocStmt(Compiler* compiler, RegEnv* env, IRStmt* stmt) {
 
         methodDef->name = (IRName){deallocVarReg(env, methodDef->name).index};
 
+        // FIXME: Specializers may not be in register order. Basically the same issue was solved
+        // for closures by adding the `cloverindexing` pass but this requires something else (which
+        // we might also use to replace `cloverindexing`:
         for (size_t i = fn->domain.count; i-- > 0;) {
             IRName const typeName = fn->domain.vals[i];
             if (irNameIsValid(typeName)) {

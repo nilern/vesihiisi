@@ -143,16 +143,25 @@ static bool readExpr(State* state, ORef* dest, Parser* parser) {
         default: return false;
         }
     } else if (isdigit(c)) {
-        intptr_t n = 0;
-        const intptr_t radix = 10;
-        
+        char const* const start = parser->curr;
+
+        // \d+
         do {
-            n = n * radix + (c - '0');
-            c = *++parser->curr;
-        } while (isdigit(c));
-        
-        *dest = toORef(tagInt(n));
-        return true;
+            ++parser->curr;
+        } while (isdigit(*parser->curr));
+
+        if (*parser->curr != '.') { // Fixnum
+            *dest = toORef(tagInt(atoll(start)));
+            return true;
+        } else { // Flonum
+            ++parser->curr; // Skip '.'
+
+            // \d*
+            while (isdigit(*parser->curr)) { ++parser->curr; }
+
+            *dest = flonumToORef(tagFlonum(atof(start)));
+            return true;
+        }
     } else if (c == '"') {
         ++parser->curr;
         

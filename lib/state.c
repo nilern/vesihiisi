@@ -529,6 +529,11 @@ static PrimopRes primopFxSub(State* state);
 static PrimopRes primopFxMul(State* state);
 static PrimopRes primopFxQuot(State* state);
 static PrimopRes primopFxLt(State* state);
+static PrimopRes primopFixnumToFlonum(State* state);
+static PrimopRes primopFlAdd(State* state);
+static PrimopRes primopFlSub(State* state);
+static PrimopRes primopFlMul(State* state);
+static PrimopRes primopFlDiv(State* state);
 static PrimopRes primopWrite(State* state);
 
 static MethodRef vcreatePrimopMethod(
@@ -753,6 +758,16 @@ State* tryCreateState(size_t heapSize) {
                   tagInt(2), false, dest->fixnumType, dest->fixnumType);
     installPrimop(dest, strLit("fx<"), primopFxLt,
                   tagInt(2), false, dest->fixnumType, dest->fixnumType);
+    installPrimop(dest, strLit("fixnum->flonum"), primopFixnumToFlonum,
+                  tagInt(1), false, dest->fixnumType);
+    installPrimop(dest, strLit("fl+"), primopFlAdd,
+                  tagInt(2), false, dest->flonumType, dest->flonumType);
+    installPrimop(dest, strLit("fl-"), primopFlSub,
+                  tagInt(2), false, dest->flonumType, dest->flonumType);
+    installPrimop(dest, strLit("fl*"), primopFlMul,
+                  tagInt(2), false, dest->flonumType, dest->flonumType);
+    installPrimop(dest, strLit("fl/"), primopFlDiv,
+                  tagInt(2), false, dest->flonumType, dest->flonumType);
     installPrimop(dest, strLit("write"), primopWrite, tagInt(1), false, dest->anyType);
 
     return dest;

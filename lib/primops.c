@@ -607,6 +607,65 @@ static PrimopRes primopFxLt(State* state) {
     return PRIMOP_RES_CONTINUE;
 }
 
+static PrimopRes primopFixnumToFlonum(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    intptr_t const n = uncheckedFixnumToInt(state->regs[firstArgReg]);
+
+    state->regs[retReg] = flonumToORef(tagFlonum((double)n));
+
+    return PRIMOP_RES_CONTINUE;
+}
+
+static PrimopRes primopFlAdd(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    double const x = uncheckedFlonumToDouble(state->regs[firstArgReg]);
+    double const y = uncheckedFlonumToDouble(state->regs[firstArgReg + 1]);
+
+    state->regs[retReg] = flonumToORef(tagFlonum(x + y));
+
+    return PRIMOP_RES_CONTINUE;
+}
+
+static PrimopRes primopFlSub(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    double const x = uncheckedFlonumToDouble(state->regs[firstArgReg]);
+    double const y = uncheckedFlonumToDouble(state->regs[firstArgReg + 1]);
+
+    state->regs[retReg] = flonumToORef(tagFlonum(x - y));
+
+    return PRIMOP_RES_CONTINUE;
+}
+
+static PrimopRes primopFlMul(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    double const x = uncheckedFlonumToDouble(state->regs[firstArgReg]);
+    double const y = uncheckedFlonumToDouble(state->regs[firstArgReg + 1]);
+
+    state->regs[retReg] = flonumToORef(tagFlonum(x * y));
+
+    return PRIMOP_RES_CONTINUE;
+}
+
+static PrimopRes primopFlDiv(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    double const x = uncheckedFlonumToDouble(state->regs[firstArgReg]);
+    double const y = uncheckedFlonumToDouble(state->regs[firstArgReg + 1]);
+
+    state->regs[retReg] = flonumToORef(tagFlonum(x / y));
+
+    return PRIMOP_RES_CONTINUE;
+}
+
 static PrimopRes primopWrite(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }

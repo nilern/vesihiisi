@@ -139,6 +139,25 @@ static bool readExpr(State* state, ORef* dest, Parser* parser) {
             ++parser->curr;
             *dest = toORef(tagBool(false));
             return true;
+
+        case 'x': {
+            ++parser->curr;
+
+            int const radix = 16;
+            char const* const start = parser->curr;
+
+            // \d
+            if (!isxdigit(*parser->curr)) {
+                return false; // TODO: Proper zero digits error
+            }
+            ++parser->curr;
+
+            // \d*
+            while (isxdigit(*parser->curr)) { ++parser->curr; }
+
+            *dest = toORef(tagInt(strtoll(start, nullptr, radix)));
+            return true;
+        }
         
         default: return false;
         }

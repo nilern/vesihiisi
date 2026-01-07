@@ -1,4 +1,4 @@
-BASER_FLAGS := -std=c2x -Wall -Wextra -Wpedantic -Wconversion -fno-strict-aliasing
+BASER_FLAGS := -std=c23 -Wall -Wextra -Wpedantic -Wconversion -fno-strict-aliasing
 BASE_FLAGS := $(BASER_FLAGS) -Werror
 OPT_FLAGS := -O2 -DNDEBUG
 DEBUG_FLAGS := -g

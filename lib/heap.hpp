@@ -56,7 +56,7 @@ struct Semispace {
 private:
     friend struct Heap;
 
-    Semispace(size_t size);
+    explicit Semispace(size_t size);
 
     bool shouldGrow(Semispace const* other) const;
 };
@@ -80,7 +80,7 @@ typedef struct Heap {
     void collect();
 
 private:
-    Heap(size_t size) : tospace{size / 2}, fromspace{size / 2} {}
+    explicit Heap(size_t size) : tospace{size / 2}, fromspace{size / 2} {}
 
     Object* tryShallowCopy(void* ptr);
 

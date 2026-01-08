@@ -30,7 +30,7 @@ typedef struct Vshs_MaybeRes {
     bool hasVal;
 } Vshs_MaybeRes;
 
-static Vshs_MaybeRes readEval(State* state, Parser* parser, bool debug) {
+static Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser, bool debug) {
     MaybeORef maybeExpr;
     if (!read(state, &maybeExpr, parser)) {
         return (Vshs_MaybeRes){.val = {.err = {.type = VSHS_PARSE_ERR}, RES_ERR}, true};
@@ -194,7 +194,7 @@ int main(int argc, char const* argv[static argc]) {
         return EXIT_SUCCESS;
     }
 
-    State* state = tryCreateState(1024*1024);
+    struct Vshs_State* state = tryCreateState(1024*1024);
     if (!state) {
         puts("Insufficient memory");
         return EXIT_FAILURE;

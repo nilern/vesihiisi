@@ -1,14 +1,19 @@
-BASER_FLAGS := -std=c23 -Wall -Wextra -Wpedantic -Wconversion -fno-strict-aliasing
-BASE_FLAGS := $(BASER_FLAGS) -Werror
+BASER_FLAGS := -Wall -Wextra -Wpedantic -Wconversion -fno-strict-aliasing
+BASE_CPP_FLAGS := -std=c++20 $(BASER_FLAGS) -Werror
+BASE_C_FLAGS := -std=c23 $(BASER_FLAGS) -Werror
 OPT_FLAGS := -O2 -DNDEBUG
 DEBUG_FLAGS := -g
 SANITIZE_FLAGS := -fsanitize=address -fsanitize=leak -DGC_ALOT
 
-PROD_FLAGS := $(BASE_FLAGS) $(OPT_FLAGS)
-DEV_FLAGS := $(BASE_FLAGS) $(DEBUG_FLAGS) # $(SANITIZE_FLAGS)
-TEST_FLAGS := $(BASER_FLAGS) $(DEBUG_FLAGS) $(SANITIZE_FLAGS)
+PROD_C_FLAGS := $(BASE_C_FLAGS) $(OPT_FLAGS)
+PROD_CPP_FLAGS := $(BASE_CPP_FLAGS) $(OPT_FLAGS)
+DEV_C_FLAGS := $(BASE_C_FLAGS) $(DEBUG_FLAGS) # $(SANITIZE_FLAGS)
+DEV_CPP_FLAGS := $(BASE_CPP_FLAGS) $(DEBUG_FLAGS) # $(SANITIZE_FLAGS)
+TEST_CPP_FLAGS := -std=c++20 $(BASER_FLAGS) $(DEBUG_FLAGS) $(SANITIZE_FLAGS)
 
-LIB_SRCS := $(shell find lib -name '*.[ch]')
+LIB_SRCS := $(shell find lib -name '*.[ch]' -o -name '*.[ch]pp')
+PROD_LINK_LIBS := -lvesihiisi -lstdc++ # OPTIMIZE: Avoid having to link stdc++ (only using a `delete`)
+DEV_LINK_LIBS := -lvesihiisi-dev -lstdc++ # OPTIMIZE: Avoid having to link stdc++ (only using a `delete`)
 
 .PHONY: all
 all: vesihiisi
@@ -31,22 +36,22 @@ test: test/test_heap.out test/test_arena.out test/test_bitset.out test/test_spar
 	./test/test_sparsearray.out
 
 vesihiisi: main.c libvesihiisi.a
-	cc $(PROD_FLAGS) $< -L. -lvesihiisi -o $@
+	cc $(PROD_C_FLAGS) $< -L. $(PROD_LINK_LIBS) -o $@
 
 libvesihiisi.o: $(LIB_SRCS)
-	cc -c $(PROD_FLAGS) -o $@ lib/vesihiisi.c
+	c++ -c $(PROD_CPP_FLAGS) -o $@ lib/vesihiisi.cpp
 
 vesihiisi-dev: main.c libvesihiisi-dev.a
-	cc $(DEV_FLAGS) $< -L. -lvesihiisi-dev -o $@
+	cc $(DEV_C_FLAGS) $< -L. $(DEV_LINK_LIBS) -o $@
 
 libvesihiisi-dev.o: $(LIB_SRCS)
-	cc -c $(DEV_FLAGS) -o $@ lib/vesihiisi.c
+	c++ -c $(DEV_CPP_FLAGS) -o $@ lib/vesihiisi.cpp
 
 %.a: %.o
 	ar rcs $@ $<
 
-test/%.out: test/%.c $(LIB_SRCS)
-	cc $(TEST_FLAGS) -o $@ $<
+test/%.out: test/%.cpp $(LIB_SRCS)
+	c++ $(TEST_CPP_FLAGS) -o $@ $<
 
 .PHONY: clean
 clean:

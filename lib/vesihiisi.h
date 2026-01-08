@@ -4,6 +4,10 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct Str {
     char const* data;
     size_t len;
@@ -17,10 +21,10 @@ typedef struct MaybeORef {
     bool hasVal;
 } MaybeORef;
 
-typedef struct State State;
+struct Vshs_State;
 
-State* tryCreateState(size_t heapSize);
-void freeState(State* state);
+struct Vshs_State* tryCreateState(size_t heapSize);
+void freeState(struct Vshs_State* state);
 
 typedef struct Parser {
     char const* curr;
@@ -29,13 +33,17 @@ typedef struct Parser {
 
 Parser createParser(Str src);
 
-bool read(State* state, MaybeORef* dest, Parser* parser);
+bool read(struct Vshs_State* state, MaybeORef* dest, Parser* parser);
 
 typedef struct VMRes {
     ORef val;
     bool success;
 } VMRes;
 
-VMRes eval(State* state, ORef expr, bool debug);
+VMRes eval(struct Vshs_State* state, ORef expr, bool debug);
 
-void print(State const* state, FILE* dest, ORef v);
+void print(struct Vshs_State const* state, FILE* dest, ORef v);
+
+#ifdef __cplusplus
+}
+#endif

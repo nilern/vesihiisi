@@ -1,3 +1,8 @@
+#include <stdbit.h>
+
+#include "util.hpp"
+#include "arena.hpp"
+
 #ifndef T
 #error `SparseArray` type argument T missing
 #else
@@ -5,11 +10,6 @@
 #ifndef SUFFIX
 #define SUFFIX T
 #endif
-
-#include <stdbit.h>
-
-#include "util.h"
-#include "arena.h"
 
 #define G(name) CAT(name, SUFFIX)
 

@@ -27,6 +27,7 @@ Yet another Lisp.
 
 ## Immediate Goals
 
+* Stack traces
 * Standard library (roughly to par with R4RS Scheme)
 * Complete reader
     - Missing `'`, negative and hex literals char escapes etc.

@@ -26,14 +26,37 @@ struct Vshs_State;
 struct Vshs_State* tryCreateState(size_t heapSize);
 void freeState(struct Vshs_State* state);
 
-typedef struct Parser {
-    char const* curr;
-    char const* end;
-} Parser;
+typedef struct Parser Parser;
 
-Parser createParser(Str src);
+typedef enum ParseErrorType {
+    EXPECTED_CHAR,
+    EXPECTED_CHAR_CLASS
+} ParseErrorType;
 
-bool read(struct Vshs_State* state, MaybeORef* dest, Parser* parser);
+Parser* createParser(Str src);
+void freeParser(Parser* parser);
+
+typedef struct ParseError {
+    size_t byteIdx;
+    int actualMaybeChar;
+    union {
+        char expectedChar;
+        char const* expectedCharClass; // With static storage duration
+    };
+    ParseErrorType type;
+} ParseError;
+
+typedef struct ParseRes {
+    union {
+        MaybeORef val;
+        ParseError err;
+    };
+    bool success;
+} ParseRes;
+
+void printParseError(FILE* dest, ParseError const* err);
+
+ParseRes read(struct Vshs_State* state, Parser* parser);
 
 typedef struct VMRes {
     ORef val;

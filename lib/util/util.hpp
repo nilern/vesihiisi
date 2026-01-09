@@ -27,6 +27,15 @@ typedef struct BucketIdx {
     bool occupied;
 } BucketIdx;
 
+template<typename Err, typename T>
+struct Res {
+    union {
+        T val;
+        Err err;
+    };
+    bool success;
+};
+
 typedef void (*SwapFn)(void* x, void* y);
 
 void reverse(void* arr, size_t count, size_t size, SwapFn swap);

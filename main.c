@@ -11,6 +11,9 @@
 typedef enum ResTag {RES_ERR, RES_OK} ResTag;
 
 typedef struct Vshs_Err {
+    union {
+        ParseError parseErr;
+    };
     enum {
         VSHS_PARSE_ERR,
         VSHS_VM_ERR
@@ -31,13 +34,12 @@ typedef struct Vshs_MaybeRes {
 } Vshs_MaybeRes;
 
 static Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser, bool debug) {
-    MaybeORef maybeExpr;
-    if (!read(state, &maybeExpr, parser)) {
-        return (Vshs_MaybeRes){.val = {.err = {.type = VSHS_PARSE_ERR}, RES_ERR}, true};
+    ParseRes const readRes = read(state, parser);
+    if (!readRes.success) {
+        return (Vshs_MaybeRes){{.err = {.parseErr = readRes.err, VSHS_PARSE_ERR}}, RES_OK};
     }
-    if (!maybeExpr.hasVal) {
-        return (Vshs_MaybeRes){};
-    }
+    MaybeORef const maybeExpr = readRes.val;
+    if (!maybeExpr.hasVal) { return (Vshs_MaybeRes){}; }
     ORef const expr = maybeExpr.val;
 
     if (debug) {
@@ -218,10 +220,10 @@ int main(int argc, char const* argv[static argc]) {
         fchars[fsize] = 0;
         fclose(file);
 
-        Parser parser = createParser((Str){fchars, fsize});
+        Parser* const parser = createParser((Str){fchars, fsize});
 
         while (!loadFailed) {
-            Vshs_MaybeRes const maybeRes = readEval(state, &parser, args.debug);
+            Vshs_MaybeRes const maybeRes = readEval(state, parser, args.debug);
             if (!maybeRes.hasVal) { break; }
             Vshs_Res const res = maybeRes.val;
 
@@ -230,8 +232,9 @@ int main(int argc, char const* argv[static argc]) {
 
             case RES_ERR: {
                 switch (res.err.type) {
-                case VSHS_PARSE_ERR: {
-                    fputs("ParseError", stderr);
+                case VSHS_PARSE_ERR: { // TODO: DRY wrt. parse error in REPL
+                    fputs("ParseError: ", stderr);
+                    printParseError(stderr, &res.err.parseErr);
                     putc('\n', stderr);
                 }; break;
 
@@ -243,6 +246,7 @@ int main(int argc, char const* argv[static argc]) {
             }
         }
 
+        freeParser(parser);
         free(fchars);
     }
 
@@ -254,8 +258,8 @@ int main(int argc, char const* argv[static argc]) {
             size_t maxLen = 0;
             ssize_t const len = getline(&line, &maxLen, stdin);
             if (len != -1) {
-                Parser parser = createParser((Str){line, (size_t)len});
-                Vshs_MaybeRes const maybeRes = readEval(state, &parser, args.debug);
+                Parser* parser = createParser((Str){line, (size_t)len});
+                Vshs_MaybeRes const maybeRes = readEval(state, parser, args.debug);
                 if (maybeRes.hasVal) {
                     Vshs_Res const res = maybeRes.val;
 
@@ -267,8 +271,9 @@ int main(int argc, char const* argv[static argc]) {
 
                     case RES_ERR: {
                         switch (res.err.type) {
-                        case VSHS_PARSE_ERR: {
-                            fputs("ParseError", stderr);
+                        case VSHS_PARSE_ERR: { // TODO: DRY wrt. parse error on file load
+                            fputs("ParseError: ", stderr);
+                            printParseError(stderr, &res.err.parseErr);
                             putc('\n', stderr);
                         }; break;
 
@@ -277,6 +282,8 @@ int main(int argc, char const* argv[static argc]) {
                     }; break;
                     }
                 }
+
+                freeParser(parser);
             } else {
                 puts("Error reading input");
 

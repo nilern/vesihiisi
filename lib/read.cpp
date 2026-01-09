@@ -20,14 +20,51 @@ void revealMaybeChar(FILE* dest, int mc) {
     default: putc(mc, dest); break;
     }
 }
+
+struct Pos {
+    size_t line;
+    size_t col;
+
+    Pos() : line{1}, col{1} {}
+
+    void advance(char c) {
+        if (c != '\n') {
+            ++col;
+        } else {
+            ++line;
+            col = 1;
+        }
+    }
+
+    void print(FILE* dest) { fprintf(dest, "%lu:%lu", line, col); }
+};
+
+// A bit slow but will save lots of debug info space. And fixing the error that the position is
+// calculated for will be far slower still. While we do not have e.g. .fasl files `src` should be
+// available (if the user lost it they have bigger problems than missing line and column
+// numbers...).
+Pos byteIdxToPos(Str src, size_t byteIdx) {
+    Pos pos{};
+
+    size_t const limit = byteIdx < src.len ? byteIdx : src.len; // Basically use `src.len` for EOF
+    for (size_t i = 0; i < limit; ++i) {
+        pos.advance(src.data[i]);
+    }
+
+    return pos;
+}
+
 } // namespace
 
-extern "C" void printParseError(FILE* dest, ParseError const* err) {
+extern "C" void printParseError(FILE* dest, Str src, ParseError const* err) {
     fputs("unexpected ", dest);
     revealMaybeChar(dest, err->actualMaybeChar);
 
-    fprintf(dest, " at %lu, expected ", err->byteIdx); // TODO: File, line, col
+    // TODO: (Canonical) filename:
+    fputs(" at ", dest);
+    byteIdxToPos(src, err->byteIdx).print(dest);
 
+    fputs(", expected ", dest);
     switch (err->type) {
     case EXPECTED_CHAR: fprintf(dest, "'%c'", err->expectedChar); break;
     case EXPECTED_CHAR_CLASS: fputs(err->expectedCharClass, dest); break;
@@ -111,6 +148,8 @@ extern "C" void freeParser(Parser* parser) {
     parser->~Parser();
     return free(parser);
 }
+
+namespace {
 
 bool cannotBe(int /*mc*/) { exit(EXIT_FAILURE); }
 

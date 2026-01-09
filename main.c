@@ -220,7 +220,8 @@ int main(int argc, char const* argv[static argc]) {
         fchars[fsize] = 0;
         fclose(file);
 
-        Parser* const parser = createParser((Str){fchars, fsize});
+        Str const src = {fchars, fsize};
+        Parser* const parser = createParser(src);
 
         while (!loadFailed) {
             Vshs_MaybeRes const maybeRes = readEval(state, parser, args.debug);
@@ -234,7 +235,7 @@ int main(int argc, char const* argv[static argc]) {
                 switch (res.err.type) {
                 case VSHS_PARSE_ERR: { // TODO: DRY wrt. parse error in REPL
                     fputs("ParseError: ", stderr);
-                    printParseError(stderr, &res.err.parseErr);
+                    printParseError(stderr, src, &res.err.parseErr);
                     putc('\n', stderr);
                 }; break;
 
@@ -258,7 +259,8 @@ int main(int argc, char const* argv[static argc]) {
             size_t maxLen = 0;
             ssize_t const len = getline(&line, &maxLen, stdin);
             if (len != -1) {
-                Parser* parser = createParser((Str){line, (size_t)len});
+                Str const src = {line, (size_t)len};
+                Parser* parser = createParser(src);
                 Vshs_MaybeRes const maybeRes = readEval(state, parser, args.debug);
                 if (maybeRes.hasVal) {
                     Vshs_Res const res = maybeRes.val;
@@ -273,7 +275,7 @@ int main(int argc, char const* argv[static argc]) {
                         switch (res.err.type) {
                         case VSHS_PARSE_ERR: { // TODO: DRY wrt. parse error on file load
                             fputs("ParseError: ", stderr);
-                            printParseError(stderr, &res.err.parseErr);
+                            printParseError(stderr, src, &res.err.parseErr);
                             putc('\n', stderr);
                         }; break;
 

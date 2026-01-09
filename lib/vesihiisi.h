@@ -54,7 +54,7 @@ typedef struct ParseRes {
     bool success;
 } ParseRes;
 
-void printParseError(FILE* dest, ParseError const* err);
+void printParseError(FILE* dest, Str src, ParseError const* err);
 
 ParseRes read(struct Vshs_State* state, Parser* parser);
 

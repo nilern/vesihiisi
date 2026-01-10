@@ -7,18 +7,18 @@
 namespace {
 
 typedef struct CloverIdxs {
-    MaybeUInt8* idxs;
+    Maybe<uint8_t>* idxs;
     size_t cap;
 } CloverIdxs;
 
 CloverIdxs newCloverIdxs(Compiler* compiler) {
     size_t const cap = compiler->nameCount;
-    MaybeUInt8* const idxs = (MaybeUInt8*)acalloc(&compiler->arena, cap, sizeof *idxs);
+    Maybe<uint8_t>* const idxs = (Maybe<uint8_t>*)acalloc(&compiler->arena, cap, sizeof *idxs);
     return CloverIdxs{.idxs = idxs, .cap = cap};
 }
 
 uint8_t getCloverIdx(CloverIdxs const* env, IRName origName) {
-    MaybeUInt8 const maybeIdx = env->idxs[origName.index];
+    Maybe<uint8_t> const maybeIdx = env->idxs[origName.index];
     assert(maybeIdx.hasVal);
     return maybeIdx.val;
 }
@@ -57,7 +57,7 @@ CloverIdxs closeCloverIdxs(Compiler* compiler, BitSet const* clovers, Args const
         size_t const cloverCount = close->count;
         BitSetIter it = newBitSetIter(clovers);
         for (size_t i = 0;; ++i) {
-            MaybeSize const maybeIdx = bitSetIterNext(&it);
+            Maybe<size_t> const maybeIdx = bitSetIterNext(&it);
             if (!maybeIdx.hasVal) { break; }
             IRName const clover = {maybeIdx.val};
 
@@ -72,7 +72,7 @@ CloverIdxs closeCloverIdxs(Compiler* compiler, BitSet const* clovers, Args const
                 }
             }
 
-            env.idxs[clover.index] = MaybeUInt8{.val = (uint8_t)idx, .hasVal = true};
+            env.idxs[clover.index] = Maybe<uint8_t>{.val = (uint8_t)idx, .hasVal = true};
         }
     }
 

@@ -39,13 +39,11 @@ constexpr uint64_t boolTag = nonFlonumTag | ((uint64_t)TaggedType::BOOL << paylo
 // pointers anyway:
 constexpr uint64_t heapedTag = nonFlonumTag | ((uint64_t)0b00 << payloadWidth);
 
-struct Scalar {
-    constexpr explicit Scalar(uint64_t t_bits) : bits{t_bits} {}
+struct Scalar : public ORef {
+    constexpr explicit Scalar(uint64_t t_bits) : ORef{t_bits} {}
 
+    // TODO: Remove now that `Scalar : public ORef`:
     ORef oref() const { return ORef{bits}; }
-
-protected:
-    uint64_t bits;
 };
 static_assert(sizeof(Scalar) == sizeof(ORef));
 
@@ -212,19 +210,18 @@ struct FlexMutObject : public AnyIndexedMutObject<CRTPSub, Item> {
 
 /// Reference to `Object` of type `T`
 template<typename T>
-struct HRef {
+struct HRef : public ORef {
     constexpr explicit HRef(T* ptr) : HRef{heapedTag | (uint64_t)ptr} {}
 
-    ORef oref() const { return ORef{bits}; }
+    // TODO: Remove now that `HRef : public ORef`
+    ORef oref() const { return *this; }
 
-    static HRef<T> fromUnchecked(ORef v) { return HRef{v.bits}; }
+    static HRef<T> fromUnchecked(ORef v) { return std::bit_cast<HRef<T>>(v); }
 
     T* ptr() const { return std::bit_cast<T*>(bits & payloadMask); }
 
 private:
-    constexpr explicit HRef(uint64_t t_bits) : bits{t_bits} {}
-
-    uint64_t bits;
+    constexpr explicit HRef(uint64_t t_bits) : ORef{t_bits} {}
 };
 
 inline ORef tagHeaped(Object* ptr) { return ORef{heapedTag | (uint64_t)ptr}; }
@@ -336,9 +333,15 @@ struct ByteArray : public IndexedObject<ByteArray, uint8_t> {
     Slice<uint8_t const> items() const { return flexItems(); }
 };
 
+struct Loc : public FixedObject {
+    HRef<String> filename;
+    Fixnum byteIdx;
+};
+
 struct Pair : public FixedObject {
     ORef car;
     ORef cdr;
+    ORef maybeLoc;
 };
 
 /// FIXME: Should have zero size but a byte is forced upon us :(

@@ -1,4 +1,4 @@
-#define _POSIX_C_SOURCE 200809L // For `getline`
+#define _XOPEN_SOURCE 700 // For `realpath` & `getline`
 
 #include "lib/vesihiisi.h"
 
@@ -38,9 +38,9 @@ static Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser, bool deb
     if (!readRes.success) {
         return (Vshs_MaybeRes){{.err = {.parseErr = readRes.err, VSHS_PARSE_ERR}}, RES_OK};
     }
-    MaybeORef const maybeExpr = readRes.val;
+    Vshs_MaybeLocatedORef const maybeExpr = readRes.val;
     if (!maybeExpr.hasVal) { return (Vshs_MaybeRes){}; }
-    ORef const expr = maybeExpr.val;
+    ORef const expr = maybeExpr.val.val;
 
     if (debug) {
         puts(";; # S-Expression:");
@@ -48,6 +48,7 @@ static Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser, bool deb
         puts("\n");
     }
 
+    // TODO: Use `maybeExpr.val.loc`:
     VMRes const res = eval(state, expr, debug);
     if (res.success) {
         return (Vshs_MaybeRes){.val = {.val = res.val, RES_OK}, true};
@@ -65,6 +66,8 @@ typedef struct CLIArgs {
     bool help;
     bool forceInteractive;
 } CLIArgs;
+
+static void freeCLIArgs(CLIArgs* args) { free((void*)args->filename); }
 
 typedef struct CLIErr {
     int idx;
@@ -162,7 +165,7 @@ static ParseArgvRes parseArgv(int argc, char const* argv[static argc]) {
     }
 
     if (i < argc) {
-        config.filename = argv[i];
+        config.filename = realpath(argv[i], nullptr);
         ++i;
     }
 
@@ -175,6 +178,9 @@ static ParseArgvRes parseArgv(int argc, char const* argv[static argc]) {
 
 static const char prompt[] = "vesihiisi> ";
 
+static const char replFilename[] = "REPL";
+static Str const replFilenameStr = {replFilename, sizeof replFilename / sizeof *replFilename};
+
 int main(int argc, char const* argv[static argc]) {
     ParseArgvRes const argvRes = parseArgv(argc, argv);
     if (argvRes.tag == RES_ERR) {
@@ -183,7 +189,7 @@ int main(int argc, char const* argv[static argc]) {
         fprintf(stderr, "Try '%s --help' for more information.\n", argv[0]);
         return EXIT_FAILURE;
     }
-    CLIArgs const args = argvRes.val;
+    CLIArgs args = argvRes.val;
 
     if (args.help) {
         printf("Usage: %s [OPTION]... [FILE]\n", argv[0]);
@@ -221,7 +227,9 @@ int main(int argc, char const* argv[static argc]) {
         fclose(file);
 
         Str const src = {fchars, fsize};
-        Parser* const parser = createParser(src);
+        Str const filenameStr = {args.filename, strlen(args.filename)}; // FIXME: canonicalize
+        Parser* const parser = createParser(state, src, filenameStr);
+        pushFilenameRoot(state, parser);
 
         while (!loadFailed) {
             Vshs_MaybeRes const maybeRes = readEval(state, parser, args.debug);
@@ -247,6 +255,7 @@ int main(int argc, char const* argv[static argc]) {
             }
         }
 
+        popStackRoots(state, 1);
         freeParser(parser);
         free(fchars);
     }
@@ -260,7 +269,8 @@ int main(int argc, char const* argv[static argc]) {
             ssize_t const len = getline(&line, &maxLen, stdin);
             if (len != -1) {
                 Str const src = {line, (size_t)len};
-                Parser* parser = createParser(src);
+                Parser* parser = createParser(state, src, replFilenameStr);
+                pushFilenameRoot(state, parser);
                 Vshs_MaybeRes const maybeRes = readEval(state, parser, args.debug);
                 if (maybeRes.hasVal) {
                     Vshs_Res const res = maybeRes.val;
@@ -285,6 +295,7 @@ int main(int argc, char const* argv[static argc]) {
                     }
                 }
 
+                popStackRoots(state, 1);
                 freeParser(parser);
             } else {
                 puts("Error reading input");
@@ -298,6 +309,7 @@ int main(int argc, char const* argv[static argc]) {
     }
 
     freeState(state);
+    freeCLIArgs(&args);
     return EXIT_SUCCESS;
 }
 

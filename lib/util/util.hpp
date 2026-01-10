@@ -12,15 +12,11 @@
 
 namespace {
 
-typedef struct MaybeSize {
-    size_t val;
+template<typename T>
+struct Maybe {
+    T val;
     bool hasVal;
-} MaybeSize;
-
-typedef struct MaybeUInt8 {
-    uint8_t val;
-    bool hasVal;
-} MaybeUInt8;
+};
 
 typedef struct BucketIdx {
     size_t idx;

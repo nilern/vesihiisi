@@ -25,7 +25,7 @@ typedef struct Shadowstack {
 
 #define REG_COUNT 256
 
-#define BOOTSTRAP_TYPE_COUNT 26
+#define BOOTSTRAP_TYPE_COUNT 27
 #define BOOTSTRAP_SINGLETON_COUNT 4
 
 struct NamedTypes {
@@ -41,6 +41,7 @@ struct NamedTypes {
     HRef<Type> arrayMut;
     HRef<Type> byteArray;
     HRef<Type> symbol;
+    HRef<Type> loc;
     HRef<Type> pair;
     HRef<Type> emptyList;
     HRef<Type> unbound;
@@ -181,6 +182,8 @@ inline ByteArray* tryAllocByteArray(State* state, Fixnum count) {
 inline ByteArray* allocByteArrayOrDie(State* state, Fixnum count) {
     return (ByteArray*)state->heap.tospace.allocFlexOrDie(state->types.byteArray.ptr(), count);
 }
+
+HRef<Loc> createLoc(State* state, HRef<String> filename, Fixnum byteIdx);
 
 HRef<Pair> allocPair(State* state);
 

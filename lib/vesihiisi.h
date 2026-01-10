@@ -26,6 +26,9 @@ struct Vshs_State;
 struct Vshs_State* tryCreateState(size_t heapSize);
 void freeState(struct Vshs_State* state);
 
+void pushStackRoot(struct Vshs_State* state, ORef* stackLoc);
+void popStackRoots(struct Vshs_State* state, size_t count);
+
 typedef struct Parser Parser;
 
 typedef enum ParseErrorType {
@@ -33,11 +36,23 @@ typedef enum ParseErrorType {
     EXPECTED_CHAR_CLASS
 } ParseErrorType;
 
-Parser* createParser(Str src);
+Parser* createParser(struct Vshs_State* state, Str src, Str filename);
 void freeParser(Parser* parser);
 
+void pushFilenameRoot(struct Vshs_State* state, Parser* parser); // HACK
+
+typedef struct Vshs_LocatedORef {
+    ORef val;
+    ORef loc; // Actually `HRef<Loc>` but obviously we can't have that in C
+} Vshs_LocatedORef;
+
+typedef struct Vshs_MaybeLocatedORef {
+    Vshs_LocatedORef val;
+    bool hasVal;
+} Vshs_MaybeLocatedORef;
+
 typedef struct ParseError {
-    size_t byteIdx;
+    ORef loc; // Actually `HRef<Loc>` but obviously we can't have that in C
     int actualMaybeChar;
     union {
         char expectedChar;
@@ -48,7 +63,7 @@ typedef struct ParseError {
 
 typedef struct ParseRes {
     union {
-        MaybeORef val;
+        Vshs_MaybeLocatedORef val;
         ParseError err;
     };
     bool success;

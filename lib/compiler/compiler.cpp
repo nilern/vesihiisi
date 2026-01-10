@@ -554,7 +554,7 @@ void printBlock(
     {
         size_t printed = 0;
         for (BitSetIter it = newBitSetIter(&block->liveIns);;) {
-            MaybeSize const maybeIdx = bitSetIterNext(&it);
+            Maybe<size_t> const maybeIdx = bitSetIterNext(&it);
             if (!maybeIdx.hasVal) { break; }
 
             if (printed > 0) { fputc(' ', dest); }

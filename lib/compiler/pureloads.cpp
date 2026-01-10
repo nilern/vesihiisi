@@ -151,7 +151,7 @@ LiftingAnalysis joinLambdaLiftees(
 
     BitSet liftees = createBitSet(&compiler->arena, bitSetBitCap(&block->liveIns));
     for (BitSetIter it = newBitSetIter(&block->liveIns);;) {
-        MaybeSize const maybeIdx = bitSetIterNext(&it);
+        Maybe<size_t> const maybeIdx = bitSetIterNext(&it);
         if (!maybeIdx.hasVal) { break; }
         IRName const liftee = {maybeIdx.val};
 
@@ -186,7 +186,7 @@ void liftArgs(
     Args* const args = &transfer->gotoo.args;
 
     for (BitSetIter it = newBitSetIter(&liftees);;) {
-        MaybeSize const maybeIdx = bitSetIterNext(&it);
+        Maybe<size_t> const maybeIdx = bitSetIterNext(&it);
         if (!maybeIdx.hasVal) { break; }
         IRName const liftee = {maybeIdx.val};
 
@@ -197,7 +197,7 @@ void liftArgs(
 
 void liftParams(Compiler* compiler, PureLoadsEnv* env, IRBlock* block, BitSet liftees) {
     for (BitSetIter it = newBitSetIter(&liftees);;) {
-        MaybeSize const maybeIdx = bitSetIterNext(&it);
+        Maybe<size_t> const maybeIdx = bitSetIterNext(&it);
         if (!maybeIdx.hasVal) { break; }
         IRName const liftee = {maybeIdx.val};
 
@@ -244,7 +244,7 @@ void linearizeCloses(
     Compiler* compiler, PureLoadsEnv* env, Stmts* newStmts, Args* dest, BitSet const* closes
 ) {
     for (BitSetIter it = newBitSetIter(closes);;) {
-        MaybeSize const maybeIdx = bitSetIterNext(&it);
+        Maybe<size_t> const maybeIdx = bitSetIterNext(&it);
         if (!maybeIdx.hasVal) { break; }
 
         IRName const closee = deepLexicalUse(compiler, env, newStmts, IRName{maybeIdx.val});

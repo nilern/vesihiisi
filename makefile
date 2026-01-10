@@ -12,8 +12,8 @@ DEV_CPP_FLAGS := $(BASE_CPP_FLAGS) $(DEBUG_FLAGS) # $(SANITIZE_FLAGS)
 TEST_CPP_FLAGS := -std=c++20 $(BASER_FLAGS) $(DEBUG_FLAGS) $(SANITIZE_FLAGS)
 
 LIB_SRCS := $(shell find lib -name '*.[ch]' -o -name '*.[ch]pp')
-PROD_LINK_LIBS := -lvesihiisi -lstdc++ # OPTIMIZE: Avoid having to link stdc++ (only using a `delete`)
-DEV_LINK_LIBS := -lvesihiisi-dev -lstdc++ # OPTIMIZE: Avoid having to link stdc++ (only using a `delete`)
+PROD_LINK_LIBS := -lvesihiisi -lstdc++ # OPTIMIZE: Avoid having to link stdc++
+DEV_LINK_LIBS := -lvesihiisi-dev -lstdc++ # OPTIMIZE: Avoid having to link stdc++
 
 .PHONY: all
 all: vesihiisi

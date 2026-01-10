@@ -24,6 +24,7 @@ char const* const typeNames[] = {
     "<array!>",
     "<byte-array!>",
     "<symbol>",
+    "<source-location>",
     "<pair>",
     "<empty-list>",
     "<unbound>",
@@ -144,6 +145,25 @@ void initSpecialPurposeRegs(State* state) {
         state->code = HRef<ByteArray>::fromUnchecked(methodPtr->code).ptr()->flexData();
         state->consts = HRef<Array>::fromUnchecked(methodPtr->consts).ptr()->flexData();
     }
+}
+
+// TODO: Extend this and expand its use:
+template<typename T, bool isBytes>
+Type* tryCreateFixedType(Semispace* semispace, Type const* typeType) {
+    Type* const type = reinterpret_cast<Type*>(semispace->tryAlloc(typeType));
+    if (!type) { return nullptr; }
+
+    *type = Type{
+        .minSize = Fixnum((int64_t)sizeof(T)),
+        .align = Fixnum((int64_t)alignof(T)),
+        .isBytes = Bool{isBytes},
+        .hasCodePtr = False,
+        .isFlex = False,
+        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
+        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
+    };
+
+    return type;
 }
 
 Type* tryCreateTypeType(Semispace* semispace) {
@@ -694,6 +714,8 @@ State* State::tryCreate(size_t heapSize) {
     if (!byteArrayType) { return nullptr; }
     Type* const symbolType = tryCreateSymbolType(&heap.tospace, typeType);
     if (!symbolType) { return nullptr; }
+    Type* const locType = tryCreateFixedType<Loc, false>(&heap.tospace, typeType);
+    if (!locType) { return nullptr; }
     Type* const pairType = tryCreatePairType(&heap.tospace, typeType);
     if (!pairType) { return nullptr; }
     Type* const emptyListType = tryCreateEmptyListType(&heap.tospace, typeType);
@@ -763,6 +785,7 @@ State* State::tryCreate(size_t heapSize) {
             .arrayMut = HRef(arrayMutType),
             .byteArray = HRef(byteArrayType),
             .symbol = HRef(symbolType),
+            .loc = HRef{locType},
             .pair = HRef(pairType),
             .emptyList = HRef(emptyListType),
             .unbound = HRef(unboundType),
@@ -1108,6 +1131,23 @@ void pruneSymbols(SymbolTable* symbols) {
     }
 }
 
+HRef<Loc> createLoc(State* state, HRef<String> filename, Fixnum byteIdx) {
+    Loc* ptr = static_cast<Loc*>(state->heap.tospace.tryAlloc(state->types.loc.ptr()));
+    if (mustCollect(ptr)) {
+        pushStackRoot(state, &filename);
+        collect(state);
+        popStackRoots(state, 1);
+        ptr = static_cast<Loc*>(state->heap.tospace.allocOrDie(state->types.loc.ptr()));
+    }
+
+    *ptr = Loc{
+        .filename = filename,
+        .byteIdx = byteIdx
+    };
+
+    return HRef{ptr};
+}
+
 HRef<Pair> allocPair(State* state) {
     Pair* ptr = (Pair*)state->heap.tospace.tryAlloc(state->types.pair.ptr());
     if (mustCollect(ptr)) {
@@ -1408,3 +1448,11 @@ extern "C" Vshs_State* tryCreateState(size_t heapSize) {
 }
 
 extern "C" void freeState(Vshs_State* state) { freeState((State*)state); }
+
+extern "C" void pushStackRoot(Vshs_State* state, ORef* stackLoc) {
+    pushStackRoot((State*)state, stackLoc);
+}
+
+extern "C" void popStackRoots(Vshs_State* state, size_t count) {
+    popStackRoots((State*)state, count);
+}

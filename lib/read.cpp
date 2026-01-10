@@ -1,4 +1,5 @@
 #include <ctype.h>
+#include <filesystem> // OPTIMIZE: Avoid this, requires linking to a bunch of `std::` stuff.
 #include <new> // For placement new
 
 #include "util/util.hpp"
@@ -7,25 +8,39 @@
 namespace {
 void revealMaybeChar(FILE* dest, int mc) {
     switch (mc) {
-    case '\a': fputs("\\a", dest); break;
-    case '\b': fputs("\\b", dest); break;
-    case '\f': fputs("\\f", dest); break;
-    case '\n': fputs("\\n", dest); break;
-    case '\r': fputs("\\r", dest); break;
-    case '\t': fputs("\\t", dest); break;
-    case '\v': fputs("\\v", dest); break;
+    case '\a': fputs("'\\a'", dest); break;
+    case '\b': fputs("'\\b'", dest); break;
+    case '\f': fputs("'\\f'", dest); break;
+    case '\n': fputs("'\\n'", dest); break;
+    case '\r': fputs("'\\r'", dest); break;
+    case '\t': fputs("'\\t'", dest); break;
+    case '\v': fputs("'\\v'", dest); break;
 
     case EOF: fputs("EOF", dest); break;
 
-    default: putc(mc, dest); break;
+    default: fprintf(dest, "'%c'", (char)mc); break;
     }
 }
 
-struct Pos {
+void printFilename(FILE* dest, HRef<String> filename) {
+    char const* const begin = filename.ptr()->flexData();
+    size_t const count = (uint64_t)filename.ptr()->flexCount().val();
+    std::filesystem::path const path{begin, begin + count};
+    std::error_code pathErr;
+    auto const relative = std::filesystem::relative(path, pathErr);
+    if (!pathErr) {
+        fprintf(dest, "%s:", relative.c_str());
+    } else { // Default to printing the absolute path:
+        // TODO: Avoid using POSIX `printf` extension:
+        fprintf(dest, "%.*s:", (int)count, begin);
+    }
+}
+
+struct Coord {
     size_t line;
     size_t col;
 
-    Pos() : line{1}, col{1} {}
+    Coord() : line{1}, col{1} {}
 
     void advance(char c) {
         if (c != '\n') {
@@ -43,8 +58,8 @@ struct Pos {
 // calculated for will be far slower still. While we do not have e.g. .fasl files `src` should be
 // available (if the user lost it they have bigger problems than missing line and column
 // numbers...).
-Pos byteIdxToPos(Str src, size_t byteIdx) {
-    Pos pos{};
+Coord byteIdxToCoord(Str src, size_t byteIdx) {
+    Coord pos{};
 
     size_t const limit = byteIdx < src.len ? byteIdx : src.len; // Basically use `src.len` for EOF
     for (size_t i = 0; i < limit; ++i) {
@@ -60,9 +75,10 @@ extern "C" void printParseError(FILE* dest, Str src, ParseError const* err) {
     fputs("unexpected ", dest);
     revealMaybeChar(dest, err->actualMaybeChar);
 
-    // TODO: (Canonical) filename:
     fputs(" at ", dest);
-    byteIdxToPos(src, err->byteIdx).print(dest);
+    HRef<Loc> const loc = HRef<Loc>::fromUnchecked(err->loc);
+    printFilename(dest, loc.ptr()->filename);
+    byteIdxToCoord(src, (uint64_t)loc.ptr()->byteIdx.val()).print(dest);
 
     fputs(", expected ", dest);
     switch (err->type) {
@@ -71,7 +87,7 @@ extern "C" void printParseError(FILE* dest, Str src, ParseError const* err) {
     }
 }
 
-using ReadExprRes = Res<ParseError, ORef>;
+using ReadExprRes = Res<ParseError, Vshs_LocatedORef>;
 
 using MaybeCharPred = bool (*)(int mc);
 
@@ -83,9 +99,18 @@ private:
     size_t byteIdx;
 
 public:
-    explicit Parser(Str str) : start{str.data}, end{str.data + str.len}, byteIdx{0} {}
+    ORef filename; // FIXME: Actually `HRef<String>` but that would use anonymous namespace
+
+    explicit Parser(State* state, Str str, Str t_filename) :
+        start{str.data},
+        end{str.data + str.len},
+        byteIdx{0},
+        filename{createString(state, t_filename)}
+    {}
 
     char const* curr() const { return start + byteIdx; }
+
+    size_t currIdx() const { return byteIdx; }
 
     [[nodiscard]]
     int peek() const { return curr() < end ? *curr() : EOF; }
@@ -127,26 +152,32 @@ public:
         return false;
     }
 
-    ReadExprRes error(char c) {
-        ParseError err{byteIdx, peek(), {.expectedChar = c}, EXPECTED_CHAR};
-        return ReadExprRes{{.err = err}, false};
+    ParseError error(State* state, char c) {
+        HRef<Loc> const loc =
+            createLoc(state, HRef<String>::fromUnchecked(filename), Fixnum{(int64_t)byteIdx});
+        return ParseError{loc, peek(), {.expectedChar = c}, EXPECTED_CHAR};
     }
 
-    ReadExprRes error(char const* charClass) {
-        ParseError err{byteIdx, peek(), {.expectedCharClass = charClass}, EXPECTED_CHAR_CLASS};
-        return ReadExprRes{{.err = err}, false};
+    ParseError error(State* state, char const* charClass) {
+        HRef<Loc> const loc =
+            createLoc(state, HRef<String>::fromUnchecked(filename), Fixnum{(int64_t)byteIdx});
+        return ParseError{loc, peek(), {.expectedCharClass = charClass}, EXPECTED_CHAR_CLASS};
     }
 };
 
-extern "C" Parser* createParser(Str src) {
+extern "C" Parser* createParser(Vshs_State* state, Str src, Str filename) {
     Parser* const parser = (Parser*)malloc(sizeof *parser);
     if (!parser) { return nullptr; }
-    return new (parser) Parser{src};
+    return new (parser) Parser{(State*)state, src, filename};
 }
 
 extern "C" void freeParser(Parser* parser) {
     parser->~Parser();
     return free(parser);
+}
+
+extern "C" void pushFilenameRoot(struct Vshs_State* state, Parser* parser) {
+    pushStackRoot((State*)state, &parser->filename);
 }
 
 namespace {
@@ -211,15 +242,17 @@ void skipWhitespace(Parser* parser) {
     }
 }
 
+using ReadExprTailRes = Res<ParseError, ORef>;
+
 ReadExprRes readExpr(State* state, Parser* parser);
 
 // <ws> (')' | <expr> <ws> (<expr> <ws>)* (')' | '.' <expr> <ws> ')')
-ReadExprRes readListTail(State* state, Parser* parser) {
+ReadExprTailRes readListTail(State* state, Parser* parser) {
     skipWhitespace(parser); // <ws>
 
     if (parser->peek() == ')') { // Empty list
         parser->skipUnchecked(); // ')'
-        return ReadExprRes{{.val = state->singletons.emptyList.oref()}, true};
+        return ReadExprTailRes{{.val = state->singletons.emptyList}, true};
     }
 
     HRef<Pair> firstPair = allocPair(state);
@@ -231,25 +264,35 @@ ReadExprRes readListTail(State* state, Parser* parser) {
     ReadExprRes const carRes = readExpr(state, parser);
     if (!carRes.success) {
         popStackRoots(state, 2);
-        return carRes;
+        return ReadExprTailRes{{.err = carRes.err}, false};
     }
-    pair.ptr()->car = carRes.val;
+    {
+        Vshs_LocatedORef const locVal = carRes.val;
+        Pair* const pairPtr = pair.ptr();
+        pairPtr->car = locVal.val;
+        pairPtr->maybeLoc = locVal.loc;
+    }
 
     skipWhitespace(parser); // <ws>
 
     // (<expr> <ws>)* ; FOLLOW = {')', '.'}
     for (int c; !((c = parser->peek()) == ')' || c == '.');) {
         HRef<Pair> const newPair = allocPair(state);
-        pair.ptr()->cdr = newPair.oref();
+        pair.ptr()->cdr = newPair;
         pair = newPair;
 
         // <expr>
         ReadExprRes const carRes = readExpr(state, parser);
         if (!carRes.success) {
             popStackRoots(state, 2);
-            return carRes;
+            return ReadExprTailRes{{.err = carRes.err}, false};
         }
-        pair.ptr()->car = carRes.val;
+        {
+            Vshs_LocatedORef const locVal = carRes.val;
+            Pair* const pairPtr = pair.ptr();
+            pairPtr->car = locVal.val;
+            pairPtr->maybeLoc = locVal.loc;
+        }
 
         skipWhitespace(parser); // <ws>
     }
@@ -258,7 +301,7 @@ ReadExprRes readListTail(State* state, Parser* parser) {
     case ')': {
         parser->skipUnchecked(); // ')'
 
-        pair.ptr()->cdr = state->singletons.emptyList.oref();
+        pair.ptr()->cdr = state->singletons.emptyList;
     }; break;
 
     case '.': {
@@ -268,35 +311,35 @@ ReadExprRes readListTail(State* state, Parser* parser) {
         ReadExprRes const improperRes = readExpr(state, parser);
         if (!improperRes.success) {
             popStackRoots(state, 2);
-            return improperRes;
+            return ReadExprTailRes{{.err = carRes.err}, false};
         }
-        pair.ptr()->cdr = improperRes.val;
+        pair.ptr()->cdr = improperRes.val.val;
 
         skipWhitespace(parser); // <ws>
 
         if (!parser->match(')')) {
             popStackRoots(state, 2);
-            return parser->error(')');
+            return ReadExprTailRes{{.err = parser->error(state, ')')}, false};
         }
     }; break;
 
     default: {
         popStackRoots(state, 2);
-        return parser->error("')' or '.'");
+        return ReadExprTailRes{{.err = parser->error(state, "')' or '.'")}, false};
     }; break;
     }
 
     popStackRoots(state, 2);
-    return ReadExprRes{{.val = firstPair.oref()}, true};
+    return ReadExprTailRes{{.val = firstPair}, true};
 }
 
 // <digit radix>+ ('.' <digit radix>*)?
-ReadExprRes readNumber(Parser* parser, int radix) {
+ReadExprTailRes readNumber(State* state, Parser* parser, int radix) {
     char const* const start = parser->curr();
 
     // <digit radix>
     if (!parser->match(isDigit[radix])) {
-        return parser->error(radixClasses[radix]);
+        return ReadExprTailRes{{.err = parser->error(state, radixClasses[radix])}, false};
     }
 
     // <digit radix>*
@@ -304,25 +347,25 @@ ReadExprRes readNumber(Parser* parser, int radix) {
 
     // ('.' <digit radix>*)?
     if (parser->peek() != '.') { // Fixnum
-        return ReadExprRes{{.val= Fixnum{(int64_t)atoll(start)}.oref()}, true};
+        return ReadExprTailRes{{.val= Fixnum{(int64_t)atoll(start)}}, true};
     } else { // Flonum
         parser->skipUnchecked(); // '.'
 
         // <digit radix>*
         while (parser->match(isDigit[radix])) {}
 
-        return ReadExprRes{{.val= Flonum{atof(start)}.oref()}, true};
+        return ReadExprTailRes{{.val= Flonum{atof(start)}}, true};
     }
 }
 
 // <initial> <subsequent>*
-ReadExprRes readSymbolTail(State* state, Parser* parser, char const* start) {
+ReadExprTailRes readSymbolTail(State* state, Parser* parser, char const* start) {
     assert(start == parser->curr() - 1 && isInitial(*start)); // <initial>
     // <subsequent>*
     while (parser->match(isSubsequent)) {}
 
     Str const name{start, (size_t)(parser->curr() - start)};
-    return ReadExprRes{{.val = intern(state, name).oref()}, true};
+    return ReadExprTailRes{{.val = intern(state, name)}, true};
 }
 
 using EscapeCharRes = Res<char const*, char>;
@@ -344,18 +387,20 @@ EscapeCharRes escapeChar(int mc) {
 }
 
 // [^"]* '"'
-ReadExprRes readStringTail(State* state, Parser* parser) {
-    StringBuilder builder = createStringBuilder();
+ReadExprTailRes readStringTail(State* state, Parser* parser) {
+    StringBuilder builder = createStringBuilder(); // OPTIMIZE: Reusable one in `Parser`
 
     // [^"]*
     for (int c; (c = parser->peek()) != '"';) {
-        if (c == EOF) { return parser->error('"'); }
+        if (c == EOF) { return ReadExprTailRes{{.err = parser->error(state, '"')}, false}; }
 
         if (c == '\\') { // Char escape
             parser->skipUnchecked(); // '\\'
 
             EscapeCharRes const escRes = escapeChar(parser->peek());
-            if (!escRes.success) { return parser->error(escRes.err); }
+            if (!escRes.success) {
+                return ReadExprTailRes{{.err = parser->error(state, escRes.err)}, false};
+            }
             parser->skipUnchecked(); // Escapee
             c = escRes.val;
         }
@@ -365,53 +410,57 @@ ReadExprRes readStringTail(State* state, Parser* parser) {
     }
 
     // '"'
-    if (!parser->match('"')) { return parser->error('"'); }
+    if (!parser->match('"')) { return ReadExprTailRes{{.err = parser->error(state, '"')}, false}; }
 
-    return ReadExprRes{{.val = createString(state, stringBuilderStr(&builder)).oref()}, true};
+    return ReadExprTailRes{{.val = createString(state, stringBuilderStr(&builder))}, true};
 }
 
 // 't' | 'f' | '"' [^"] '"' | 'x' <number 16>
-ReadExprRes readAltTail(Parser* parser) {
+ReadExprTailRes readAltTail(State* state, Parser* parser) {
     switch (parser->peek()) {
     case 't': {
         parser->skipUnchecked(); // 't'
 
-        return ReadExprRes{{.val = True.oref()}, true};
+        return ReadExprTailRes{{.val = True}, true};
     }; break;
 
     case 'f': {
         parser->skipUnchecked(); // 'f'
 
-        return ReadExprRes{{.val = False.oref()}, true};
+        return ReadExprTailRes{{.val = False}, true};
     }; break;
 
     case '"': {
         parser->skipUnchecked(); // '"'
 
         int const mc = parser->peek();
-        if (mc == '"' || mc == EOF) { return parser->error("a character following #\""); }
+        if (mc == '"' || mc == EOF) {
+            return ReadExprTailRes{{.err = parser->error(state, "a character following #\"")}, false};
+        }
         auto c = static_cast<char>(mc);
 
         if (c == '\\') {
             parser->skipUnchecked(); // '\\'
 
             EscapeCharRes const escRes = escapeChar(parser->peek());
-            if (!escRes.success) { return parser->error(escRes.err); }
+            if (!escRes.success) {
+                return ReadExprTailRes{{.err = parser->error(state, escRes.err)}, false};
+            }
             parser->skipUnchecked(); // Escapee
             c = escRes.val;
         }
 
-        return ReadExprRes{{.val = Char(c).oref()}, true};
+        return ReadExprTailRes{{.val = Char(c)}, true};
     }; break;
 
 
     case 'x': {
         parser->skipUnchecked(); // 'x'
 
-        return readNumber(parser, 16);
+        return readNumber(state, parser, 16);
     }; break;
 
-    default: return parser->error("[tf\"x] following '#'");
+    default: return ReadExprTailRes{{.err = parser->error(state, "[tf\"x] following '#'")}, false};
     }
 }
 
@@ -419,32 +468,72 @@ ReadExprRes readAltTail(Parser* parser) {
 ReadExprRes readExpr(State* state, Parser* parser) {
     skipWhitespace(parser); // <ws>
 
+    size_t const byteIdx = parser->currIdx();
+
     int const c = parser->peek();
     switch (c) {
     case '(': {
         parser->skipUnchecked(); // '('
-        return readListTail(state, parser);
+
+        ReadExprTailRes tailRes = readListTail(state, parser);
+        if (!tailRes.success) { return ReadExprRes{{.err = tailRes.err}, false}; }
+
+        pushStackRoot(state, &tailRes.val);
+        HRef<Loc> const loc = createLoc(state, HRef<String>::fromUnchecked(parser->filename),
+                                        Fixnum{(int64_t)byteIdx});
+        popStackRoots(state, 1);
+        return ReadExprRes{{.val = {tailRes.val, loc}}, true};
     }; break;
 
     case '#': {
         parser->skipUnchecked(); // '#'
-        return readAltTail(parser);
+
+
+        ReadExprTailRes const tailRes = readAltTail(state, parser);
+        if (!tailRes.success) { return ReadExprRes{{.err = tailRes.err}, false}; }
+
+        // TODO: If `readAltTail` starts returning non-scalars, need to save `&tailRes.val`.
+        HRef<Loc> const loc = createLoc(state, HRef<String>::fromUnchecked(parser->filename),
+                                        Fixnum{(int64_t)byteIdx});
+        return ReadExprRes{{.val = {tailRes.val, loc}}, true};
     }; break;
 
     case '"': {
         parser->skipUnchecked(); // '"'
-        return readStringTail(state, parser);
+
+        ReadExprTailRes tailRes = readStringTail(state, parser);
+        if (!tailRes.success) { return ReadExprRes{{.err = tailRes.err}, false}; }
+
+        pushStackRoot(state, &tailRes.val);
+        HRef<Loc> const loc = createLoc(state, HRef<String>::fromUnchecked(parser->filename),
+                                        Fixnum{(int64_t)byteIdx});
+        popStackRoots(state, 1);
+        return ReadExprRes{{.val = {tailRes.val, loc}}, true};
     }; break;
     }
 
     if (isInitial(c)) {
         char const* const start = parser->curr();
         parser->skipUnchecked(); // `c`
-        return readSymbolTail(state, parser, start);
+
+        ReadExprTailRes tailRes =  readSymbolTail(state, parser, start);
+        if (!tailRes.success) { return ReadExprRes{{.err = tailRes.err}, false}; }
+
+        pushStackRoot(state, &tailRes.val);
+        HRef<Loc> const loc = createLoc(state, HRef<String>::fromUnchecked(parser->filename),
+                                        Fixnum{(int64_t)byteIdx});
+        popStackRoots(state, 1);
+        return ReadExprRes{{.val = {tailRes.val, loc}}, true};
     } else if (isDigit[10](c)) {
-        return readNumber(parser, 10); // OPTIMIZE: Rechecks `c`
+        ReadExprTailRes const tailRes = readNumber(state, parser, 10); // OPTIMIZE: Rechecks `c`
+        if (!tailRes.success) { return ReadExprRes{{.err = tailRes.err}, false}; }
+
+        // TODO: If `readNumber` starts returning non-scalars, need to save `&tailRes.val`.
+        HRef<Loc> const loc = createLoc(state, HRef<String>::fromUnchecked(parser->filename),
+                                        Fixnum{(int64_t)byteIdx});
+        return ReadExprRes{{.val = {tailRes.val, loc}}, true};
     } else {
-        return parser->error("S-expression");
+        return ReadExprRes{{.err = parser->error(state, "S-expression")}, false};
     }
 }
 
@@ -452,11 +541,11 @@ ReadExprRes readExpr(State* state, Parser* parser) {
 ParseRes read(State* state, Parser* parser) {
     skipWhitespace(parser); // <ws>
 
-    if (parser->peek() == EOF) { return ParseRes{{.val = MaybeORef{}}, true}; }
+    if (parser->peek() == EOF) { return ParseRes{{.val = {}}, true}; }
 
     ReadExprRes const exprRes = readExpr(state, parser);
     if (!exprRes.success) { return ParseRes{{.err = exprRes.err}, false}; }
-    return ParseRes{{.val = MaybeORef{exprRes.val, true}}, true};
+    return ParseRes{{.val = Vshs_MaybeLocatedORef{{exprRes.val.val, exprRes.val.loc}, true}}, true};
 }
 
 } // namespace

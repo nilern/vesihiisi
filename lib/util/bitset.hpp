@@ -44,6 +44,6 @@ inline BitSetIter newBitSetIter(BitSet const* bits) {
     return BitSetIter{.bits = bits, .idx = 0, .bitCount = bitSetLimit(bits)};
 }
 
-MaybeSize bitSetIterNext(BitSetIter* it);
+Maybe<size_t> bitSetIterNext(BitSetIter* it);
 
 } // namespace

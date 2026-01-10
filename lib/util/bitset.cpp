@@ -102,18 +102,18 @@ void bitSetUnionInto(Arena* arena, BitSet* dest, BitSet const* src) {
 }
 
 // OPTIMIZE: Skip empty words and bytes:
-MaybeSize bitSetIterNext(BitSetIter* it) {
+Maybe<size_t> bitSetIterNext(BitSetIter* it) {
     size_t const count = it->bitCount;
 
     for (size_t i = it->idx; i < count; ++i) {
         if (bitSetContains(it->bits, i)) {
             it->idx = i + 1;
-            return MaybeSize{.val = i, .hasVal = true};
+            return Maybe{.val = i, .hasVal = true};
         }
     }
 
     it->idx = count;
-    return MaybeSize{};
+    return Maybe<size_t>{};
 }
 
 } // namespace

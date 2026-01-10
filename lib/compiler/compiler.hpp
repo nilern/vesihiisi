@@ -281,6 +281,8 @@ void createIRGoto(Compiler* compiler, IRBlock* block, IRLabel destLabel, IRName 
 
 void createIRReturn(IRBlock* block, IRName callee, IRName arg);
 
-HRef<Method> compile(State* state, ORef expr, bool debug);
+using CompilationRes = Res<SyntaxErrors, HRef<Method>>;
+
+CompilationRes compile(State* state, ORef expr, bool debug);
 
 } // namespace

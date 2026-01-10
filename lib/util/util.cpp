@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <filesystem> // OPTIMIZE: Avoid this, requires linking to a bunch of `std::` stuff.
 
 namespace {
 
@@ -64,6 +65,33 @@ uint64_t fnv1aHash(Str s) { return fnv1aHash_n(s.data, s.len); }
 
 // OPTIMIZE: More sophisticated combination algorithm:
 uint64_t hashCombine(uint64_t h1, uint64_t h2) { return 3 * h1 + h2; }
+
+void printFilename(FILE* dest, Str filename) {
+    std::filesystem::path const path{filename.data, filename.data + filename.len};
+    std::error_code pathErr;
+    auto const relative = std::filesystem::relative(path, pathErr);
+    if (!pathErr) {
+        fprintf(dest, "%s:", relative.c_str());
+    } else { // Default to printing the absolute path:
+        // TODO: Avoid using POSIX `printf` extension:
+        fprintf(dest, "%.*s:", (int)filename.len, filename.data);
+    }
+}
+
+// A bit slow but will save lots of debug info space. And fixing the error that the position is
+// calculated for will be far slower still. While we do not have e.g. .fasl files `src` should be
+// available (if the user lost it they have bigger problems than missing line and column
+// numbers...).
+Coord byteIdxToCoord(Str src, size_t byteIdx) {
+    Coord pos{};
+
+    size_t const limit = byteIdx < src.len ? byteIdx : src.len; // Basically use `src.len` for EOF
+    for (size_t i = 0; i < limit; ++i) {
+        pos.advance(src.data[i]);
+    }
+
+    return pos;
+}
 
 } // namespace
 

@@ -70,4 +70,30 @@ uint64_t fnv1aHash(Str s);
 
 uint64_t hashCombine(uint64_t h1, uint64_t h2);
 
+void printFilename(FILE* dest, Str filename);
+
+struct Coord {
+    size_t line;
+    size_t col;
+
+    Coord() : line{1}, col{1} {}
+
+    void advance(char c) {
+        if (c != '\n') {
+            ++col;
+        } else {
+            ++line;
+            col = 1;
+        }
+    }
+
+    void print(FILE* dest) { fprintf(dest, "%lu:%lu", line, col); }
+};
+
+// A bit slow but will save lots of debug info space. And fixing the error that the position is
+// calculated for will be far slower still. While we do not have e.g. .fasl files `src` should be
+// available (if the user lost it they have bigger problems than missing line and column
+// numbers...).
+Coord byteIdxToCoord(Str src, size_t byteIdx);
+
 } // namespace

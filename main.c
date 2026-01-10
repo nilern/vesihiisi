@@ -13,10 +13,12 @@ typedef enum ResTag {RES_ERR, RES_OK} ResTag;
 typedef struct Vshs_Err {
     union {
         ParseError parseErr;
+        SyntaxErrors syntaxErrs;
     };
     enum {
         VSHS_PARSE_ERR,
-        VSHS_VM_ERR
+        VSHS_SYNTAX_ERRS,
+        VSHS_RUNTIME_ERR
     } type;
 } Vshs_Err;
 
@@ -49,11 +51,25 @@ static Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser, bool deb
     }
 
     // TODO: Use `maybeExpr.val.loc`:
-    VMRes const res = eval(state, expr, debug);
+    EvalRes const res = eval(state, expr, debug);
     if (res.success) {
         return (Vshs_MaybeRes){.val = {.val = res.val, RES_OK}, true};
     } else {
-        return (Vshs_MaybeRes){.val = {.err = {.type = VSHS_VM_ERR}, RES_ERR}, true};
+        switch (res.err.type) {
+        case SYNTAX_ERROR:
+            return (Vshs_MaybeRes){
+                {
+                    .err = {.syntaxErrs = res.err.syntaxErrs, VSHS_SYNTAX_ERRS},
+                    RES_ERR
+                },
+                true
+            };
+
+        case RUNTIME_ERROR:
+            return (Vshs_MaybeRes){.val = {.err = {.type = VSHS_RUNTIME_ERR}, RES_ERR}, true};
+
+        default: exit(EXIT_FAILURE); // Unreachable
+        }
     }
 }
 
@@ -247,7 +263,20 @@ int main(int argc, char const* argv[static argc]) {
                     putc('\n', stderr);
                 }; break;
 
-                case VSHS_VM_ERR: break; // FIXME?
+                case VSHS_SYNTAX_ERRS: {
+                    SyntaxErrors errs = res.err.syntaxErrs;
+
+                    size_t const errorCount = errs.count;
+                    for (size_t i = 0; i < errorCount; ++i) {
+                        fputs("SyntaxError: ", stderr);
+                        printSyntaxError(state, stderr, src, &errs.vals[i]);
+                        putc('\n', stderr);
+                    }
+
+                    freeSyntaxErrors(&errs);
+                }; break;
+
+                case VSHS_RUNTIME_ERR: break; // FIXME?
                 }
 
                 loadFailed = true;
@@ -289,7 +318,20 @@ int main(int argc, char const* argv[static argc]) {
                             putc('\n', stderr);
                         }; break;
 
-                        case VSHS_VM_ERR: break; // FIXME?
+                        case VSHS_SYNTAX_ERRS: {
+                            SyntaxErrors errs = res.err.syntaxErrs;
+
+                            size_t const errorCount = errs.count;
+                            for (size_t i = 0; i < errorCount; ++i) {
+                                fputs("SyntaxError: ", stderr);
+                                printSyntaxError(state, stderr, src, &errs.vals[i]);
+                                putc('\n', stderr);
+                            }
+
+                            freeSyntaxErrors(&errs);
+                        }; break;
+
+                        case VSHS_RUNTIME_ERR: break; // FIXME?
                         }
                     }; break;
                     }

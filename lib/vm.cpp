@@ -11,6 +11,11 @@
 
 namespace {
 
+typedef struct VMRes {
+    ORef val;
+    bool success;
+} VMRes;
+
 VMRes run(State* state, HRef<Closure> selfRef) {
     // TODO: Debug index & type checks & bytecode verifier
 

@@ -4,6 +4,8 @@
 
 namespace {
 
-IRFn topLevelExprToIR(State const* state, Compiler* compiler, ORef expr);
+using ToIRRes = Res<SyntaxErrors, IRFn>;
+
+ToIRRes topLevelExprToIR(State const* state, Compiler* compiler, ORef expr);
 
 }

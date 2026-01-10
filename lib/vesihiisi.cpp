@@ -22,9 +22,21 @@
 #include "compiler/cloverindexing.cpp"
 #include "compiler/bytecodegen.cpp"
 
-extern "C" VMRes eval(Vshs_State* extState, ORef expr, bool debug) {
+extern "C" EvalRes eval(Vshs_State* extState, ORef expr, bool debug) {
     State* const state = (State*)extState;
-    HRef<Method> const method = compile(state, expr, debug);
+
+    CompilationRes const compilationRes = compile(state, expr, debug);
+    if (!compilationRes.success) {
+        return EvalRes{
+            {.err = {{.syntaxErrs = compilationRes.err}, SYNTAX_ERROR}},
+            false
+        };
+    }
+    auto const method = compilationRes.val;
+
     HRef<Closure> const closure = allocClosure(state, method, Fixnum(0l));
-    return run(state, closure);
+    VMRes const runRes = run(state, closure);
+    return runRes.success
+        ? EvalRes{{.val = runRes.val}, true}
+        : EvalRes{{.err = {{}, RUNTIME_ERROR}}, false};
 }

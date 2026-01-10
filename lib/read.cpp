@@ -1,5 +1,4 @@
 #include <ctype.h>
-#include <filesystem> // OPTIMIZE: Avoid this, requires linking to a bunch of `std::` stuff.
 #include <new> // For placement new
 
 #include "util/util.hpp"
@@ -21,54 +20,6 @@ void revealMaybeChar(FILE* dest, int mc) {
     default: fprintf(dest, "'%c'", (char)mc); break;
     }
 }
-
-void printFilename(FILE* dest, HRef<String> filename) {
-    char const* const begin = filename.ptr()->flexData();
-    size_t const count = (uint64_t)filename.ptr()->flexCount().val();
-    std::filesystem::path const path{begin, begin + count};
-    std::error_code pathErr;
-    auto const relative = std::filesystem::relative(path, pathErr);
-    if (!pathErr) {
-        fprintf(dest, "%s:", relative.c_str());
-    } else { // Default to printing the absolute path:
-        // TODO: Avoid using POSIX `printf` extension:
-        fprintf(dest, "%.*s:", (int)count, begin);
-    }
-}
-
-struct Coord {
-    size_t line;
-    size_t col;
-
-    Coord() : line{1}, col{1} {}
-
-    void advance(char c) {
-        if (c != '\n') {
-            ++col;
-        } else {
-            ++line;
-            col = 1;
-        }
-    }
-
-    void print(FILE* dest) { fprintf(dest, "%lu:%lu", line, col); }
-};
-
-// A bit slow but will save lots of debug info space. And fixing the error that the position is
-// calculated for will be far slower still. While we do not have e.g. .fasl files `src` should be
-// available (if the user lost it they have bigger problems than missing line and column
-// numbers...).
-Coord byteIdxToCoord(Str src, size_t byteIdx) {
-    Coord pos{};
-
-    size_t const limit = byteIdx < src.len ? byteIdx : src.len; // Basically use `src.len` for EOF
-    for (size_t i = 0; i < limit; ++i) {
-        pos.advance(src.data[i]);
-    }
-
-    return pos;
-}
-
 } // namespace
 
 extern "C" void printParseError(FILE* dest, Str src, ParseError const* err) {
@@ -77,7 +28,7 @@ extern "C" void printParseError(FILE* dest, Str src, ParseError const* err) {
 
     fputs(" at ", dest);
     HRef<Loc> const loc = HRef<Loc>::fromUnchecked(err->loc);
-    printFilename(dest, loc.ptr()->filename);
+    printFilename(dest, loc.ptr()->filename.ptr()->str());
     byteIdxToCoord(src, (uint64_t)loc.ptr()->byteIdx.val()).print(dest);
 
     fputs(", expected ", dest);

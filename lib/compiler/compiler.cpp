@@ -637,10 +637,15 @@ void printIRFn(
     printNestedIRFn(state, dest, compiler, printName, fn, 0);
 }
 
-HRef<Method> compile(State* state, ORef expr, bool debug) {
+CompilationRes compile(State* state, ORef expr, bool debug) {
     Compiler compiler = createCompiler();
 
-    IRFn irFn = topLevelExprToIR(state, &compiler, expr);
+    ToIRRes const toIRRes = topLevelExprToIR(state, &compiler, expr);
+    if (!toIRRes.success) {
+        freeCompiler(&compiler);
+        return CompilationRes{{.err = toIRRes.err}, false};
+    }
+    IRFn irFn = toIRRes.val;
     if (debug) {
         puts(";; # IR:");
         printIRFn(state, stdout, &compiler, printIRName, &irFn);
@@ -683,7 +688,7 @@ HRef<Method> compile(State* state, ORef expr, bool debug) {
     }
 
     freeCompiler(&compiler);
-    return method;
+    return CompilationRes{{.val = method}, true};
 }
 
 } // namespace

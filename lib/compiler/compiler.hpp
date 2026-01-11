@@ -102,6 +102,7 @@ typedef struct KnotGetStmt {
 } KnotGetStmt;
 
 typedef struct IRStmt {
+    ORef maybeLoc;
     union {
         GlobalDef globalDef;
         IRGlobal global;
@@ -160,6 +161,7 @@ typedef struct IRReturn {
 } IRReturn;
 
 typedef struct IRTransfer {
+    ORef maybeLoc;
     union {
         Call call;
         Tailcall tailcall;
@@ -242,21 +244,25 @@ Stmts newStmtsWithCap(Compiler* compiler, size_t cap);
 
 void pushIRStmt(Compiler* compiler, Stmts* stmts, IRStmt stmt);
 
-inline IRStmt globalDefToStmt(GlobalDef globalDef) {
-    return IRStmt{{.globalDef = globalDef}, IRStmt::GLOBAL_DEF};
+inline IRStmt globalDefToStmt(GlobalDef globalDef, ORef maybeLoc) {
+    return IRStmt{maybeLoc, {.globalDef = globalDef}, IRStmt::GLOBAL_DEF};
 }
 
-inline IRStmt globalToStmt(IRGlobal global) {
-    return IRStmt{{.global = global}, IRStmt::GLOBAL};
+inline IRStmt globalToStmt(IRGlobal global, ORef maybeLoc) {
+    return IRStmt{maybeLoc, {.global = global}, IRStmt::GLOBAL};
 }
 
-inline IRStmt constDefToStmt(ConstDef cdef) {
-    return IRStmt{{.constDef = cdef}, IRStmt::CONST_DEF};
+inline IRStmt constDefToStmt(ConstDef cdef, ORef maybeLoc) {
+    return IRStmt{maybeLoc, {.constDef = cdef}, IRStmt::CONST_DEF};
 }
 
-inline IRStmt moveToStmt(MoveStmt mov) { return IRStmt{{.mov = mov}, IRStmt::MOVE}; }
+inline IRStmt moveToStmt(MoveStmt mov, ORef maybeLoc) {
+    return IRStmt{maybeLoc, {.mov = mov}, IRStmt::MOVE};
+}
 
-inline IRStmt swapToStmt(SwapStmt swap) { return IRStmt{{.swap = swap}, IRStmt::SWAP}; }
+inline IRStmt swapToStmt(SwapStmt swap, ORef maybeLoc) {
+    return IRStmt{maybeLoc, {.swap = swap}, IRStmt::SWAP};
+}
 
 inline void swapStmts(void* x, void* y) {
     IRStmt* const xStmt = (IRStmt*)x;
@@ -271,18 +277,19 @@ Args createArgs(Compiler* compiler);
 
 void pushArg(Compiler* compiler, Args* args, IRName arg);
 
-void createCall(IRBlock* block, IRName callee, IRLabel retLabel, Args closes, Args args);
+void createCall(IRBlock* block, IRName callee, IRLabel retLabel, Args closes, Args args,
+                ORef maybeLoc);
 
-void createTailcall(IRBlock* block, IRName callee, IRName retFrame, Args args);
+void createTailcall(IRBlock* block, IRName callee, IRName retFrame, Args args, ORef maybeLoc);
 
-IRIf* createIRIf(IRBlock* block, IRName cond, IRLabel conseqLabel, IRLabel altLabel);
+IRIf* createIRIf(IRBlock* block, IRName cond, IRLabel conseqLabel, IRLabel altLabel, ORef maybeLoc);
 
-void createIRGoto(Compiler* compiler, IRBlock* block, IRLabel destLabel, IRName arg);
+void createIRGoto(Compiler* compiler, IRBlock* block, IRLabel destLabel, IRName arg, ORef maybeLoc);
 
-void createIRReturn(IRBlock* block, IRName callee, IRName arg);
+void createIRReturn(IRBlock* block, IRName callee, IRName arg, ORef maybeLoc);
 
 using CompilationRes = Res<SyntaxErrors, HRef<Method>>;
 
-CompilationRes compile(State* state, ORef expr, bool debug);
+CompilationRes compile(State* state, ORef expr, HRef<Loc> loc, bool debug);
 
 } // namespace

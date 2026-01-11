@@ -43,6 +43,7 @@ static Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser, bool deb
     Vshs_MaybeLocatedORef const maybeExpr = readRes.val;
     if (!maybeExpr.hasVal) { return (Vshs_MaybeRes){}; }
     ORef const expr = maybeExpr.val.val;
+    ORef const loc = maybeExpr.val.loc;
 
     if (debug) {
         puts(";; # S-Expression:");
@@ -50,8 +51,7 @@ static Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser, bool deb
         puts("\n");
     }
 
-    // TODO: Use `maybeExpr.val.loc`:
-    EvalRes const res = eval(state, expr, debug);
+    EvalRes const res = eval(state, expr, loc, debug);
     if (res.success) {
         return (Vshs_MaybeRes){.val = {.val = res.val, RES_OK}, true};
     } else {
@@ -343,6 +343,7 @@ int main(int argc, char const* argv[static argc]) {
                 puts("Error reading input");
 
                 free(line);
+                freeCLIArgs(&args);
                 freeState(state);
                 return EXIT_FAILURE;
             }

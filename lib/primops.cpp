@@ -37,6 +37,37 @@ PrimopRes primopAbort(State* state) {
 
     fputs("Runtime error: ", stderr);
     print(state, stderr, error);
+
+    fputs(" at ", stderr);
+    assert(isa(state, state->types.continuation, state->regs[retContReg]));
+    Continuation const* const cont =
+        HRef<Continuation>::fromUnchecked(state->regs[retContReg]).ptr();
+    ORef const anyCaller = cont->method;
+    if (isMethod(state, anyCaller)) {
+        auto const caller = HRef<Method>::fromUnchecked(anyCaller);
+
+        size_t const callerPc = uint64_t(cont->pc.val()); // FIXME: This is return PC, not *call* PC
+        auto const maybeLoc = locatePc(caller, callerPc);
+
+        if (maybeLoc.hasVal) {
+            auto const loc = maybeLoc.val;
+
+            ORef const maybeFilename = loc.maybeFilename;
+            if (isString(state, maybeFilename)) {
+                auto const filename = HRef<String>::fromUnchecked(maybeFilename);
+
+                printFilename(stderr, filename.ptr()->str());
+            }
+
+            // TODO: line:col (when possible):
+            fprintf(stderr, " at byte %lu", loc.srcByteIdx);
+        }
+    } else {
+        // FIXME: Exit continuation should have a method that inherits toplevel thunk location to
+        // make this work.
+        assert(false);
+    }
+
     putc('\n', stderr);
 
     return PrimopRes::ABORT;

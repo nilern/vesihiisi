@@ -165,6 +165,14 @@ HRef<String> createString(State* state, Str str);
 // `name` must not point into GC heap:
 HRef<Symbol> intern(State* state, Str name);
 
+inline Array* tryAllocArray(State* state, Fixnum count) {
+    return (Array*)state->heap.tospace.tryAllocFlex(state->types.array.ptr(), count);
+}
+
+inline Array* allocArrayOrDie(State* state, Fixnum count) {
+    return (Array*)state->heap.tospace.allocFlexOrDie(state->types.array.ptr(), count);
+}
+
 inline ArrayMut* tryAllocArrayMut(State* state, Fixnum count) {
     return (ArrayMut*)state->heap.tospace.tryAllocFlex(state->types.arrayMut.ptr(), count);
 }
@@ -189,15 +197,15 @@ HRef<Pair> allocPair(State* state);
 
 Method* tryAllocBytecodeMethod(
     State* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
-    Fixnum hash, ORef maybeName);
+    Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs);
 
 Method* allocBytecodeMethodOrDie(
     State* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
-    Fixnum hash, ORef maybeName);
+    Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs);
 
 HRef<Method> allocBytecodeMethod(
     State* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
-    Fixnum hash, ORef maybeName);
+    Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs);
 
 HRef<Closure> allocClosure(State* state, HRef<Method> method, Fixnum cloverCount);
 

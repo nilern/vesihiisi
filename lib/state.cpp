@@ -761,8 +761,10 @@ State* State::tryCreate(size_t heapSize) {
     if (!emptyList) { return nullptr; }
     Unbound* const unbound = (Unbound*)heap.tospace.tryAlloc(unboundType);
     if (!unbound) { return nullptr; }
-    Continuation* const exit = (Continuation*)heap.tospace.tryAllocFlex(continuationType, Fixnum{0l});
+    Continuation* const exit =
+        (Continuation*)heap.tospace.tryAllocFlex(continuationType, Fixnum{0l});
     if (!exit) { return nullptr; }
+    exit->pc = Fixnum{0l};
 
     Var* const errorHandler = tryCreateUnboundVar(&heap.tospace, varType, HRef(unbound));
     if (!errorHandler) { return nullptr; }
@@ -1160,7 +1162,7 @@ HRef<Pair> allocPair(State* state) {
 
 Method* tryAllocBytecodeMethod(
     State* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
-    Fixnum hash, ORef maybeName
+    Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs
 ) {
     Method* ptr = (Method*)state->heap.tospace.tryAllocFlex(state->types.method.ptr(), arity);
     if (!ptr) { return ptr; }
@@ -1171,7 +1173,9 @@ Method* tryAllocBytecodeMethod(
         .consts = consts.oref(),
         .hasVarArg = hasVarArg,
         .hash = hash,
-        .maybeName = maybeName
+        .maybeName = maybeName,
+        .maybeFilenames = maybeFilenames,
+        .maybeSrcByteIdxs = maybeSrcByteIdxs
     };
 
     return ptr;
@@ -1179,7 +1183,7 @@ Method* tryAllocBytecodeMethod(
 
 Method* allocBytecodeMethodOrDie(
     State* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
-    Fixnum hash, ORef maybeName
+    Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs
 ) {
     Method* ptr = (Method*)state->heap.tospace.allocFlexOrDie(state->types.method.ptr(), arity);
 
@@ -1189,7 +1193,9 @@ Method* allocBytecodeMethodOrDie(
         .consts = consts.oref(),
         .hasVarArg = hasVarArg,
         .hash = hash,
-        .maybeName = maybeName
+        .maybeName = maybeName,
+        .maybeFilenames = maybeFilenames,
+        .maybeSrcByteIdxs = maybeSrcByteIdxs
     };
 
     return ptr;
@@ -1197,15 +1203,17 @@ Method* allocBytecodeMethodOrDie(
 
 HRef<Method> allocBytecodeMethod(
     State* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
-    Fixnum hash, ORef maybeName
+    Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs
 ) {
     Method* ptr = (Method*)state->heap.tospace.tryAllocFlex(state->types.method.ptr(), arity);
     if (mustCollect(ptr)) {
         pushStackRoot(state, (ORef*)&code);
         pushStackRoot(state, (ORef*)&consts);
         pushStackRoot(state, &maybeName);
+        pushStackRoot(state, &maybeFilenames);
+        pushStackRoot(state, &maybeSrcByteIdxs);
         collect(state);
-        popStackRoots(state, 3);
+        popStackRoots(state, 5);
         ptr = (Method*)state->heap.tospace.allocFlexOrDie(state->types.method.ptr(), arity);
     }
 
@@ -1215,7 +1223,9 @@ HRef<Method> allocBytecodeMethod(
         .consts = consts.oref(),
         .hasVarArg = hasVarArg,
         .hash = hash,
-        .maybeName = maybeName
+        .maybeName = maybeName,
+        .maybeFilenames = maybeFilenames,
+        .maybeSrcByteIdxs = maybeSrcByteIdxs
     };
 
     return HRef(ptr);
@@ -1252,7 +1262,9 @@ HRef<Method> vcreatePrimopMethod(
         .consts = Default,
         .hasVarArg = Bool(hasVarArg),
         .hash = Fixnum((intptr_t)hash),
-        .maybeName = Default
+        .maybeName = Default,
+        .maybeFilenames = Default,
+        .maybeSrcByteIdxs = Default
     };
     memcpy(ptr->flexDataMut(), domain, arity * sizeof *domain); // Side benefit of the array: `memcpy`
 

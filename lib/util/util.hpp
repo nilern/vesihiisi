@@ -1,9 +1,11 @@
 #pragma once
 
+#include <assert.h>
 #include <string.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdbit.h>
 
 #include "../vesihiisi.h"
 
@@ -11,6 +13,12 @@
 #define CAT(A, B) CAT_IMPL(A, B)
 
 namespace {
+
+inline size_t requiredBitsize(int64_t n) {
+    // Hacker's Delight Section 5-3 Counting Leading 0's:
+    int64_t const nabs = n ^ (n >> (INT64_WIDTH - 1)); // `n >= 0 ? n : -n - 1`
+    return (INT64_WIDTH + 1) - stdc_leading_zeros(nabs);
+}
 
 template<typename T>
 struct Maybe {
@@ -41,8 +49,15 @@ struct Slice {
     T* data;
     size_t count;
 
-    T const& operator[](size_t i) const { return data[i]; }
-    T& operator[](size_t i) { return data[i]; }
+    T const& operator[](size_t i) const {
+        assert(i < count);
+        return data[i];
+    }
+
+    T& operator[](size_t i) {
+        assert(i < count);
+        return data[i];
+    }
 };
 
 // TODO: Enforce string literal `data`, incidentally avoiding `strlen`:

@@ -29,6 +29,7 @@ extern "C" void printParseError(FILE* dest, Str src, ParseError const* err) {
     fputs(" at ", dest);
     HRef<Loc> const loc = HRef<Loc>::fromUnchecked(err->loc);
     printFilename(dest, loc.ptr()->filename.ptr()->str());
+    putc(':', dest);
     byteIdxToCoord(src, (uint64_t)loc.ptr()->byteIdx.val()).print(dest);
 
     fputs(", expected ", dest);

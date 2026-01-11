@@ -106,7 +106,9 @@ void freeSavedEnvs(MaybePureLoadsEnv* savedEnvs, size_t blockCount) {
     free(savedEnvs);
 }
 
-IRName deepLexicalUse(Compiler* compiler, PureLoadsEnv* env, Stmts* newStmts, IRName use) {
+IRName deepLexicalUse(
+    Compiler* compiler, PureLoadsEnv* env, Stmts* newStmts, IRName use, ORef maybeSrcLoc
+) {
     MaybeCloverLoc const maybeLoc = getCloverLoc(env->locs, use);
     if (!maybeLoc.hasVal) { return use; }
     CloverLoc const loc = maybeLoc.val;
@@ -115,6 +117,7 @@ IRName deepLexicalUse(Compiler* compiler, PureLoadsEnv* env, Stmts* newStmts, IR
 
     IRName const newReg = renameIRName(compiler, use);
     pushIRStmt(compiler, newStmts, IRStmt{
+        .maybeLoc = maybeSrcLoc,
         .clover = {newReg, env->closure, use, 0},
         .type = IRStmt::CLOVER
     });
@@ -191,7 +194,8 @@ void liftArgs(
         IRName const liftee = {maybeIdx.val};
 
         // OPTIMIZE: Does not need to `setCloverReg`, which `deepLexicalUse` will do:
-        pushArg(compiler, args, deepLexicalUse(compiler, env, &block->stmts, liftee));
+        pushArg(compiler, args,
+                deepLexicalUse(compiler, env, &block->stmts, liftee, transfer->maybeLoc));
     }
 }
 
@@ -241,13 +245,15 @@ PureLoadsEnv blockPureLoadsEnv(
 }
 
 void linearizeCloses(
-    Compiler* compiler, PureLoadsEnv* env, Stmts* newStmts, Args* dest, BitSet const* closes
+    Compiler* compiler, PureLoadsEnv* env, Stmts* newStmts, Args* dest, ORef maybeLoc,
+    BitSet const* closes
 ) {
     for (BitSetIter it = newBitSetIter(closes);;) {
         Maybe<size_t> const maybeIdx = bitSetIterNext(&it);
         if (!maybeIdx.hasVal) { break; }
 
-        IRName const closee = deepLexicalUse(compiler, env, newStmts, IRName{maybeIdx.val});
+        IRName const closee =
+            deepLexicalUse(compiler, env, newStmts, IRName{maybeIdx.val}, maybeLoc);
         pushArg(compiler, dest, closee);
     }
 }
@@ -259,7 +265,7 @@ IRStmt stmtWithPureLoads(
     case IRStmt::GLOBAL_DEF: {
         GlobalDef* const globalDef = &stmt.globalDef;
 
-        globalDef->val = deepLexicalUse(compiler, env, newStmts, globalDef->val);
+        globalDef->val = deepLexicalUse(compiler, env, newStmts, globalDef->val, stmt.maybeLoc);
     }; break;
 
     case IRStmt::GLOBAL: case IRStmt::CONST_DEF: break; // These do not contain any uses
@@ -273,7 +279,8 @@ IRStmt stmtWithPureLoads(
         // Domain:
         size_t const domainCount = fn->domain.count;
         for (size_t i = 0; i < domainCount; ++i) {
-            fn->domain.vals[i] = deepLexicalUse(compiler, env, newStmts, fn->domain.vals[i]);
+            fn->domain.vals[i] =
+                deepLexicalUse(compiler, env, newStmts, fn->domain.vals[i], stmt.maybeLoc);
         }
 
         // Method:
@@ -286,8 +293,8 @@ IRStmt stmtWithPureLoads(
         // Closure:
         IRClosure closure =
             IRClosure{.name = closureName, .method = methodName, .closes = methodDef->closes};
-        linearizeCloses(compiler, env, newStmts, closure.closes, fnFreeVars(fn));
-        stmt = IRStmt{.closure = closure, .type = IRStmt::CLOSURE};
+        linearizeCloses(compiler, env, newStmts, closure.closes, stmt.maybeLoc, fnFreeVars(fn));
+        stmt = IRStmt{stmt.maybeLoc, {.closure = closure}, IRStmt::CLOSURE};
     }; break;
 
     case IRStmt::CLOSURE: case IRStmt::MOVE: case IRStmt::SWAP:
@@ -297,13 +304,13 @@ IRStmt stmtWithPureLoads(
 
     case IRStmt::KNOT_INIT: {
         KnotInitStmt* const knotInit = &stmt.knotInit;
-        knotInit->knot = deepLexicalUse(compiler, env, newStmts, knotInit->knot);
-        knotInit->v = deepLexicalUse(compiler, env, newStmts, knotInit->v);
+        knotInit->knot = deepLexicalUse(compiler, env, newStmts, knotInit->knot, stmt.maybeLoc);
+        knotInit->v = deepLexicalUse(compiler, env, newStmts, knotInit->v, stmt.maybeLoc);
     }; break;
 
     case IRStmt::KNOT_GET: {
         KnotGetStmt* const knotGet = &stmt.knotGet;
-        knotGet->knot = deepLexicalUse(compiler, env, newStmts, knotGet->knot);
+        knotGet->knot = deepLexicalUse(compiler, env, newStmts, knotGet->knot, stmt.maybeLoc);
     }; break;
     }
 
@@ -317,31 +324,33 @@ void transferWithPureLoads(
     switch (transfer->type) {
     case IRTransfer::CALL: {
         Call* const call = &transfer->call;
+        ORef const maybeLoc = transfer->maybeLoc;
 
-        call->callee = deepLexicalUse(compiler, env, newStmts, call->callee);
+        call->callee = deepLexicalUse(compiler, env, newStmts, call->callee, maybeLoc);
 
         size_t const arity = call->args.count;
         for (size_t i = 0; i < arity; ++i) {
             call->args.names[i] =
-                deepLexicalUse(compiler, env, newStmts, call->args.names[i]);
+                deepLexicalUse(compiler, env, newStmts, call->args.names[i], maybeLoc);
         }
 
         IRBlock const* const retBlock = fn->blocks[call->retLabel.blockIndex];
-        linearizeCloses(compiler, env, newStmts, &call->closes, &retBlock->liveIns);
+        linearizeCloses(compiler, env, newStmts, &call->closes, maybeLoc, &retBlock->liveIns);
 
         freePureLoadsEnv(env);
     }; break;
 
     case IRTransfer::TAILCALL: {
         Tailcall* const tailcall = &transfer->tailcall;
+        ORef const maybeLoc = transfer->maybeLoc;
 
-        tailcall->callee = deepLexicalUse(compiler, env, newStmts, tailcall->callee);
-        tailcall->retFrame = deepLexicalUse(compiler, env, newStmts, tailcall->retFrame);
+        tailcall->callee = deepLexicalUse(compiler, env, newStmts, tailcall->callee, maybeLoc);
+        tailcall->retFrame = deepLexicalUse(compiler, env, newStmts, tailcall->retFrame, maybeLoc);
 
         size_t const arity = tailcall->args.count;
         for (size_t i = 0; i < arity; ++i) {
             tailcall->args.names[i] =
-                deepLexicalUse(compiler, env, newStmts, tailcall->args.names[i]);
+                deepLexicalUse(compiler, env, newStmts, tailcall->args.names[i], maybeLoc);
         }
 
         freePureLoadsEnv(env);
@@ -349,17 +358,19 @@ void transferWithPureLoads(
 
     case IRTransfer::IF: {
         IRIf* const iff = &transfer->iff;
-        iff->cond = deepLexicalUse(compiler, env, newStmts, iff->cond);
+        iff->cond = deepLexicalUse(compiler, env, newStmts, iff->cond, transfer->maybeLoc);
 
         savedEnvs[block->label.blockIndex] = MaybePureLoadsEnv{.val = *env, .hasVal = true};
     }; break;
 
     case IRTransfer::GOTO: {
         IRGoto* const gotoo = &transfer->gotoo;
+        ORef const maybeLoc = transfer->maybeLoc;
 
         size_t const arity = gotoo->args.count;
         for (size_t i = 0; i < arity; ++i) {
-            gotoo->args.names[i] = deepLexicalUse(compiler, env, newStmts, gotoo->args.names[i]);
+            gotoo->args.names[i] =
+                deepLexicalUse(compiler, env, newStmts, gotoo->args.names[i], maybeLoc);
         }
 
         savedEnvs[block->label.blockIndex] = MaybePureLoadsEnv{.val = *env, .hasVal = true};
@@ -367,9 +378,10 @@ void transferWithPureLoads(
 
     case IRTransfer::RETURN: {
         IRReturn* const ret = &transfer->ret;
+        ORef const maybeLoc = transfer->maybeLoc;
 
-        ret->callee = deepLexicalUse(compiler, env, newStmts, ret->callee);
-        ret->arg = deepLexicalUse(compiler, env, newStmts, ret->arg);
+        ret->callee = deepLexicalUse(compiler, env, newStmts, ret->callee, maybeLoc);
+        ret->arg = deepLexicalUse(compiler, env, newStmts, ret->arg, maybeLoc);
 
         freePureLoadsEnv(env);
     }; break;

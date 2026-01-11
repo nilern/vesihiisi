@@ -363,6 +363,8 @@ struct Method : public FlexMutObject<Method, ORef> {
     Bool hasVarArg;
     Fixnum hash;
     ORef maybeName;
+    ORef maybeFilenames;
+    ORef maybeSrcByteIdxs;
 
     Slice<ORef const> domain() const { return flexItems(); }
     Slice<ORef> domain() { return flexItemsMut(); }

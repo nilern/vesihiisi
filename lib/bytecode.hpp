@@ -7,6 +7,10 @@
 
 namespace {
 
+constexpr uint8_t bytecodeVarIntPayloadWidth = UINT8_WIDTH - 1;
+constexpr uint8_t bytecodeVarIntPayloadMask = (1 << bytecodeVarIntPayloadWidth) - 1;
+constexpr uint8_t bytecodeVarIntTerminalBit = 1 << bytecodeVarIntPayloadWidth;
+
 // TODO: Bigger (only when necessary?) displacements for BR(F)?
 
 // OPTIMIZE: Save cache (and memory in general) with:
@@ -44,6 +48,13 @@ constexpr uint8_t retContReg = 0;
 constexpr uint8_t firstArgReg = 2;
 constexpr uint8_t retReg = firstArgReg;
 
+struct ZLoc {
+    ORef maybeFilename;
+    size_t srcByteIdx;
+};
+
 void disassemble(State const* state, FILE* dest, HRef<Method> methodRef);
+
+Maybe<ZLoc> locatePc(HRef<Method> methodRef, size_t pc);
 
 } // namespace

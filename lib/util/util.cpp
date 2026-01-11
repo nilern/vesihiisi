@@ -71,10 +71,10 @@ void printFilename(FILE* dest, Str filename) {
     std::error_code pathErr;
     auto const relative = std::filesystem::relative(path, pathErr);
     if (!pathErr && !relative.empty()) {
-        fprintf(dest, "%s:", relative.c_str());
+        fprintf(dest, "%s", relative.c_str());
     } else { // Default to printing the absolute path:
         // TODO: Avoid using POSIX `printf` extension:
-        fprintf(dest, "%.*s:", (int)filename.len, filename.data);
+        fprintf(dest, "%.*s", (int)filename.len, filename.data);
     }
 }
 

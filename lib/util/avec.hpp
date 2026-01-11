@@ -27,6 +27,11 @@ public:
 
     AVec(Arena* t_arena) : AVec{t_arena, 2} {}
 
+    // We do not have a destructor but nevertheless e.g. pushing and popping could cause bad stuff
+    // if we do not deep copy. And implicit deep copies are terrible, so just prevent copying:
+    AVec(AVec<T> const&) = delete;
+    AVec<T>& operator=(AVec<T> const&) = delete;
+
     Slice<T const> slice() const { return Slice{static_cast<T const*>(start), count()}; }
 
     size_t count() const { return end - start; }

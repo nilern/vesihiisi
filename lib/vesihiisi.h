@@ -117,7 +117,7 @@ typedef struct EvalRes {
     bool success;
 } EvalRes;
 
-EvalRes eval(struct Vshs_State* state, ORef expr, bool debug);
+EvalRes eval(struct Vshs_State* state, ORef expr, ORef loc, bool debug);
 
 void print(struct Vshs_State const* state, FILE* dest, ORef v);
 

@@ -297,22 +297,29 @@ void pushIRParam(Compiler* compiler, IRBlock* block, IRName param) {
     block->params[block->paramCount++] = param;
 }
 
-void createCall(IRBlock* block, IRName callee, IRLabel retLabel, Args closes, Args args) {
+void createCall(
+    IRBlock* block, IRName callee, IRLabel retLabel, Args closes, Args args, ORef maybeLoc
+) {
     block->transfer = IRTransfer{
+        .maybeLoc = maybeLoc,
         .call = Call{.callee = callee, .retLabel = retLabel, .closes = closes, .args = args},
         .type = IRTransfer::CALL
     };
 }
 
-void createTailcall(IRBlock* block, IRName callee, IRName retFrame, Args args) {
+void createTailcall(IRBlock* block, IRName callee, IRName retFrame, Args args, ORef maybeLoc) {
     block->transfer = IRTransfer{
+        .maybeLoc = maybeLoc,
         .tailcall = Tailcall{.callee = callee, .retFrame = retFrame, .args = args},
         .type = IRTransfer::TAILCALL
     };
 }
 
-IRIf* createIRIf(IRBlock* block, IRName cond, IRLabel conseqLabel, IRLabel altLabel) {
+IRIf* createIRIf(
+    IRBlock* block, IRName cond, IRLabel conseqLabel, IRLabel altLabel, ORef maybeLoc
+) {
     block->transfer = IRTransfer{
+        .maybeLoc = maybeLoc,
         .iff = IRIf{.cond = cond, .conseq = conseqLabel, .alt = altLabel},
         .type = IRTransfer::IF
     };
@@ -320,18 +327,22 @@ IRIf* createIRIf(IRBlock* block, IRName cond, IRLabel conseqLabel, IRLabel altLa
     return &block->transfer.iff;
 }
 
-void createIRGoto(Compiler* compiler, IRBlock* block, IRLabel destLabel, IRName arg) {
+void createIRGoto(
+    Compiler* compiler, IRBlock* block, IRLabel destLabel, IRName arg, ORef maybeLoc
+) {
     Args args = createArgs(compiler);
     pushArg(compiler, &args, arg);
 
     block->transfer = IRTransfer{
+        .maybeLoc = maybeLoc,
         .gotoo = IRGoto{.dest = destLabel, .args = args},
         .type = IRTransfer::GOTO
     };
 }
 
-void createIRReturn(IRBlock* block, IRName callee, IRName arg) {
+void createIRReturn(IRBlock* block, IRName callee, IRName arg, ORef maybeLoc) {
     block->transfer = IRTransfer{
+        .maybeLoc = maybeLoc,
         .ret = IRReturn{.callee = callee, .arg = arg},
         .type = IRTransfer::RETURN,
     };
@@ -637,10 +648,10 @@ void printIRFn(
     printNestedIRFn(state, dest, compiler, printName, fn, 0);
 }
 
-CompilationRes compile(State* state, ORef expr, bool debug) {
+CompilationRes compile(State* state, ORef expr, HRef<Loc> loc, bool debug) {
     Compiler compiler = createCompiler();
 
-    ToIRRes const toIRRes = topLevelExprToIR(state, &compiler, expr);
+    ToIRRes const toIRRes = topLevelExprToIR(state, &compiler, expr, loc);
     if (!toIRRes.success) {
         freeCompiler(&compiler);
         return CompilationRes{{.err = toIRRes.err}, false};

@@ -60,8 +60,9 @@ HRef<Method> createSpecialization(
     pushStackRoot(state, (ORef*)&typesRef);
     HRef<Method> const specializationRef =
         allocBytecodeMethod(state, HRef<ByteArray>::fromUnchecked(generic->code),
-                            HRef<ArrayMut>::fromUnchecked(generic->consts), fxArity, generic->hasVarArg,
-                            hash, generic->maybeName);
+                            HRef<ArrayMut>::fromUnchecked(generic->consts), fxArity,
+                            generic->hasVarArg, hash, generic->maybeName, generic->maybeFilenames,
+                            generic->maybeSrcByteIdxs);
     popStackRoots(state, 2);
     Method* const specialization = specializationRef.ptr();
 

@@ -22,10 +22,12 @@
 #include "compiler/cloverindexing.cpp"
 #include "compiler/bytecodegen.cpp"
 
-extern "C" EvalRes eval(Vshs_State* extState, ORef expr, bool debug) {
+extern "C" EvalRes eval(Vshs_State* extState, ORef expr, ORef loc, bool debug) {
     State* const state = (State*)extState;
 
-    CompilationRes const compilationRes = compile(state, expr, debug);
+    assert(isa(state, state->types.loc, loc));
+    CompilationRes const compilationRes =
+        compile(state, expr, HRef<Loc>::fromUnchecked(loc), debug);
     if (!compilationRes.success) {
         return EvalRes{
             {.err = {{.syntaxErrs = compilationRes.err}, SYNTAX_ERROR}},

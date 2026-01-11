@@ -3,7 +3,7 @@
 #include <string.h>
 
 #include "../state.hpp"
-#include "../util/avec.h"
+#include "../util/avec.hpp"
 
 namespace {
 
@@ -256,30 +256,30 @@ private:
     AVec<SyntaxError> errs;
 };
 
-IRName constToCPS(CPSConv& pass, IRBlock* block, ORef expr, ToCpsCont k) {
+IRName constToCPS(CPSConv& pass, IRBlock* block, ORef expr, ORef maybeLoc, ToCpsCont k) {
     IRName const name = toCpsContDestName(pass.compiler, k);
-    pushIRStmt(pass.compiler, &block->stmts, constDefToStmt(ConstDef{name, expr}));
+    pushIRStmt(pass.compiler, &block->stmts, constDefToStmt(ConstDef{name, expr}, maybeLoc));
 
     if (k.type == ToCpsCont::RETURN) {
-        createIRReturn(block, k.ret.cont, name);
+        createIRReturn(block, k.ret.cont, name, maybeLoc);
     }
 
     return name;
 }
 
-IRName globalToCPS(CPSConv& pass, IRBlock* block, HRef<Symbol> sym, ToCpsCont k) {
+IRName globalToCPS(CPSConv& pass, IRBlock* block, HRef<Symbol> sym, ORef maybeLoc, ToCpsCont k) {
     IRName const name = toCpsContDestName(pass.compiler, k);
-    pushIRStmt(pass.compiler, &block->stmts, globalToStmt(IRGlobal{name, sym}));
+    pushIRStmt(pass.compiler, &block->stmts, globalToStmt(IRGlobal{name, sym}, maybeLoc));
 
     if (k.type == ToCpsCont::RETURN) {
-        createIRReturn(block, k.ret.cont, name);
+        createIRReturn(block, k.ret.cont, name, maybeLoc);
     }
 
     return name;
 }
 
 IRName exprToIR(CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef expr,
-                ToCpsCont k);
+                ORef maybeLoc, ToCpsCont k);
 
 IRName bodyToCPS(
     CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef body, ToCpsCont k
@@ -292,14 +292,14 @@ IRName bodyToCPS(
     for (;/*ever*/;) {
         ORef const stmt = argsPair->car;
         body = argsPair->cdr;
+        ORef const maybeLoc = argsPair->maybeLoc;
 
         if (isEmptyList(pass.state, body)) {
-            IRName const bodyName = exprToIR(pass, fn, env, block, stmt, k);
+            IRName const bodyName = exprToIR(pass, fn, env, block, stmt, maybeLoc, k);
 
             return bodyName;
         } else if (isPair(pass.state, body)){
-            exprToIR(pass, fn, env, block, stmt,
-                     ToCpsCont{{}, ToCpsCont::EFF});
+            exprToIR(pass, fn, env, block, stmt, maybeLoc, ToCpsCont{{}, ToCpsCont::EFF});
 
             argsPair = HRef<Pair>::fromUnchecked(body).ptr();
         } else {
@@ -344,7 +344,7 @@ bool paramToCPS(
 
         if (!isEmptyList(pass.state, args->cdr)) { return false; }
 
-        IRName const typeName = exprToIR(pass, outerFn, outerEnv, outerBlock, type,
+        IRName const typeName = exprToIR(pass, outerFn, outerEnv, outerBlock, type, args->maybeLoc,
                                          ToCpsCont{{}, ToCpsCont::VAL});
 
         // TODO: DRY with symbol branch above:
@@ -362,7 +362,7 @@ bool paramToCPS(
 
 IRName fnToCPSimpl(
     CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, IRName maybeSelf, ORef params,
-    ORef body, ToCpsCont k
+    ORef body, ORef maybeLoc, ToCpsCont k
 ) {
     ORef const maybeName = toCpsContDestSymbol(k);
     IRFn innerFn = createIRFn(pass.compiler, maybeName);
@@ -413,17 +413,18 @@ IRName fnToCPSimpl(
     Args* const closes = (Args*)amalloc(&pass.compiler->arena, sizeof *closes);
     *closes = createArgs(pass.compiler);
     pushIRStmt(pass.compiler, &(*block)->stmts,
-               IRStmt{.methodDef = {name, innerFn, closes}, .type = IRStmt::METHOD_DEF});
+               IRStmt{maybeLoc, {.methodDef = {name, innerFn, closes}}, IRStmt::METHOD_DEF});
 
     if (k.type == ToCpsCont::RETURN) {
-        createIRReturn(*block, k.ret.cont, name);
+        createIRReturn(*block, k.ret.cont, name, maybeLoc);
     }
 
     return name;
 }
 
 IRName fnToCPS(
-    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef args, ToCpsCont k
+    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef args, ORef maybeLoc,
+    ToCpsCont k
 ) {
     if (!isPair(pass.state, args)) {
         assert(false); // TODO: Proper args error (`(fn)`)
@@ -432,11 +433,12 @@ IRName fnToCPS(
 
     ORef const params = argsPair->car;
     ORef const body = argsPair->cdr;
-    return fnToCPSimpl(pass, fn, env, block, invalidIRName, params, body, k);
+    return fnToCPSimpl(pass, fn, env, block, invalidIRName, params, body, maybeLoc, k);
 }
 
 IRName ifToCPS(
-    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef args, ToCpsCont k
+    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef args, ORef maybeLoc,
+    ToCpsCont k
 ) {
     // OPTIMIZE: Avoid creating `goto`s to `goto`s:
 
@@ -446,6 +448,7 @@ IRName ifToCPS(
     Pair const* argsPair = HRef<Pair>::fromUnchecked(args).ptr();
 
     ORef const cond = argsPair->car;
+    ORef const condLoc = argsPair->maybeLoc;
     args = argsPair->cdr;
     if (!isPair(pass.state, args)) {
         assert(false); // TODO
@@ -453,6 +456,7 @@ IRName ifToCPS(
     argsPair = HRef<Pair>::fromUnchecked(args).ptr();
 
     ORef const conseq = argsPair->car;
+    ORef const conseqLoc = argsPair->maybeLoc;
     args = argsPair->cdr;
     if (!isPair(pass.state, args)) {
         assert(false); // TODO
@@ -460,14 +464,15 @@ IRName ifToCPS(
     argsPair = HRef<Pair>::fromUnchecked(args).ptr();
 
     ORef const alt = argsPair->car;
+    ORef const altLoc = argsPair->maybeLoc;
     if (!isEmptyList(pass.state, argsPair->cdr)) {
         assert(false); // TODO
     }
 
     ToCpsCont const splitK = ToCpsCont{{}, ToCpsCont::VAL};
-    IRName const condName = exprToIR(pass, fn, env, block, cond, splitK);
+    IRName const condName = exprToIR(pass, fn, env, block, cond, condLoc, splitK);
         // Will patch targets shortly:
-    IRIf* ifTransfer = createIRIf(*block, condName, IRLabel{}, IRLabel{});
+    IRIf* ifTransfer = createIRIf(*block, condName, IRLabel{}, IRLabel{}, maybeLoc);
     IRLabel const ifLabel = (*block)->label;
     ToCpsCont const joinK = k.type != ToCpsCont::RETURN
         ? ToCpsCont{{}, ToCpsCont::JOIN}
@@ -476,13 +481,12 @@ IRName ifToCPS(
     IRBlock* conseqBlock = createIRBlock(pass.compiler, fn, 1);
     pushCaller(conseqBlock, ifLabel);
     ifTransfer->conseq = conseqBlock->label;
-    IRName const conseqName =
-        exprToIR(pass, fn, env, &conseqBlock, conseq, joinK);
+    IRName const conseqName = exprToIR(pass, fn, env, &conseqBlock, conseq, conseqLoc, joinK);
 
     IRBlock* altBlock = createIRBlock(pass.compiler, fn, 1);
     pushCaller(altBlock, ifLabel);
     ifTransfer->alt = altBlock->label;
-    IRName const altName = exprToIR(pass, fn, env, &altBlock, alt, joinK);
+    IRName const altName = exprToIR(pass, fn, env, &altBlock, alt, altLoc, joinK);
 
     if (k.type != ToCpsCont::RETURN) {
         // FIXME: If we avoid `goto`s to `goto`s, 2 might not suffice:
@@ -490,10 +494,10 @@ IRName ifToCPS(
         IRName const phi = toCpsContDestName(pass.compiler, k);
         pushIRParam(pass.compiler, joinBlock, phi);
 
-        createIRGoto(pass.compiler, conseqBlock, joinBlock->label, conseqName);
+        createIRGoto(pass.compiler, conseqBlock, joinBlock->label, conseqName, conseqLoc);
         pushCaller(joinBlock, conseqBlock->label);
 
-        createIRGoto(pass.compiler, altBlock, joinBlock->label, altName);
+        createIRGoto(pass.compiler, altBlock, joinBlock->label, altName, altLoc);
         pushCaller(joinBlock, altBlock->label);
 
         *block = joinBlock;
@@ -513,11 +517,12 @@ IRName quoteToCPS(CPSConv& pass, IRBlock** block, ORef args, ToCpsCont k) {
         assert(false); // TODO
     }
 
-    return constToCPS(pass, *block, argsPair->car, k);
+    return constToCPS(pass, *block, argsPair->car, argsPair->maybeLoc, k);
 }
 
 IRName defToCPS(
-    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef args, ToCpsCont k
+    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef args, ORef maybeLoc,
+    ToCpsCont k
 ) {
     if (!isPair(pass.state, args)) {
         assert(false); // TODO
@@ -536,6 +541,7 @@ IRName defToCPS(
     argsPair = HRef<Pair>::fromUnchecked(args).ptr();
 
     ORef const val = argsPair->car;
+    ORef const valLoc = argsPair->maybeLoc;
     if (!isEmptyList(pass.state, argsPair->cdr)) {
         assert(false); // TODO
     }
@@ -543,12 +549,13 @@ IRName defToCPS(
     IRName const nameHint = renameSymbol(pass.compiler, name);
     ToCpsCont const defK =
         ToCpsCont{.def = {.name = nameHint, .sym = name}, .type = ToCpsCont::DEF};
-    IRName const valName = exprToIR(pass, fn, env, block, val, defK);
-    pushIRStmt(pass.compiler, &(*block)->stmts, globalDefToStmt(GlobalDef{name, valName}));
+    IRName const valName = exprToIR(pass, fn, env, block, val, valLoc, defK);
+    pushIRStmt(pass.compiler, &(*block)->stmts,
+               globalDefToStmt(GlobalDef{name, valName}, maybeLoc));
     // FIXME: Return e.g. nil/undefined/unspecified instead of new val:
     IRName const resName = valName;
     if (k.type == ToCpsCont::RETURN) {
-        createIRReturn(*block, k.ret.cont, resName);
+        createIRReturn(*block, k.ret.cont, resName, maybeLoc);
     }
 
     return resName;
@@ -587,6 +594,7 @@ IRName letToCPS(
             Pair const* const bindingArgsPair = HRef<Pair>::fromUnchecked(bindingArgs).ptr();
 
             ORef const val = bindingArgsPair->car;
+            ORef const valLoc = bindingArgsPair->maybeLoc;
 
             if (!isEmptyList(pass.state, bindingArgsPair->cdr)) {
                 pass.error({bindingsPair->maybeLoc, OVERLONG_BINDING});
@@ -596,7 +604,7 @@ IRName letToCPS(
             ToCpsCont const valK =
                 ToCpsCont{.def = {.name = binderName, .sym = binder}, .type = ToCpsCont::BIND};
             IRName const finalName =
-                exprToIR(pass, fn, &letEnv, block, val, valK);
+                exprToIR(pass, fn, &letEnv, block, val, valLoc, valK);
             // If `finalName != binderName` we have a local copy e.g.
             // `(let ((x 5) (y x)) ...)` and `useToCPS` emitted nothing. Putting
             // `finalName` to env implements the rest of copy propagation:
@@ -637,7 +645,7 @@ void knotCreation(CPSConv& pass, IRBlock* block, ToCpsEnv* letfnEnv, ORef bindin
 
     IRName const knotName = renameSymbol(pass.compiler, fSym);
     pushIRStmt(pass.compiler, &block->stmts,
-               IRStmt{.knot = {.name = knotName}, .type = IRStmt::KNOT});
+               IRStmt{maybeLoc, {.knot = {.name = knotName}}, IRStmt::KNOT});
     setSymbolDef(letfnEnv, fSym, ToCpsFrameDef{.knotName = knotName, .type = ToCpsFrameDef::KNOT},
                  BINDINGS_PAR);
 }
@@ -687,12 +695,14 @@ void knotInit(CPSConv& pass, IRFn* fn, ToCpsEnv* env, IRBlock** block, ORef bind
     ToCpsCont const bindK =
         ToCpsCont{.def = {.name = fName, .sym = fSym}, .type = ToCpsCont::BIND};
     // Will just return `fName`, can discard that:
-    fnToCPSimpl(pass, fn, env, block, self, binderPair->cdr, bindingPair->cdr, bindK);
+    fnToCPSimpl(pass, fn, env, block, self, binderPair->cdr, bindingPair->cdr,
+                bindingPair->maybeLoc, bindK);
     setSymbolDef(env, fSym,
                  ToCpsFrameDef{.name = fName, .type = ToCpsFrameDef::NAME}, BINDINGS_SEQ);
 
     pushIRStmt(pass.compiler, &(*block)->stmts,
-               IRStmt{.knotInit = {.knot = knotName, .v = fName}, .type = IRStmt::KNOT_INIT});
+               IRStmt{bindingPair->maybeLoc, {.knotInit = {.knot = knotName, .v = fName}},
+                      IRStmt::KNOT_INIT});
 }
 
 void knotInits(CPSConv& pass, IRFn* fn, ToCpsEnv* env, IRBlock** block, ORef bindings) {
@@ -731,19 +741,20 @@ IRName letfnToCPS(
 }
 
 IRName callToCPS(
-    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef callee, ORef args,
-    ToCpsCont k
+    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef callee, ORef calleeLoc,
+    ORef args, ORef maybeLoc, ToCpsCont k
 ) {
     IRName const calleeName =
-        exprToIR(pass, fn, env, block, callee, ToCpsCont{{}, ToCpsCont::VAL});
+        exprToIR(pass, fn, env, block, callee, calleeLoc, ToCpsCont{{}, ToCpsCont::VAL});
     Args cpsArgs = createArgs(pass.compiler);
     for (;/*ever*/;) {
         if (isPair(pass.state, args)) {
             Pair const* const argsPair = HRef<Pair>::fromUnchecked(args).ptr();
 
             ORef const arg = argsPair->car;
+            ORef const argLoc = argsPair->maybeLoc;
             IRName const argName =
-                exprToIR(pass, fn, env, block, arg, ToCpsCont{{}, ToCpsCont::VAL});
+                exprToIR(pass, fn, env, block, arg, argLoc, ToCpsCont{{}, ToCpsCont::VAL});
             pushArg(pass.compiler, &cpsArgs, argName);
 
             args = argsPair->cdr;
@@ -762,18 +773,20 @@ IRName callToCPS(
         pushIRParam(pass.compiler, retBlock, frame);
         pushIRParam(pass.compiler, retBlock, retValName);
 
-        createCall(*block, calleeName, retBlock->label, createArgs(pass.compiler), cpsArgs);
+        createCall(*block, calleeName, retBlock->label, createArgs(pass.compiler), cpsArgs,
+                   maybeLoc);
 
         *block = retBlock;
     } else {
-        createTailcall(*block, calleeName, k.ret.cont, cpsArgs);
+        createTailcall(*block, calleeName, k.ret.cont, cpsArgs, maybeLoc);
     }
 
     return retValName;
 }
 
 IRName useToCPS(
-    CPSConv& pass, ToCpsEnv const* env, IRBlock** block, HRef<Symbol> sym, ToCpsCont k
+    CPSConv& pass, ToCpsEnv const* env, IRBlock** block, HRef<Symbol> sym, ORef maybeLoc,
+    ToCpsCont k
 ) {
     ToCpsFrameDef const def = useSymbolDef(env, sym);
     switch (def.type) {
@@ -782,12 +795,12 @@ IRName useToCPS(
 
         if (irNameIsValid(name)) {
             if (k.type == ToCpsCont::RETURN) {
-                createIRReturn(*block, k.ret.cont, name);
+                createIRReturn(*block, k.ret.cont, name, maybeLoc);
             }
 
             return name;
         } else {
-            return globalToCPS(pass, *block, sym, k);
+            return globalToCPS(pass, *block, sym, maybeLoc, k);
         }
     }; break;
 
@@ -796,10 +809,11 @@ IRName useToCPS(
 
         IRName const name = renameIRName(pass.compiler, knotName);
         pushIRStmt(pass.compiler, &(*block)->stmts,
-                   IRStmt{.knotGet = {.name = name, .knot = knotName}, .type = IRStmt::KNOT_GET});
+                   IRStmt{maybeLoc, {.knotGet = {.name = name, .knot = knotName}},
+                          IRStmt::KNOT_GET});
 
         if (k.type == ToCpsCont::RETURN) {
-            createIRReturn(*block, k.ret.cont, name);
+            createIRReturn(*block, k.ret.cont, name, maybeLoc);
         }
 
         return name;
@@ -811,26 +825,27 @@ IRName useToCPS(
 }
 
 IRName exprToIR(
-    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef expr, ToCpsCont k
+    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef expr, ORef maybeLoc,
+    ToCpsCont k
 ) {
     if (isHeaped(expr)) {
         if (isPair(pass.state, expr)) {
-            Pair const* const pair = HRef<Pair>::fromUnchecked(expr).ptr();
-            ORef const callee = pair->car;
-            ORef const args = pair->cdr;
+            Pair const* const callPair = HRef<Pair>::fromUnchecked(expr).ptr();
+            ORef const callee = callPair->car;
+            ORef const args = callPair->cdr;
 
             if (isSymbol(pass.state, callee)) {
                 HRef<Symbol> const calleeSym = HRef<Symbol>::fromUnchecked(callee);
 
                 // OPTIMIZE: Symbol comparisons instead of `strEq`:
                 if (strEq(calleeSym.ptr()->name(), Str{"fn", /*HACK:*/2})) {
-                    return fnToCPS(pass, fn, env, block, args, k);
+                    return fnToCPS(pass, fn, env, block, args, maybeLoc, k);
                 } else if (strEq(calleeSym.ptr()->name(), Str{"if", /*HACK:*/2})) {
-                    return ifToCPS(pass, fn, env, block, args, k);
+                    return ifToCPS(pass, fn, env, block, args, maybeLoc, k);
                 } else if (strEq(calleeSym.ptr()->name(), Str{"quote", /*HACK:*/5})) {
                     return quoteToCPS(pass, block, args, k);
                 } else if (strEq(calleeSym.ptr()->name(), Str{"def", /*HACK:*/3})) {
-                    return defToCPS(pass, fn, env, block, args, k);
+                    return defToCPS(pass, fn, env, block, args, maybeLoc, k);
                 } else if (strEq(calleeSym.ptr()->name(), Str{"let", /*HACK:*/3})) {
                     return letToCPS(pass, fn, env, block, args, k);
                 } else if (strEq(calleeSym.ptr()->name(), strLit("letfn"))) {
@@ -838,22 +853,22 @@ IRName exprToIR(
                 }
             }
 
-            return callToCPS(pass, fn, env, block, callee, args, k);
+            return callToCPS(pass, fn, env, block, callee, callPair->maybeLoc, args, maybeLoc, k);
         } else if (isSymbol(pass.state, expr)) {
             HRef<Symbol> const sym = HRef<Symbol>::fromUnchecked(expr);
 
-            return useToCPS(pass, env, block, sym, k);
+            return useToCPS(pass, env, block, sym, maybeLoc, k);
         }
     }
 
     // Else a constant:
-    return constToCPS(pass, *block, expr, k);
+    return constToCPS(pass, *block, expr, maybeLoc, k);
 }
 
 // Pass API
 // =================================================================================================
 
-ToIRRes topLevelExprToIR(State const* state, Compiler* compiler, ORef expr) {
+ToIRRes topLevelExprToIR(State const* state, Compiler* compiler, ORef expr, HRef<Loc> loc) {
     CPSConv pass{state, compiler};
 
     IRFn fn = createIRFn(pass.compiler, Default);
@@ -868,7 +883,7 @@ ToIRRes topLevelExprToIR(State const* state, Compiler* compiler, ORef expr) {
         pushIRParam(pass.compiler, entryBlock, ret);
 
         ToCpsCont const retK = {{.ret = {.cont = ret}}, ToCpsCont::RETURN};
-        exprToIR(pass, &fn, &env, &entryBlock, expr, retK);
+        exprToIR(pass, &fn, &env, &entryBlock, expr, loc, retK);
 
         freeToCpsEnv(&env);
     }
@@ -906,6 +921,7 @@ extern "C" void printSyntaxError(
     if (isa(state, state->types.loc, maybeLoc)) {
         auto const loc = HRef<Loc>::fromUnchecked(maybeLoc);
         printFilename(dest, loc.ptr()->filename.ptr()->str());
+        putc(':', dest);
         byteIdxToCoord(src, (uint64_t)loc.ptr()->byteIdx.val()).print(dest);
     } else {
         fputs("unknown location (from macro?)", dest);

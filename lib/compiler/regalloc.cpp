@@ -202,6 +202,10 @@ void regEnvSwap(RegEnv* env, IRName var1, Reg reg1, IRName var2, Reg reg2) {
 // =================================================================================================
 
 void shuffleRegs(Compiler* compiler, RegEnv* current, RegEnv const* goal, IRBlock* block) {
+    ORef const maybeLoc = block->stmts.count > 0
+        ? block->stmts.vals[0].maybeLoc
+        : block->transfer.maybeLoc;
+
     // Reversing the block retargets `pushIRStmt` to the start of the block:
     reverse(block->stmts.vals, block->stmts.count, sizeof *block->stmts.vals, swapStmts);
 
@@ -224,7 +228,7 @@ void shuffleRegs(Compiler* compiler, RegEnv* current, RegEnv const* goal, IRBloc
                     pushIRStmt(compiler, &block->stmts, moveToStmt(MoveStmt{
                         .dest = IRName{reg.index},
                         .src = IRName{goalReg.index}
-                    }));
+                    }, maybeLoc));
 
                     foundLineEnd = true;
                 }
@@ -251,7 +255,7 @@ void shuffleRegs(Compiler* compiler, RegEnv* current, RegEnv const* goal, IRBloc
             pushIRStmt(compiler, &block->stmts, swapToStmt(SwapStmt{
                 .reg1 = IRName{reg.index},
                 .reg2 = IRName{goalReg.index}
-            }));
+            }, maybeLoc));
 
             // Cascading swaps:
             MaybeReg const maybeTraderGoalReg = goal->varRegs[trader.index];
@@ -268,7 +272,7 @@ void shuffleRegs(Compiler* compiler, RegEnv* current, RegEnv const* goal, IRBloc
                 pushIRStmt(compiler, &block->stmts, swapToStmt(SwapStmt{
                     .reg1 = IRName{takerReg.index},
                     .reg2 = IRName{traderReg.index}
-                }));
+                }, maybeLoc));
 
                 traderReg = takerReg;
             }
@@ -311,7 +315,9 @@ void regAllocBlock(
     Compiler* compiler, SavedRegEnvs* savedEnvs, BitSet* visited, IRFn* fn, IRBlock* block
 );
 
-IRName regAllocCallee(Compiler* compiler, RegEnv* env, IRBlock* block, IRName callee) {
+IRName regAllocCallee(
+    Compiler* compiler, RegEnv* env, IRBlock* block, IRName callee, ORef maybeLoc
+) {
     Reg const reg = Reg{calleeReg};
 
     MaybeMove const maybeCalleeMove = allocTransferArgReg(env, callee, reg);
@@ -319,13 +325,13 @@ IRName regAllocCallee(Compiler* compiler, RegEnv* env, IRBlock* block, IRName ca
         pushIRStmt(compiler, &block->stmts, moveToStmt(MoveStmt{
             .dest = IRName{maybeCalleeMove.dest.index},
             .src = IRName{maybeCalleeMove.src.index}
-        }));
+        }, maybeLoc));
     }
 
     return IRName{reg.index};
 }
 
-void regAllocArgs(Compiler* compiler, RegEnv* env, IRBlock* block, Args* args) {
+void regAllocArgs(Compiler* compiler, RegEnv* env, IRBlock* block, Args* args, ORef maybeLoc) {
     size_t const arity = args->count;
     for (size_t i = 0; i < arity; ++i) {
         Reg const reg = Reg{(uint8_t)(2 + i)};
@@ -335,7 +341,7 @@ void regAllocArgs(Compiler* compiler, RegEnv* env, IRBlock* block, Args* args) {
             pushIRStmt(compiler, &block->stmts, moveToStmt(MoveStmt{
                 .dest = IRName{maybeMove.dest.index},
                 .src = IRName{maybeMove.src.index}
-            }));
+            }, maybeLoc));
         }
 
         args->names[i] = IRName{reg.index};
@@ -360,9 +366,9 @@ RegEnv regAllocTransfer(
 
         RegEnv env = newRegEnv(compiler);
 
-        call->callee = regAllocCallee(compiler, &env, block, call->callee);
+        call->callee = regAllocCallee(compiler, &env, block, call->callee, transfer->maybeLoc);
 
-        regAllocArgs(compiler, &env, block, &call->args);
+        regAllocArgs(compiler, &env, block, &call->args, transfer->maybeLoc);
 
         for (size_t i = call->closes.count; i-- > 0;) {
             call->closes.names[i] = IRName{getVarReg(&env, call->closes.names[i]).index};
@@ -376,7 +382,8 @@ RegEnv regAllocTransfer(
 
         RegEnv env = newRegEnv(compiler);
 
-        tailcall->callee = regAllocCallee(compiler, &env, block, tailcall->callee);
+        tailcall->callee =
+            regAllocCallee(compiler, &env, block, tailcall->callee, transfer->maybeLoc);
 
         Reg const contReg = Reg{retContReg};
         [[maybe_unused]] MaybeMove const maybeContMove =
@@ -384,7 +391,7 @@ RegEnv regAllocTransfer(
         assert(!maybeContMove.hasVal);
         tailcall->retFrame = IRName{contReg.index};
 
-        regAllocArgs(compiler, &env, block, &tailcall->args);
+        regAllocArgs(compiler, &env, block, &tailcall->args, transfer->maybeLoc);
 
         return env;
     }; break;

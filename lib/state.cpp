@@ -625,6 +625,10 @@ PrimopRes primopFlDiv(State* state);
 PrimopRes primopWrite(State* state);
 PrimopRes primopWriteChar(State* state);
 PrimopRes primopWriteString(State* state);
+PrimopRes primopCurrentSecond(State* state);
+PrimopRes primopCurrentJiffy(State* state);
+PrimopRes primopJiffiesPerSecond(State* state);
+PrimopRes primopExit(State* state);
 
 HRef<Method> vcreatePrimopMethod(
     State* state, Str name, MethodCode nativeCode, bool hasVarArg, Fixnum arity, va_list domain);
@@ -891,6 +895,13 @@ State* State::tryCreate(size_t heapSize) {
                   false, Fixnum{1l}, dest->types.charr);
     installPrimop(dest, strLit("write-string"), (MethodCode)primopWriteString,
                   false, Fixnum{1l}, dest->types.string);
+    installPrimop(dest, strLit("current-second"), (MethodCode)primopCurrentSecond,
+                  false, Fixnum{0l});
+    installPrimop(dest, strLit("current-jiffy"), (MethodCode)primopCurrentJiffy, false, Fixnum{0l});
+    installPrimop(dest, strLit("jiffies-per-second"), (MethodCode)primopJiffiesPerSecond,
+                  false, Fixnum{0l});
+    installPrimop(dest, strLit("exit"), (MethodCode)primopExit,
+                  false, Fixnum{1l}, dest->types.any);
 
     return dest;
 }

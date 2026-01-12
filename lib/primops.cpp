@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "util/util.hpp"
 #include "bytecode.hpp"
@@ -796,6 +797,46 @@ PrimopRes primopWriteString(State* state) {
     printf("%.*s", int(str->flexCount().val()), str->flexData());
 
     return PrimopRes::CONTINUE; // TODO: Maybe do not return written value?
+}
+
+PrimopRes primopCurrentSecond(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    state->regs[retReg] = Fixnum{(int64_t)time(nullptr)};
+
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes primopCurrentJiffy(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    state->regs[retReg] = Fixnum{(int64_t)clock()};
+
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes primopJiffiesPerSecond(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    state->regs[retReg] = Fixnum{(int64_t)CLOCKS_PER_SEC};
+
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes primopExit(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    ORef const v = state->regs[firstArgReg];
+
+    int const exitCode = isFixnum(v)
+        ? int(Fixnum::fromUnchecked(v).val())
+        : !eq(v, False) ? EXIT_SUCCESS : EXIT_FAILURE;
+
+    exit(exitCode);
 }
 
 } // namespace

@@ -221,6 +221,15 @@
     (fn ((: x <flonum>)) (fl/ 1.0 x))
     fl/))
 
+(def <
+  (make-multimethod
+    (fn ((: x <fixnum>) (: y <fixnum>)) (fx< x y))))
+
+(def inexact
+  (make-multimethod
+    (fn ((: n <fixnum>)) (fixnum->flonum n))
+    (fn ((: n <flonum>)) n)))
+
 (def concat
   (make-multimethod
     (fn () ())
@@ -238,5 +247,15 @@
         (if (identical? (array!-count xss) 0)
           (concat xs (concat ys zs))
           (concat xs (concat ys (concat zs (concat-nonempty-array! xss)))))))))
+
+(def =-impl
+  (make-multimethod
+    (fn ((: x <fixnum>) (: y <fixnum>)) (identical? x y))))
+
+(def =
+  (fn (x y)
+    (if (identical? x y)
+      #t
+      (=-impl x y))))
 
 (def newline (fn () (write-char #"\n")))

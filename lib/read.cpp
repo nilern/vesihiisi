@@ -344,13 +344,17 @@ ReadExprTailRes readStringTail(State* state, Parser* parser) {
 
     // [^"]*
     for (int c; (c = parser->peek()) != '"';) {
-        if (c == EOF) { return ReadExprTailRes{{.err = parser->error(state, '"')}, false}; }
+        if (c == EOF) {
+            freeStringBuilder(&builder);
+            return ReadExprTailRes{{.err = parser->error(state, '"')}, false};
+        }
 
         if (c == '\\') { // Char escape
             parser->skipUnchecked(); // '\\'
 
             EscapeCharRes const escRes = escapeChar(parser->peek());
             if (!escRes.success) {
+                freeStringBuilder(&builder);
                 return ReadExprTailRes{{.err = parser->error(state, escRes.err)}, false};
             }
             parser->skipUnchecked(); // Escapee
@@ -362,8 +366,12 @@ ReadExprTailRes readStringTail(State* state, Parser* parser) {
     }
 
     // '"'
-    if (!parser->match('"')) { return ReadExprTailRes{{.err = parser->error(state, '"')}, false}; }
+    if (!parser->match('"')) {
+        freeStringBuilder(&builder);
+        return ReadExprTailRes{{.err = parser->error(state, '"')}, false};
+    }
 
+    freeStringBuilder(&builder);
     return ReadExprTailRes{{.val = createString(state, stringBuilderStr(&builder))}, true};
 }
 

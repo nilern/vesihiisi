@@ -371,8 +371,9 @@ ReadExprTailRes readStringTail(State* state, Parser* parser) {
         return ReadExprTailRes{{.err = parser->error(state, '"')}, false};
     }
 
+    HRef<String> const val = createString(state, stringBuilderStr(&builder));
     freeStringBuilder(&builder);
-    return ReadExprTailRes{{.val = createString(state, stringBuilderStr(&builder))}, true};
+    return ReadExprTailRes{{.val = val}, true};
 }
 
 // 't' | 'f' | '"' [^"] '"' | 'x' <number 16>
@@ -398,16 +399,20 @@ ReadExprTailRes readAltTail(State* state, Parser* parser) {
             return ReadExprTailRes{{.err = parser->error(state, "a character following #\"")}, false};
         }
         auto c = static_cast<char>(mc);
+        parser->skipUnchecked(); // `c`
 
         if (c == '\\') {
-            parser->skipUnchecked(); // '\\'
-
             EscapeCharRes const escRes = escapeChar(parser->peek());
             if (!escRes.success) {
                 return ReadExprTailRes{{.err = parser->error(state, escRes.err)}, false};
             }
             parser->skipUnchecked(); // Escapee
             c = escRes.val;
+        }
+
+        // '"'
+        if (!parser->match('"')) {
+            return ReadExprTailRes{{.err = parser->error(state, '"')}, false};
         }
 
         return ReadExprTailRes{{.val = Char(c)}, true};

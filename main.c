@@ -78,6 +78,7 @@ static Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser, bool deb
 typedef struct CLIArgs {
     char const* name;
     char const* filename;
+    bool fromStdin;
     bool debug;
     bool help;
     bool forceInteractive;
@@ -137,6 +138,7 @@ static ParseArgvRes parseArgv(int argc, char const* argv[static argc]) {
     CLIArgs config = {
         .name = argv[0],
         .filename = nullptr,
+        .fromStdin = false,
         .debug = false,
         .help = false,
         .forceInteractive = false
@@ -149,7 +151,7 @@ static ParseArgvRes parseArgv(int argc, char const* argv[static argc]) {
 
         bool validFlag = false;
 
-        if (*arg == '-') {
+        if (*arg == '-') { // Long flag:
             ++arg;
 
             for (size_t j = 0; j < countof(longFlagNames); ++j) {
@@ -163,7 +165,7 @@ static ParseArgvRes parseArgv(int argc, char const* argv[static argc]) {
             if (!validFlag) {
                 return (ParseArgvRes){.err = {.idx = i, CLI_ERR_NONFLAG}, RES_ERR};
             }
-        } else {
+        } else if (*arg != '\0') { // Short flag(s):
             for (; *arg != '\0'; ++arg) {
                 for (size_t j = 0; j < countof(shortFlagNames); ++j) {
                     if (*arg == shortFlagNames[j]) {
@@ -177,6 +179,8 @@ static ParseArgvRes parseArgv(int argc, char const* argv[static argc]) {
                     return (ParseArgvRes){.err = {.idx = i, CLI_ERR_NONFLAG}, RES_ERR};
                 }
             }
+        } else { // Empty short flag '-':
+            config.fromStdin = true;
         }
     }
 
@@ -191,6 +195,8 @@ static ParseArgvRes parseArgv(int argc, char const* argv[static argc]) {
 
     return (ParseArgvRes){.val = config, RES_OK};
 }
+
+static const char stdinName[] = "STDIN";
 
 static const char prompt[] = "vesihiisi> ";
 
@@ -215,6 +221,8 @@ int main(int argc, char const* argv[static argc]) {
             printf("  -%c, --%s\t%s\n", shortFlagNames[i], longFlagNames[i], flagDescriptions[i]);
         }
 
+        puts("  -\tread program from stdin (as if from FILE)");
+
         return EXIT_SUCCESS;
     }
 
@@ -225,25 +233,55 @@ int main(int argc, char const* argv[static argc]) {
     }
 
     bool loadFailed = false;
-    if (args.filename) { // OPTIMIZE: Use `mmap`:
-        FILE* const file = fopen(args.filename, "rb");
-        if (!file) {
-            fprintf(stderr, "Can't open %s: %s\n", args.filename, strerror(errno));
-            return EXIT_FAILURE;
+    if (args.filename || args.fromStdin) {
+        if (args.filename && args.fromStdin) {
+            puts("Inconsistent CLI args: both '-' and filename given.");
+            exit(EXIT_FAILURE);
         }
 
-        fseek(file, 0, SEEK_END);
-        size_t const fsize = (size_t)ftell(file);
-        fseek(file, 0, SEEK_SET);
+        char* fchars = nullptr;
+        size_t fsize = 0;
+        Str filenameStr;
+        if (args.filename) {
+            // OPTIMIZE: Use `mmap`:
+            FILE* const file = fopen(args.filename, "rb");
+            if (!file) {
+                fprintf(stderr, "Can't open %s: %s\n", args.filename, strerror(errno));
+                return EXIT_FAILURE;
+            }
 
-        char* const fchars = malloc(fsize + 1);
-        size_t nread /*HACK:*/ [[maybe_unused]] = fread(fchars, 1, fsize, file);
-        assert(nread == fsize);
-        fchars[fsize] = 0;
-        fclose(file);
+            fseek(file, 0, SEEK_END);
+            fsize = (size_t)ftell(file);
+            fseek(file, 0, SEEK_SET);
+
+            fchars = malloc(fsize + 1);
+            size_t nread /*HACK:*/ [[maybe_unused]] = fread(fchars, 1, fsize, file);
+            assert(nread == fsize);
+            fchars[fsize] = 0;
+            fclose(file);
+
+            filenameStr = (Str){args.filename, strlen(args.filename)};
+        } else {
+            assert(args.fromStdin);
+
+            size_t cap = 4096; // A familiar size from paging. Also probably about 100 LOC.
+            fchars = malloc(cap);
+
+            for (size_t readCount;
+                 (readCount = fread(fchars + fsize, 1, cap - fsize, stdin)) > 0;
+            ) {
+                fsize += readCount;
+
+                if (fsize == cap) {
+                    cap = cap + cap / 2;
+                    fchars = realloc(fchars, cap);
+                }
+            }
+
+            filenameStr = (Str){stdinName, sizeof stdinName / sizeof *stdinName};
+        }
 
         Str const src = {fchars, fsize};
-        Str const filenameStr = {args.filename, strlen(args.filename)}; // FIXME: canonicalize
         Parser* const parser = createParser(state, src, filenameStr);
         pushFilenameRoot(state, parser);
 
@@ -289,7 +327,7 @@ int main(int argc, char const* argv[static argc]) {
         free(fchars);
     }
 
-    if (!args.filename || (args.forceInteractive && !loadFailed)) {
+    if (!(args.filename || args.fromStdin) || (args.forceInteractive && !loadFailed)) {
         for (;/*ever*/;) {
             printf("%s", prompt);
 

@@ -623,6 +623,8 @@ PrimopRes primopFlSub(State* state);
 PrimopRes primopFlMul(State* state);
 PrimopRes primopFlDiv(State* state);
 PrimopRes primopWrite(State* state);
+PrimopRes primopWriteChar(State* state);
+PrimopRes primopWriteString(State* state);
 
 HRef<Method> vcreatePrimopMethod(
     State* state, Str name, MethodCode nativeCode, bool hasVarArg, Fixnum arity, va_list domain);
@@ -885,6 +887,10 @@ State* State::tryCreate(size_t heapSize) {
                   false, Fixnum{2l}, dest->types.flonum, dest->types.flonum);
     installPrimop(dest, strLit("write"), (MethodCode)primopWrite,
                   false, Fixnum{1l}, dest->types.any);
+    installPrimop(dest, strLit("write-char"), (MethodCode)primopWriteChar,
+                  false, Fixnum{1l}, dest->types.charr);
+    installPrimop(dest, strLit("write-string"), (MethodCode)primopWriteString,
+                  false, Fixnum{1l}, dest->types.string);
 
     return dest;
 }

@@ -775,4 +775,27 @@ PrimopRes primopWrite(State* state) {
     return PrimopRes::CONTINUE; // TODO: Maybe do not return written value?
 }
 
+PrimopRes primopWriteChar(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    char const c = Char::fromUnchecked(state->regs[firstArgReg]).val();
+
+    putchar(c);
+
+    return PrimopRes::CONTINUE; // TODO: Maybe do not return written value?
+}
+
+PrimopRes primopWriteString(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    String const* const str = HRef<String>::fromUnchecked(state->regs[firstArgReg]).ptr();
+
+    // TODO: Avoid POSIX format spec extension:
+    printf("%.*s", int(str->flexCount().val()), str->flexData());
+
+    return PrimopRes::CONTINUE; // TODO: Maybe do not return written value?
+}
+
 } // namespace

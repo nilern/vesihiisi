@@ -238,3 +238,5 @@
         (if (identical? (array!-count xss) 0)
           (concat xs (concat ys zs))
           (concat xs (concat ys (concat zs (concat-nonempty-array! xss)))))))))
+
+(def newline (fn () (write-char #"\n")))

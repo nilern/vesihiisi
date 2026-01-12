@@ -286,14 +286,13 @@ void encodeRevDelta(AVec<uint8_t>& revIdxDeltas, int64_t delta, size_t bitsize) 
 void pushMaybeLoc(State const& state, MethodBuilder* builder, ORef maybeLoc) {
     auto const loc = MethodBuilderLoc::fromORef(state, maybeLoc);
 
-    if (eq(loc.maybeFilename, builder->maybeFilename)) {
-        builder->filenameCount += builder->codeCount - builder->prevMaybeLocRevIdx;
-    } else {
+    builder->filenameCount += builder->codeCount - builder->prevMaybeLocRevIdx;
+    if (!(eq(loc.maybeFilename, builder->maybeFilename))) {
         builder->revFilenameRuns.push(Fixnum{(int64_t)builder->filenameCount});
         builder->revFilenameRuns.push(builder->maybeFilename);
 
         builder->maybeFilename = loc.maybeFilename;
-        builder->filenameCount = 1;
+        builder->filenameCount = 0;
     }
 
     if (loc.srcIdx != builder->srcIdx) {

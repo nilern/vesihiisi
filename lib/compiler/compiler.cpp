@@ -654,7 +654,7 @@ CompilationRes compile(State* state, ORef expr, HRef<Loc> loc, bool debug) {
     ToIRRes const toIRRes = topLevelExprToIR(state, &compiler, expr, loc);
     if (!toIRRes.success) {
         freeCompiler(&compiler);
-        return CompilationRes{{.err = toIRRes.err}, false};
+        return CompilationRes{toIRRes.err};
     }
     IRFn irFn = toIRRes.val;
     if (debug) {
@@ -699,7 +699,7 @@ CompilationRes compile(State* state, ORef expr, HRef<Loc> loc, bool debug) {
     }
 
     freeCompiler(&compiler);
-    return CompilationRes{{.val = method}, true};
+    return CompilationRes{method};
 }
 
 } // namespace

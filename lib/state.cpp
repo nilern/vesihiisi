@@ -828,7 +828,7 @@ State* State::tryCreate(size_t heapSize) {
         char const* const name = typeNames[i];
         size_t const nameLen = strlen(name);
         if (nameLen > 0) {
-            Str const nameStr = Str{name, nameLen};
+            Str const nameStr = Str{reinterpret_cast<uint8_t const*>(name), nameLen}; // HACK
             // `ORef const type = dest->types[i];` would not pay off since `nameType` may GC:
             nameType(dest, dest->typesArray[i], nameStr);
             installPrimordial(dest, nameStr, dest->typesArray[i].oref());
@@ -1274,7 +1274,7 @@ HRef<Method> vcreatePrimopMethod(
         ptr = (Method*)state->heap.tospace.allocFlexOrDie(state->types.method.ptr(), fxArity);
     }
 
-    uintptr_t const hash = fnv1aHash_n((char*)&nativeCode, sizeof nativeCode); // HACK
+    uintptr_t const hash = fnv1aHash_n((uint8_t*)&nativeCode, sizeof nativeCode); // HACK
 
     *ptr = Method{
         .nativeCode = nativeCode,

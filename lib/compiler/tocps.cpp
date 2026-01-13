@@ -838,15 +838,15 @@ IRName exprToIR(
                 HRef<Symbol> const calleeSym = HRef<Symbol>::fromUnchecked(callee);
 
                 // OPTIMIZE: Symbol comparisons instead of `strEq`:
-                if (strEq(calleeSym.ptr()->name(), Str{"fn", /*HACK:*/2})) {
+                if (strEq(calleeSym.ptr()->name(), strLit("fn"))) {
                     return fnToCPS(pass, fn, env, block, args, maybeLoc, k);
-                } else if (strEq(calleeSym.ptr()->name(), Str{"if", /*HACK:*/2})) {
+                } else if (strEq(calleeSym.ptr()->name(), strLit("if"))) {
                     return ifToCPS(pass, fn, env, block, args, maybeLoc, k);
-                } else if (strEq(calleeSym.ptr()->name(), Str{"quote", /*HACK:*/5})) {
+                } else if (strEq(calleeSym.ptr()->name(), strLit("quote"))) {
                     return quoteToCPS(pass, block, args, k);
-                } else if (strEq(calleeSym.ptr()->name(), Str{"def", /*HACK:*/3})) {
+                } else if (strEq(calleeSym.ptr()->name(), strLit("def"))) {
                     return defToCPS(pass, fn, env, block, args, maybeLoc, k);
-                } else if (strEq(calleeSym.ptr()->name(), Str{"let", /*HACK:*/3})) {
+                } else if (strEq(calleeSym.ptr()->name(), strLit("let"))) {
                     return letToCPS(pass, fn, env, block, args, k);
                 } else if (strEq(calleeSym.ptr()->name(), strLit("letfn"))) {
                     return letfnToCPS(pass, fn, env, block, args, k);
@@ -890,12 +890,12 @@ ToIRRes topLevelExprToIR(State const* state, Compiler* compiler, ORef expr, HRef
 
     Slice<SyntaxError const> const errSlice = pass.errors();
     if (errSlice.count == 0) {
-        return ToIRRes{{.val = fn}, true};
+        return ToIRRes{fn};
     } else {
         SyntaxError* errVals = (SyntaxError*)malloc(errSlice.count * sizeof *errVals);
         memcpy(errVals, errSlice.data, errSlice.count * sizeof *errVals);
         SyntaxErrors const errs = {errVals, errSlice.count};
-        return ToIRRes{{.err = errs}, false};
+        return ToIRRes{errs};
     }
 }
 

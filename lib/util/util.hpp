@@ -24,6 +24,9 @@ template<typename T>
 struct Maybe {
     T val;
     bool hasVal;
+
+    explicit Maybe(T t_val) : val{t_val}, hasVal{true} {}
+    Maybe() : val{}, hasVal{false} {}
 };
 
 typedef struct BucketIdx {
@@ -38,7 +41,15 @@ struct Res {
         Err err;
     };
     bool success;
+
+    explicit Res(T t_val) : val{t_val}, success{true} {}
+    explicit Res(Err t_err) : err{t_err}, success{false} {}
 };
+
+#define TRY(ResultType, expr) \
+    ({auto const TRY_IMPL_result = (expr); \
+      if (!TRY_IMPL_result.success) { return ResultType{TRY_IMPL_result.err}; } \
+      TRY_IMPL_result.val;})
 
 typedef void (*SwapFn)(void* x, void* y);
 
@@ -61,12 +72,14 @@ struct Slice {
 };
 
 // TODO: Enforce string literal `data`, incidentally avoiding `strlen`:
-inline Str strLit(char const* data) { return Str{.data = data, .len = strlen(data)}; }
+inline Str strLit(char const* data) {
+    return Str{.data = /*HACK:(?)*/reinterpret_cast<uint8_t const*>(data), .len = strlen(data)};
+}
 
 bool strEq(Str s1, Str s2);
 
 typedef struct StringBuilder {
-    char* data;
+    uint8_t* data;
     size_t len;
     size_t cap;
 } StringBuilder;
@@ -75,15 +88,17 @@ StringBuilder createStringBuilder(void);
 
 inline Str stringBuilderStr(StringBuilder const* s) { return Str{s->data, s->len}; }
 
-void stringBuilderPush(StringBuilder* s, char c);
+void stringBuilderPush(StringBuilder* s, uint8_t c);
 
 inline void freeStringBuilder(StringBuilder* s) { free(s->data); }
 
-uint64_t fnv1aHash_n(char const* ptr, size_t count);
+uint64_t fnv1aHash_n(uint8_t const* ptr, size_t count);
 
 uint64_t fnv1aHash(Str s);
 
 uint64_t hashCombine(uint64_t h1, uint64_t h2);
+
+int utf8EncodedWidth(int32_t codepoint);
 
 void printFilename(FILE* dest, Str filename);
 

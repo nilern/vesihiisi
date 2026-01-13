@@ -201,7 +201,10 @@ static const char stdinName[] = "STDIN";
 static const char prompt[] = "vesihiisi> ";
 
 static const char replFilename[] = "REPL";
-static Str const replFilenameStr = {replFilename, sizeof replFilename / sizeof *replFilename};
+static Str const replFilenameStr = {
+    (uint8_t const*)replFilename,
+    sizeof replFilename / sizeof *replFilename
+};
 
 int main(int argc, char const* argv[static argc]) {
     ParseArgvRes const argvRes = parseArgv(argc, argv);
@@ -260,7 +263,7 @@ int main(int argc, char const* argv[static argc]) {
             fchars[fsize] = 0;
             fclose(file);
 
-            filenameStr = (Str){args.filename, strlen(args.filename)};
+            filenameStr = (Str){(uint8_t*)args.filename, strlen(args.filename)};
         } else {
             assert(args.fromStdin);
 
@@ -278,10 +281,10 @@ int main(int argc, char const* argv[static argc]) {
                 }
             }
 
-            filenameStr = (Str){stdinName, sizeof stdinName / sizeof *stdinName};
+            filenameStr = (Str){(uint8_t*)stdinName, sizeof stdinName / sizeof *stdinName};
         }
 
-        Str const src = {fchars, fsize};
+        Str const src = {(uint8_t*)fchars, fsize};
         Parser* const parser = createParser(state, src, filenameStr);
         pushFilenameRoot(state, parser);
 
@@ -335,7 +338,7 @@ int main(int argc, char const* argv[static argc]) {
             size_t maxLen = 0;
             ssize_t const len = getline(&line, &maxLen, stdin);
             if (len != -1) {
-                Str const src = {line, (size_t)len};
+                Str const src = {(uint8_t*)line, (size_t)len};
                 Parser* parser = createParser(state, src, replFilenameStr);
                 pushFilenameRoot(state, parser);
                 Vshs_MaybeRes const maybeRes = readEval(state, parser, args.debug);

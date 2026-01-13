@@ -5,6 +5,8 @@
 #include <string.h>
 #include <time.h>
 
+#include "../deps/utf8proc/utf8proc.h"
+
 #include "util/util.hpp"
 #include "bytecode.hpp"
 #include "dispatch.hpp"
@@ -789,9 +791,12 @@ PrimopRes primopWriteChar(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
 
-    char const c = Char::fromUnchecked(state->regs[firstArgReg]).val();
+    uint32_t const c = Char::fromUnchecked(state->regs[firstArgReg]).val();
 
-    putchar(c);
+    uint8_t buf[4];
+    ssize_t const width = utf8proc_encode_char(c, buf);
+    // TODO: Avoid POSIX format specifier extension:
+    printf("%.*s", (int)width, buf);
 
     return PrimopRes::CONTINUE; // TODO: Maybe do not return written value?
 }

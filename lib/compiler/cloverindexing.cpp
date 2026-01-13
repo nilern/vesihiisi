@@ -72,7 +72,7 @@ CloverIdxs closeCloverIdxs(Compiler* compiler, BitSet const* clovers, Args const
                 }
             }
 
-            env.idxs[clover.index] = Maybe<uint8_t>{.val = (uint8_t)idx, .hasVal = true};
+            env.idxs[clover.index] = Maybe<uint8_t>{(uint8_t)idx};
         }
     }
 

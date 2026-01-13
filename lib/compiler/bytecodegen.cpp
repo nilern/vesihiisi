@@ -198,7 +198,7 @@ HRef<Method> buildMethod(
     Fixnum const fxArity = Fixnum((intptr_t)arity);
     Bool const hasVarArg = Bool(fn->hasVarArg);
     Slice<uint8_t const> const codeSlice = code.ptr()->flexItems();
-    uintptr_t const hash = fnv1aHash_n((char const*)codeSlice.data, codeSlice.count);
+    uintptr_t const hash = fnv1aHash_n(codeSlice.data, codeSlice.count);
     Fixnum const fxHash = Fixnum((intptr_t)hash);
     Method* maybeMethod =
         tryAllocBytecodeMethod(state, code, consts, fxArity, hasVarArg, fxHash, fn->maybeName,

@@ -108,7 +108,7 @@ Maybe<size_t> bitSetIterNext(BitSetIter* it) {
     for (size_t i = it->idx; i < count; ++i) {
         if (bitSetContains(it->bits, i)) {
             it->idx = i + 1;
-            return Maybe{.val = i, .hasVal = true};
+            return Maybe{i};
         }
     }
 

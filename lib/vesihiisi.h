@@ -9,7 +9,7 @@ extern "C" {
 #endif
 
 typedef struct Str {
-    char const* data;
+    uint8_t const* data;
     size_t len;
 } Str;
 
@@ -33,7 +33,8 @@ typedef struct Parser Parser;
 
 typedef enum ParseErrorType {
     EXPECTED_CHAR,
-    EXPECTED_CHAR_CLASS
+    EXPECTED_CHAR_CLASS,
+    INVALID_UTF8
 } ParseErrorType;
 
 Parser* createParser(struct Vshs_State* state, Str src, Str filename);
@@ -53,7 +54,7 @@ typedef struct Vshs_MaybeLocatedORef {
 
 typedef struct ParseError {
     ORef loc; // Actually `HRef<Loc>` but obviously we can't have that in C
-    int actualMaybeChar;
+    int32_t actualMaybeChar;
     union {
         char expectedChar;
         char const* expectedCharClass; // With static storage duration

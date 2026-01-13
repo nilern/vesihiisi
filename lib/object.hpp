@@ -77,11 +77,11 @@ private:
 };
 
 struct Char : public Scalar {
-    constexpr explicit Char(char c) : Char{charTag | (uint64_t)c} {}
+    constexpr explicit Char(uint32_t c) : Char{charTag | uint64_t(c)} {}
 
     static Char fromUnchecked(ORef v) { return Char{v.bits}; }
 
-    char val() const { return (char)(bits & payloadMask); }
+    uint32_t val() const { return uint32_t(bits & payloadMask); }
 
 private:
     constexpr explicit Char(uint64_t t_bits) : Scalar{t_bits} {}
@@ -133,7 +133,7 @@ constexpr ORef Tombstone{boolTag | (uint64_t)false};
 
 inline int64_t uncheckedFixnumToInt(ORef v) { return Fixnum::fromUnchecked(v).val(); }
 
-inline char uncheckedORefToChar(ORef v) { return Char::fromUnchecked(v).val(); }
+inline uint32_t uncheckedORefToChar(ORef v) { return Char::fromUnchecked(v).val(); }
 
 struct Object {
     struct Header const* header() const;
@@ -308,11 +308,11 @@ FlexHeader const* AnyIndexedObject<CRTPSub, Item>::flexHeader() const {
 template<typename CRTPSub, typename Item>
 Fixnum AnyIndexedObject<CRTPSub, Item>::flexCount() const { return flexHeader()->count; }
 
-struct String : IndexedObject<String, char> {
+struct String : IndexedObject<String, uint8_t> {
     Str str() const { return Str{flexData(), static_cast<size_t>(flexCount().val())}; }
 };
 
-struct Symbol : public FlexObject<Symbol, char> {
+struct Symbol : public FlexObject<Symbol, uint8_t> {
     Fixnum hash;
 
     Str name() const { return Str{flexData(), static_cast<size_t>(flexCount().val())}; }

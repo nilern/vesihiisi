@@ -49,7 +49,7 @@ public:
 
     virtual Maybe<MaybeLocatedCodeByte> next() {
         if (pc < codeSlice.count) {
-            return Maybe{MaybeLocatedCodeByte{codeSlice[pc++], {}}, true};
+            return Maybe{MaybeLocatedCodeByte{codeSlice[pc++], {}}};
         } else {
             return Maybe<MaybeLocatedCodeByte>{};
         }
@@ -121,7 +121,7 @@ public:
             --bytesToNextSrcByteIdx;
 
             auto const loc = ZLoc{maybeFilename, size_t(srcByteIdx)};
-            return Maybe{MaybeLocatedCodeByte{byteRes.val.codeByte, Maybe{loc, true}}, true};
+            return Maybe{MaybeLocatedCodeByte{byteRes.val.codeByte, Maybe{loc}}};
         } else {
             return byteRes;
         }
@@ -413,7 +413,7 @@ Maybe<ZLoc> locatePc(HRef<Method> methodRef, size_t pc) {
         codeByteIdx = newCodeByteIdx;
     }
 
-    return Maybe{ZLoc{maybeFilename, size_t(srcByteIdx)}, true};
+    return Maybe{ZLoc{maybeFilename, size_t(srcByteIdx)}};
 }
 
 } // namespace

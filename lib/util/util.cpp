@@ -21,13 +21,16 @@ void reverse(void* arr, size_t count, size_t size, SwapFn swap) {
 
 bool strEq(Str s1, Str s2) {
     return s1.len == s2.len
-        && strncmp(s1.data, s2.data, s1.len) == 0;
+        // HACK:
+        && strncmp(reinterpret_cast<char const*>(s1.data), reinterpret_cast<char const*>(s2.data),
+                   s1.len)
+           == 0;
 }
 
 StringBuilder createStringBuilder(void) {
     size_t const cap = 2;
     
-    char* data = (char*)malloc(cap);
+    auto data = (uint8_t*)malloc(cap);
     if (!data) { exit(EXIT_FAILURE); }
     
     return StringBuilder{
@@ -37,11 +40,11 @@ StringBuilder createStringBuilder(void) {
     };
 }
 
-void stringBuilderPush(StringBuilder* s, char c) {
+void stringBuilderPush(StringBuilder* s, uint8_t c) {
     if (s->len == s->cap) {
         size_t const newCap = s->cap + (s->cap >> 1); // cap * 1.5
         
-        char* const data = (char*)realloc(s->data, newCap);
+        auto const data = (uint8_t*)realloc(s->data, newCap);
         if (!data) { exit(EXIT_FAILURE); }
         
         s->data = data;
@@ -51,11 +54,11 @@ void stringBuilderPush(StringBuilder* s, char c) {
     s->data[s->len++] = c;
 }
 
-uint64_t fnv1aHash_n(char const* ptr, size_t count) {
+uint64_t fnv1aHash_n(uint8_t const* ptr, size_t count) {
     uint64_t hash = 14695981039346656037u;
 
     for (size_t i = 0; i < count; ++i) {
-        hash ^= (uint8_t)ptr[i];
+        hash ^= ptr[i];
         hash *= 1099511628211 ;
     }
 
@@ -68,15 +71,24 @@ uint64_t fnv1aHash(Str s) { return fnv1aHash_n(s.data, s.len); }
 // OPTIMIZE: More sophisticated combination algorithm:
 uint64_t hashCombine(uint64_t h1, uint64_t h2) { return 3 * h1 + h2; }
 
+int utf8EncodedWidth(int32_t codepoint) {
+    // OPTIMIZE: So many branches:
+    return codepoint < 0x80 ? 1
+        : codepoint < 0x800 ? 2
+        : codepoint < 0x10000 ? 3
+        : 4;
+}
+
 void printFilename(FILE* dest, Str filename) {
-    std::filesystem::path const path{filename.data, filename.data + filename.len};
+    auto const chars = reinterpret_cast<char const*>(filename.data);
+    std::filesystem::path const path{chars, chars + filename.len};
     std::error_code pathErr;
     auto const relative = std::filesystem::relative(path, pathErr);
     if (!pathErr && !relative.empty()) {
         fprintf(dest, "%s", relative.c_str());
     } else { // Default to printing the absolute path:
         // TODO: Avoid using POSIX `printf` extension:
-        fprintf(dest, "%.*s", (int)filename.len, filename.data);
+        fprintf(dest, "%.*s", (int)filename.len, chars);
     }
 }
 
@@ -90,11 +102,7 @@ Coord byteIdxToCoord(Str src, size_t byteIdx) {
     size_t const limit = byteIdx < src.len ? byteIdx : src.len; // Basically use `src.len` for EOF
     for (auto prefix = Str{src.data, limit}; prefix.len > 0;) {
         int32_t codepoint;
-        auto maybeCodepointSize = utf8proc_iterate(
-            reinterpret_cast<uint8_t const*>(prefix.data), // HACK
-            ssize_t(prefix.len),
-            &codepoint
-        );
+        auto maybeCodepointSize = utf8proc_iterate(prefix.data, ssize_t(prefix.len), &codepoint);
 
         if (maybeCodepointSize >= 0) {
             size_t const codepointSize = size_t(maybeCodepointSize);
@@ -107,11 +115,8 @@ Coord byteIdxToCoord(Str src, size_t byteIdx) {
             // Skip over invalid bytes:
             for (; prefix.len > 0; ++prefix.data, --prefix.len) {
                 int32_t codePointSink;
-                auto maybeCodepointSize = utf8proc_iterate(
-                    reinterpret_cast<uint8_t const*>(prefix.data), // HACK
-                    ssize_t(prefix.len),
-                    &codePointSink
-                );
+                auto maybeCodepointSize =
+                    utf8proc_iterate(prefix.data, ssize_t(prefix.len), &codePointSink);
                 if (maybeCodepointSize >= 0) { break; }
             }
 

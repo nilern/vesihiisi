@@ -1,3 +1,5 @@
+#include "../deps/utf8proc/utf8proc.h"
+
 #include "state.hpp"
 
 namespace {
@@ -12,9 +14,12 @@ void print(State const* state, FILE* dest, ORef v) {
         fprintf(dest, "%f", Flonum::fromUnchecked(v).val());
         break;
         
-    case TaggedType::CHAR:
-        fprintf(dest, "#\"%c\"", Char::fromUnchecked(v).val());
-        break;
+    case TaggedType::CHAR: {
+        uint8_t buf[4];
+        ssize_t const width = utf8proc_encode_char(Char::fromUnchecked(v).val(), buf);
+        // TODO: Avoid POSIX format specifier extension:
+        fprintf(dest, "#\"%.*s\"", (int)width, buf);
+    }; break;
         
     case TaggedType::BOOL:
         if (Bool::fromUnchecked(v).val()) {

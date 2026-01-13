@@ -55,6 +55,9 @@ struct ZLoc {
 
 void disassemble(State const* state, FILE* dest, HRef<Method> methodRef);
 
+[[maybe_unused]]
+void disassembleInstrAt(State const* state, FILE* dest, HRef<Method> methodRef, size_t pc);
+
 Maybe<ZLoc> locatePc(HRef<Method> methodRef, size_t pc);
 
 } // namespace

@@ -27,18 +27,21 @@ protected:
     Slice<uint8_t const> codeSlice;
     size_t pc;
 
-    Disassembler(State const* t_state, Method const* t_method) :
-        state{t_state}, method{t_method}, pc{0}
-    {
-        assert(isHeaped(t_method->code));
-        codeSlice = HRef<ByteArray>::fromUnchecked(t_method->code).ptr()->items();
-    }
-
 public:
     struct MaybeLocatedCodeByte {
         uint8_t codeByte;
         Maybe<ZLoc> loc;
     };
+
+    Disassembler(State const* t_state, Method const* t_method, size_t t_pc) :
+        state{t_state}, method{t_method}, pc{t_pc}
+    {
+        assert(isHeaped(t_method->code));
+        codeSlice = HRef<ByteArray>::fromUnchecked(t_method->code).ptr()->items();
+    }
+
+    Disassembler(State const* t_state, Method const* t_method)
+        : Disassembler{t_state, t_method, 0} {}
 
     static Disassembler* create(State const* t_state, Method const* t_method);
 
@@ -125,19 +128,13 @@ public:
     }
 };
 
-class NoLocDisassembler : public Disassembler {
-public:
-    NoLocDisassembler(State const* t_state, Method const* t_method)
-        : Disassembler{t_state, t_method} {}
-};
-
 Disassembler* Disassembler::create(State const* state, Method const* method) {
     if (isa(state, state->types.array, method->maybeFilenames)
         && isa(state, state->types.byteArray, method->maybeSrcByteIdxs)
         ) {
         return new LocDisassembler{state, method};
     } else {
-        return new NoLocDisassembler{state, method};
+        return new Disassembler{state, method};
     }
 }
 
@@ -170,7 +167,7 @@ void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t co
     ORef const* const consts = HRef<ArrayMut>::fromUnchecked(method->consts).ptr()->flexData();
 
     for (size_t j = 0; j < nesting; ++j) { fputc('\t', dest); }
-    fprintf(dest, "[%lu]:\t", pc);
+    fprintf(dest, "[%lu]:\t", pc - 1);
 
     switch ((Opcode)codeByte) { // FIXME: Handle invalid instruction
     case OP_MOVE: {
@@ -373,6 +370,15 @@ void disassembleNested(State const* state, FILE* dest, HRef<Method> methodRef, s
 
 void disassemble(State const* state, FILE* dest, HRef<Method> methodRef) {
     disassembleNested(state, dest, methodRef, 0);
+}
+
+void disassembleInstrAt(State const* state, FILE* dest, HRef<Method> methodRef, size_t pc) {
+    assert(isHeaped(methodRef.ptr()->code));
+
+    Method const* const method =methodRef.ptr();
+    auto dis = Disassembler{state, method, pc + 1};
+    uint8_t const codeByte = HRef<ByteArray>::fromUnchecked(method->code).ptr()->items()[pc];
+    dis.disassembleNestedInstr(dest, 0, codeByte);
 }
 
 Maybe<ZLoc> locatePc(HRef<Method> methodRef, size_t pc) {

@@ -93,7 +93,7 @@ struct Coord {
 
     Coord() : line{1}, col{1} {}
 
-    void advance(char c) {
+    void advance(int32_t c) {
         if (c != '\n') {
             ++col;
         } else {

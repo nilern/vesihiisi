@@ -4,6 +4,8 @@
 #include <string.h>
 #include <filesystem> // OPTIMIZE: Avoid this, requires linking to a bunch of `std::` stuff.
 
+#include "../../deps/utf8proc/utf8proc.h"
+
 namespace {
 
 void reverse(void* arr, size_t count, size_t size, SwapFn swap) {
@@ -86,8 +88,35 @@ Coord byteIdxToCoord(Str src, size_t byteIdx) {
     Coord pos{};
 
     size_t const limit = byteIdx < src.len ? byteIdx : src.len; // Basically use `src.len` for EOF
-    for (size_t i = 0; i < limit; ++i) {
-        pos.advance(src.data[i]);
+    for (auto prefix = Str{src.data, limit}; prefix.len > 0;) {
+        int32_t codepoint;
+        auto maybeCodepointSize = utf8proc_iterate(
+            reinterpret_cast<uint8_t const*>(prefix.data), // HACK
+            ssize_t(prefix.len),
+            &codepoint
+        );
+
+        if (maybeCodepointSize >= 0) {
+            size_t const codepointSize = size_t(maybeCodepointSize);
+
+            pos.advance(codepoint);
+
+            prefix.data += codepointSize;
+            prefix.len -= codepointSize;
+        } else { // Best effort recovery:
+            // Skip over invalid bytes:
+            for (; prefix.len > 0; ++prefix.data, --prefix.len) {
+                int32_t codePointSink;
+                auto maybeCodepointSize = utf8proc_iterate(
+                    reinterpret_cast<uint8_t const*>(prefix.data), // HACK
+                    ssize_t(prefix.len),
+                    &codePointSink
+                );
+                if (maybeCodepointSize >= 0) { break; }
+            }
+
+            pos.advance(' '); // Count invalid bytes as one codepoint
+        }
     }
 
     return pos;

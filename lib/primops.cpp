@@ -412,6 +412,15 @@ PrimopRes primopIdentical(State* state) {
     return PrimopRes::CONTINUE;
 }
 
+PrimopRes primopTypeOf(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    state->regs[retReg] = typeOf(state, state->regs[firstArgReg]);
+
+    return PrimopRes::CONTINUE;
+}
+
 PrimopRes primopMake(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }

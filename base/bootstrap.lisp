@@ -2,10 +2,15 @@
 
 (def fx> (fn (x y) (fx< y x))) ; OPTIMIZE: separate primop?
 
-(def cons (fn (x xs) (make <pair> x xs)))
+(def cons (fn (x xs) (make <pair> x xs 0.)))
 
 (def car (fn ((: xs <pair>)) (slot-get xs 0)))
 (def cdr (fn ((: xs <pair>)) (slot-get xs 1)))
+
+(def caar (fn (xs) (car (car xs))))
+(def cadr (fn (xs) (car (cdr xs))))
+(def cdar (fn (xs) (cdr (car xs))))
+(def cddr (fn (xs) (cdr (cdr xs))))
 
 (def fold-left
   (fn (f acc xs)
@@ -225,6 +230,8 @@
   (make-multimethod
     (fn ((: x <fixnum>) (: y <fixnum>)) (fx< x y))))
 
+(def > (fn (x y) (< y x)))
+
 (def inexact
   (make-multimethod
     (fn ((: n <fixnum>)) (fixnum->flonum n))
@@ -250,12 +257,20 @@
 
 (def =-impl
   (make-multimethod
-    (fn ((: x <fixnum>) (: y <fixnum>)) (identical? x y))))
+    (fn ((: x <fixnum>) (: y <fixnum>)) (identical? x y))
+
+    (fn ((: x <empty-list>) (: y <empty-list>)) #t)
+    (fn ((: x <pair>) (: y <pair>))
+      (if (= (car x) (car y))
+        (= (cdr x) (cdr y))
+        #f))))
 
 (def =
   (fn (x y)
     (if (identical? x y)
       #t
-      (=-impl x y))))
+      (if (identical? (type-of x) (type-of y))
+        (=-impl x y)
+        #f))))
 
 (def newline (fn () (write-char #"\n")))

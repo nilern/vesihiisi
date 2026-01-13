@@ -606,6 +606,7 @@ PrimopRes primopApplyList(State* state);
 PrimopRes primopCallCC(State* state);
 PrimopRes primopContinue(State* state);
 PrimopRes primopIdentical(State* state);
+PrimopRes primopTypeOf(State* state);
 PrimopRes primopMake(State* state);
 PrimopRes primopSlotGet(State* state);
 PrimopRes primopMakeFlex(State* state);
@@ -856,6 +857,8 @@ State* State::tryCreate(size_t heapSize) {
                   false, Fixnum{2l}, dest->types.continuation, dest->types.any);
     installPrimop(dest, strLit("identical?"), (MethodCode)primopIdentical,
                   false, Fixnum{2l}, dest->types.any, dest->types.any);
+    installPrimop(dest, strLit("type-of"), (MethodCode)primopTypeOf,
+                  false, Fixnum{1l}, dest->types.any);
     installPrimop(dest, strLit("make"), (MethodCode)primopMake,
                   true, Fixnum{2l}, dest->types.type, dest->types.any);
     installPrimop(dest, strLit("slot-get"), (MethodCode)primopSlotGet,

@@ -14,37 +14,10 @@ namespace {
 // OPTIMIZE: As simple and fast as possible but actually a terrible hash:
 inline size_t irNameHash(IRName name) { return name.index; }
 
-Compiler createCompiler(void) {
-    size_t const nameCap = 2;
-    ORef* const nameSyms = (ORef*)malloc(nameCap * sizeof *nameSyms);
-
-    // Reserve (IRName){0} as invalid:
-    size_t const nameCount = 1;
-    nameSyms[0] = Default;
-    
-    return Compiler{
-        .arena = newArena(defaultArenaBlockSize),
-        .nameSyms = nameSyms,
-        .nameCount = nameCount,
-        .nameCap = nameCap
-    };
-}
-
-void freeCompiler(Compiler* compiler) {
-    freeArena(&compiler->arena);
-    free(compiler->nameSyms);
-}
-
 IRName renameSymbolImpl(Compiler* compiler, ORef maybeSym) {
-    if (compiler->nameCount == compiler->nameCap) {
-        size_t const newCap = compiler->nameCap + (compiler->nameCap >> 1);
-        compiler->nameSyms = (ORef*)realloc(compiler->nameSyms, newCap * sizeof *compiler->nameSyms);
-        compiler->nameCap = newCap;
-    }
-
-    size_t const index = compiler->nameCount;
-    compiler->nameSyms[compiler->nameCount++] = maybeSym;
-    return IRName{index};
+    size_t const idx = compiler->nameSyms.count();
+    compiler->nameSyms.push(maybeSym);
+    return IRName{idx};
 }
 
 IRName renameSymbol(Compiler* compiler, HRef<Symbol> sym) {
@@ -351,7 +324,7 @@ void createIRReturn(IRBlock* block, IRName callee, IRName arg, ORef maybeLoc) {
 typedef void (PrintIRNameFn)(State const* state, FILE* dest, Compiler const* compiler, IRName name);
 
 void printIRName(State const* state, FILE* dest, Compiler const* compiler, IRName name) {
-    assert(name.index < compiler->nameCount);
+    assert(name.index < compiler->nameSyms.count());
     ORef const maybeSym = compiler->nameSyms[name.index];
     if (isSymbol(state, maybeSym)) {
         print(state, dest, maybeSym);
@@ -649,11 +622,10 @@ void printIRFn(
 }
 
 CompilationRes compile(State* state, ORef expr, HRef<Loc> loc, bool debug) {
-    Compiler compiler = createCompiler();
+    auto compiler = Compiler{};
 
     ToIRRes const toIRRes = topLevelExprToIR(state, &compiler, expr, loc);
     if (!toIRRes.success) {
-        freeCompiler(&compiler);
         return CompilationRes{toIRRes.err};
     }
     IRFn irFn = toIRRes.val;
@@ -698,7 +670,6 @@ CompilationRes compile(State* state, ORef expr, HRef<Loc> loc, bool debug) {
         puts("");
     }
 
-    freeCompiler(&compiler);
     return CompilationRes{method};
 }
 

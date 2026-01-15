@@ -12,7 +12,7 @@ typedef struct CloverIdxs {
 } CloverIdxs;
 
 CloverIdxs newCloverIdxs(Compiler* compiler) {
-    size_t const cap = compiler->nameCount;
+    size_t const cap = compiler->nameSyms.count();
     Maybe<uint8_t>* const idxs = (Maybe<uint8_t>*)acalloc(&compiler->arena, cap, sizeof *idxs);
     return CloverIdxs{.idxs = idxs, .cap = cap};
 }

@@ -33,7 +33,7 @@ void freeRegEnv(RegEnv* env) {
 }
 
 RegEnv newRegEnv(Compiler const* compiler) {
-    size_t const varCap = compiler->nameCount;
+    size_t const varCap = compiler->nameSyms.count();
     MaybeReg* const varRegs = (MaybeReg*)calloc(varCap, sizeof *varRegs);
     IRName* const regVars = (IRName*)calloc(REG_COUNT, sizeof *regVars);
     return RegEnv{.varRegs = varRegs, .regVars = regVars, .maxVarCount = 0, .varCap = varCap};
@@ -139,6 +139,7 @@ MaybeMove allocTransferArgReg(RegEnv* env, IRName var, Reg reg) {
     assert(isRegFree(env, reg));
 
     MaybeReg const maybeDest = env->varRegs[var.index];
+
     env->varRegs[var.index] = MaybeReg{.val = reg, .hasVal = true};
     env->regVars[reg.index] = var;
     ensureRegEnvMaxCount(env, reg.index + 1);

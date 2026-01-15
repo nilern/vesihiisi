@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../util/arena.hpp"
+#include "../util/avec.hpp"
 #include "../util/bitset.hpp"
 #include "../state.hpp"
 
@@ -10,9 +11,21 @@ namespace {
 
 typedef struct Compiler {
     Arena arena;
-    ORef* nameSyms;
-    size_t nameCount;
-    size_t nameCap;
+    AVec<ORef> nameSyms;
+
+    Compiler() :
+        arena{newArena(defaultArenaBlockSize)},
+        nameSyms{&arena}
+    {}
+
+    ~Compiler() { freeArena(&arena); }
+
+    // `nameSyms` and other `AVecs` have pointers to `arena` so this must not be copied or even
+    // moved:
+    Compiler(Compiler const&) = delete;
+    Compiler& operator=(Compiler const&) = delete;
+    Compiler(Compiler&&) = delete;
+    Compiler& operator=(Compiler&&) = delete;
 } Compiler;
 
 typedef struct IRName { size_t index; } IRName;

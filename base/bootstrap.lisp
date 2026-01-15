@@ -274,3 +274,8 @@
         #f))))
 
 (def newline (fn () (write-char #"\n")))
+
+(def <box> (make-slots-type (quote <box>) 1 #f))
+(def box (fn (v) (make <box> v)))
+(def box-get (fn (bx) (slot-get bx 0)))
+(def box-set! (fn (bx v) (slot-set! bx 0 v)))

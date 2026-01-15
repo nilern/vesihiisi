@@ -139,7 +139,7 @@ void* acalloc(Arena* arena, size_t count, size_t size) {
 
         uint8_t* newFree = (uint8_t*)(address + totalSize);
         if (newFree >= arena->limit) {
-            if (size < arena->blockSize) {
+            if (totalSize < arena->blockSize) {
                 arenaGrow(arena);
                 continue;
             } else {

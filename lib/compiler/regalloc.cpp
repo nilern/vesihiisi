@@ -139,6 +139,11 @@ MaybeMove allocTransferArgReg(RegEnv* env, IRName var, Reg reg) {
     assert(isRegFree(env, reg));
 
     MaybeReg const maybeDest = env->varRegs[var.index];
+    if (maybeDest.hasVal) {
+        env->regVars[maybeDest.val.index] = invalidIRName;
+        // No need to `shrinkRegEnvMaxVarCount` since it will get grown to `reg.index + 1`:
+        assert(maybeDest.val.index < reg.index);
+    }
 
     env->varRegs[var.index] = MaybeReg{.val = reg, .hasVal = true};
     env->regVars[reg.index] = var;

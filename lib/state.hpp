@@ -25,8 +25,8 @@ typedef struct Shadowstack {
 
 #define REG_COUNT 256
 
-#define BOOTSTRAP_TYPE_COUNT 27
-#define BOOTSTRAP_SINGLETON_COUNT 4
+#define BOOTSTRAP_TYPE_COUNT 29
+#define BOOTSTRAP_SINGLETON_COUNT 5
 
 struct NamedTypes {
     HRef<Type> flonum;
@@ -37,6 +37,7 @@ struct NamedTypes {
     HRef<Type> any;
     HRef<Type> type;
     HRef<Type> string;
+    HRef<Type> stringIterator;
     HRef<Type> array;
     HRef<Type> arrayMut;
     HRef<Type> byteArray;
@@ -52,6 +53,7 @@ struct NamedTypes {
     HRef<Type> var;
     HRef<Type> knot;
     HRef<Type> ns;
+    HRef<Type> end;
     HRef<Type> fatalError;
     HRef<Type> unboundError;
     HRef<Type> typeError;
@@ -61,6 +63,7 @@ struct NamedTypes {
 static_assert(sizeof(NamedTypes) / sizeof(HRef<Type>) == BOOTSTRAP_TYPE_COUNT);
 
 struct NamedSingletons {
+    HRef<End> end;
     HRef<EmptyList> emptyList;
     HRef<Unbound> unbound;
     HRef<Continuation> exit;
@@ -159,6 +162,8 @@ inline bool isType(State const* state, ORef v) {
 inline bool isTypeError(State const* state, ORef v) {
     return isHeaped(v) && isa(state, state->types.typeError, v);
 }
+
+HRef<Type> createSlotsType(State* state, HRef<Symbol> name, Fixnum slotCount, Bool isFlex);
 
 HRef<String> createString(State* state, Str str);
 

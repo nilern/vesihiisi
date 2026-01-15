@@ -20,6 +20,7 @@ char const* const typeNames[] = {
     "<any>",
     "<type>",
     "<string>",
+    "<string-iterator>",
     "<array>",
     "<array!>",
     "<byte-array!>",
@@ -35,6 +36,7 @@ char const* const typeNames[] = {
     "<var>",
     "<knot>",
     "<ns>",
+    "<end>",
     "<fatal-error>",
     "<unbound-error>",
     "<type-error>",
@@ -221,6 +223,24 @@ Type* tryCreateStringType(Semispace* semispace, Type const* typeType) {
     };
     
     return stringType;
+}
+
+Type* tryCreateStringIteratorType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = semispace->tryAlloc(typeType);
+    if (!maybeType) { return nullptr; }
+
+    Type* const type = (Type*)maybeType;
+    *type = Type{
+        .minSize = Fixnum((intptr_t)sizeof(StringIterator)),
+        .align = Fixnum((intptr_t)alignof(StringIterator)),
+        .isBytes = False,
+        .hasCodePtr = False,
+        .isFlex = False,
+        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
+        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
+    };
+
+    return type;
 }
 
 Type* tryCreateSymbolType(Semispace* semispace, Type const* typeType) {
@@ -475,6 +495,24 @@ Type* tryCreateNamespaceType(Semispace* semispace, Type const* typeType) {
     return type;
 }
 
+Type* tryCreateEndType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = semispace->tryAlloc(typeType);
+    if (!maybeType) { return nullptr; }
+
+    Type* const type = (Type*)maybeType;
+    *type = Type{
+        .minSize = Fixnum{0l},
+        .align = Fixnum((intptr_t)objectMinAlign),
+        .isBytes = True,
+        .hasCodePtr = False,
+        .isFlex = False,
+        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
+        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
+    };
+
+    return type;
+}
+
 Type* tryCreateFatalErrorType(Semispace* semispace, Type const* typeType) {
     void* const maybeType = semispace->tryAlloc(typeType);
     if (!maybeType) { return nullptr; }
@@ -607,8 +645,10 @@ PrimopRes primopCallCC(State* state);
 PrimopRes primopContinue(State* state);
 PrimopRes primopIdentical(State* state);
 PrimopRes primopTypeOf(State* state);
+PrimopRes primopMakeSlotsType(State* state);
 PrimopRes primopMake(State* state);
 PrimopRes primopSlotGet(State* state);
+PrimopRes primopSlotSet(State* state);
 PrimopRes primopMakeFlex(State* state);
 PrimopRes primopFlexCount(State* state);
 PrimopRes primopFlexGet(State* state);
@@ -623,6 +663,8 @@ PrimopRes primopFlAdd(State* state);
 PrimopRes primopFlSub(State* state);
 PrimopRes primopFlMul(State* state);
 PrimopRes primopFlDiv(State* state);
+PrimopRes primopCharIsWhitespace(State* state);
+PrimopRes primopStringIteratorNext(State* state);
 PrimopRes primopWrite(State* state);
 PrimopRes primopWriteChar(State* state);
 PrimopRes primopWriteString(State* state);
@@ -713,6 +755,8 @@ State* State::tryCreate(size_t heapSize) {
     if (!anyType) { return nullptr; }
     Type* const stringType = tryCreateStringType(&heap.tospace, typeType);
     if (!stringType) { return nullptr; }
+    Type* const stringIteratorType = tryCreateStringIteratorType(&heap.tospace, typeType);
+    if (!stringIteratorType) { return nullptr; }
     Type* const arrayType = tryCreateArrayType(&heap.tospace, typeType);
     if (!arrayType) { return nullptr; }
     Type* const arrayMutType = tryCreateArrayMutType(&heap.tospace, typeType);
@@ -743,6 +787,8 @@ State* State::tryCreate(size_t heapSize) {
     if (!knotType) { return nullptr; }
     Type* const nsType = tryCreateNamespaceType(&heap.tospace, typeType);
     if (!nsType) { return nullptr; }
+    Type* const endType = tryCreateEndType(&heap.tospace, typeType);
+    if (!endType) { return nullptr; }
     Type* const fatalErrorType = tryCreateFatalErrorType(&heap.tospace, typeType);
     if (!fatalErrorType) { return nullptr; }
     Type* const unboundErrorType = tryCreateUnboundErrorType(&heap.tospace, typeType);
@@ -763,7 +809,9 @@ State* State::tryCreate(size_t heapSize) {
     if (!flonumType) { return nullptr; }
     Type* const boolType = tryCreateBoolType(&heap.tospace, typeType);
     if (!boolType) { return nullptr; }
-    
+
+    End* const end = (End*)heap.tospace.tryAlloc(endType);
+    if (!end) { return nullptr; }
     EmptyList* const emptyList = (EmptyList*)heap.tospace.tryAlloc(emptyListType);
     if (!emptyList) { return nullptr; }
     Unbound* const unbound = (Unbound*)heap.tospace.tryAlloc(unboundType);
@@ -790,6 +838,7 @@ State* State::tryCreate(size_t heapSize) {
             .any = HRef(anyType),
             .type = HRef(typeType),
             .string = HRef(stringType),
+            .stringIterator = HRef{stringIteratorType},
             .array = HRef(arrayType),
             .arrayMut = HRef(arrayMutType),
             .byteArray = HRef(byteArrayType),
@@ -805,6 +854,7 @@ State* State::tryCreate(size_t heapSize) {
             .var = HRef(varType),
             .knot = HRef(knotType),
             .ns = HRef(nsType),
+            .end = HRef{endType},
             .fatalError = HRef(fatalErrorType),
             .unboundError = HRef(unboundErrorType),
             .typeError = HRef(typeErrorType),
@@ -812,6 +862,7 @@ State* State::tryCreate(size_t heapSize) {
             .inapplicableError = HRef(inapplicableErrorType)
         },
         {
+            .end = HRef{end},
             .emptyList = HRef(emptyList),
             .unbound = HRef(unbound),
             .exit = HRef(exit),
@@ -843,6 +894,7 @@ State* State::tryCreate(size_t heapSize) {
     dest->errorHandler.ptr()->val = abortClosure.oref();
 
     installPrimordial(dest, strLit("abort"), abortClosure.oref());
+    installPrimordial(dest, strLit("end"), dest->singletons.end);
     popStackRoots(dest, 1);
     installPrimop(dest, strLit("apply-array"), (MethodCode)primopApplyArray,
                   false, Fixnum{2l}, dest->types.any, dest->types.array);
@@ -859,10 +911,14 @@ State* State::tryCreate(size_t heapSize) {
                   false, Fixnum{2l}, dest->types.any, dest->types.any);
     installPrimop(dest, strLit("type-of"), (MethodCode)primopTypeOf,
                   false, Fixnum{1l}, dest->types.any);
+    installPrimop(dest, strLit("make-slots-type"), (MethodCode)primopMakeSlotsType,
+                  true, Fixnum{3l}, dest->types.symbol, dest->types.fixnum, dest->types.booll);
     installPrimop(dest, strLit("make"), (MethodCode)primopMake,
                   true, Fixnum{2l}, dest->types.type, dest->types.any);
     installPrimop(dest, strLit("slot-get"), (MethodCode)primopSlotGet,
                   false, Fixnum{2l}, dest->types.any, dest->types.fixnum);
+    installPrimop(dest, strLit("slot-set!"), (MethodCode)primopSlotSet,
+                  false, Fixnum{3l}, dest->types.any, dest->types.fixnum, dest->types.any);
     installPrimop(dest, strLit("make-flex"), (MethodCode)primopMakeFlex,
                   true, Fixnum{2l}, dest->types.type, dest->types.fixnum);
     installPrimop(dest, strLit("flex-count"), (MethodCode)primopFlexCount,
@@ -892,6 +948,10 @@ State* State::tryCreate(size_t heapSize) {
                   false, Fixnum{2l}, dest->types.flonum, dest->types.flonum);
     installPrimop(dest, strLit("fl/"), (MethodCode)primopFlDiv,
                   false, Fixnum{2l}, dest->types.flonum, dest->types.flonum);
+    installPrimop(dest, strLit("char-whitespace?"), (MethodCode)primopCharIsWhitespace,
+                  false, Fixnum{1l}, dest->types.charr);
+    installPrimop(dest, strLit("string-iterator-next!"), (MethodCode)primopStringIteratorNext,
+                  false, Fixnum{1l}, dest->types.stringIterator);
     installPrimop(dest, strLit("write"), (MethodCode)primopWrite,
                   false, Fixnum{1l}, dest->types.any);
     installPrimop(dest, strLit("write-char"), (MethodCode)primopWriteChar,
@@ -1019,6 +1079,32 @@ void collectTracingIR(State* state, struct IRFn* fn, struct MethodBuilder* build
     assertIRFnInTospace(state, fn);
     assertMethodBuilderInTospace(state, builder);
 #endif
+}
+
+HRef<Type> createSlotsType(State* state, HRef<Symbol> name, Fixnum slotCount, Bool isFlex) {
+    Type* ptr = static_cast<decltype(ptr)>(state->heap.tospace.tryAlloc(state->types.type.ptr()));
+    if (mustCollect(ptr)) {
+        pushStackRoot(state, &name);
+        collect(state);
+        popStackRoots(state, 1);
+        ptr = static_cast<decltype(ptr)>(state->heap.tospace.allocOrDie(state->types.type.ptr()));
+    }
+
+    Fixnum const minSize = !isFlex.val()
+        ? Fixnum{int64_t(size_t(slotCount.val()) * sizeof(ORef))}
+        : Fixnum{int64_t(size_t(slotCount.val() - 1) * sizeof(ORef))};
+
+    *ptr = Type{
+        .minSize = minSize,
+        .align = Fixnum((int64_t)objectMinAlign),
+        .isBytes = False,
+        .hasCodePtr = False,
+        .isFlex = isFlex,
+        .hash = name.ptr()->hash,
+        .name = name
+    };
+
+    return HRef{ptr};
 }
 
 HRef<String> createString(State* state, Str str) {

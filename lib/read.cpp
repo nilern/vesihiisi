@@ -181,7 +181,7 @@ bool isHexDigit(int mc) { return (bool)isxdigit(mc); }
 bool online(int mc) { return !(mc == '\n' || mc == EOF); }
 
 inline bool isInitial(int mc) {
-    return isalpha(mc) || mc == ':' || mc == '!' || mc == '?'
+    return isalpha(mc) || mc == '_' || mc == ':' || mc == '!' || mc == '?'
            || mc == '+' || mc == '-' || mc == '*' || mc == '/'
            || mc == '=' || mc == '<' || mc == '>';
 }
@@ -370,13 +370,14 @@ EscapeCharRes escapeChar(int mc) {
     char c;
 
     switch (mc) {
+    case '"': c = '"'; break;
     case 'a': c = '\a'; break;
     case 'b': c = '\b'; break;
     case 't': c = '\t'; break;
     case 'n': c = '\n'; break;
     case 'r': c = '\r'; break;
     case '\\': c = '\\'; break;
-    default: return EscapeCharRes{"char escape [abtnr\\]"};
+    default: return EscapeCharRes{"char escape [\"abtnr\\]"};
     }
 
     return EscapeCharRes{c};

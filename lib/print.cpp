@@ -113,10 +113,6 @@ void print(State const* state, FILE* dest, ORef v) {
             }
 
             putc('>', dest);
-        } else if (isMultimethod(state, v)) {
-            fprintf(dest, "#<multimethod>");
-        } else if (isContinuation(state, v)) {
-            fprintf(dest, "#<continuation>");
         } else if (isType(state, v)) {
             Type const* const type = HRef<Type>::fromUnchecked(v).ptr();
 
@@ -166,8 +162,12 @@ void print(State const* state, FILE* dest, ORef v) {
             fputs("#<inapplicable-error ", dest);
             print(state, dest, err->callee.oref());
             putc('>', dest);
-        } else  {
-            assert(false); // FIXME
+        } else {
+            Type const* const type = typeOf(state, v).ptr();
+
+            fputs("#<", dest);
+            print(state, dest, type->name);
+            putc('>', dest);
         }
         break;
     }

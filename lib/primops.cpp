@@ -423,6 +423,19 @@ PrimopRes primopTypeOf(State* state) {
     return PrimopRes::CONTINUE;
 }
 
+PrimopRes primopMakeSlotsType(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    auto const name = HRef<Symbol>::fromUnchecked(state->regs[firstArgReg]);
+    auto const slotCount = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]);
+    auto const isFlex = Bool::fromUnchecked(state->regs[firstArgReg + 2]);
+
+    state->regs[retReg] = createSlotsType(state, name, slotCount, isFlex);
+
+    return PrimopRes::CONTINUE;
+}
+
 PrimopRes primopMake(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
@@ -485,6 +498,32 @@ PrimopRes primopSlotGet(State* state) {
     } else {
         assert(false); // TODO
     }
+
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes primopSlotSet(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    ORef const v = state->regs[firstArgReg];
+    size_t const slotIdx = (uint64_t)Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
+    ORef const slotV = state->regs[firstArgReg + 2];
+
+    Type const* type = typeOf(state, v).ptr();
+    if (!type->isBytes.val()) {
+        size_t const slotCount = (uintptr_t)type->minSize.val() / sizeof(ORef);
+        if (slotIdx >= slotCount) {
+            assert(false); // TODO: Proper bounds error
+        }
+
+        ORef* const slots = (ORef*)uncheckedORefToPtr(v);
+        slots[slotIdx] = slotV;
+    } else {
+        assert(false); // TODO
+    }
+
+    state->regs[retReg] = slotV; // Beats returning `v`; at least consistent with e.g. `def` atm
 
     return PrimopRes::CONTINUE;
 }
@@ -775,6 +814,52 @@ PrimopRes primopFlDiv(State* state) {
 
     state->regs[retReg] = Flonum(x / y).oref();
 
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes primopCharIsWhitespace(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    auto const c = int32_t(Char::fromUnchecked(state->regs[firstArgReg]).val());
+
+    // FIXME: Does not include various cp:s like \n, \t etc. that are CC instead:
+    state->regs[retReg] = Bool{utf8proc_category(c) == UTF8PROC_CATEGORY_ZS};
+
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes primopStringIteratorNext(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    StringIterator* const iter =
+        HRef<StringIterator>::fromUnchecked(state->regs[firstArgReg]).ptr();
+
+    ORef const maybeString = iter->string;
+    if (!isString(state, maybeString)) {
+        return primopError(state, createTypeError(state, state->types.string, maybeString));
+    }
+    auto const string = HRef<String>::fromUnchecked(maybeString);
+    ORef const maybeByteIdx = iter->byteIdx;
+    if (!isFixnum(maybeByteIdx)) {
+        return primopError(state, createTypeError(state, state->types.fixnum, maybeString));
+    }
+    ssize_t const byteIdx = Fixnum::fromUnchecked(maybeByteIdx).val();
+    ssize_t const cap = string.ptr()->flexCount().val();
+
+    if (byteIdx >= cap) {
+        state->regs[retReg] = state->singletons.end;
+        return PrimopRes::CONTINUE;
+    }
+
+    int32_t maybeCp;
+    ssize_t cpWidth = utf8proc_iterate(string.ptr()->flexData() + byteIdx, cap, &maybeCp);
+    assert(cpWidth > 0); // Strings should always have been created from valid UTF-8
+    auto const cp = uint32_t(maybeCp);
+
+    iter->byteIdx = Fixnum{int64_t(byteIdx) + cpWidth};
+    state->regs[retReg] = Char{cp};
     return PrimopRes::CONTINUE;
 }
 

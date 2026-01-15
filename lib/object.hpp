@@ -232,7 +232,7 @@ inline Object* tryORefToPtr(ORef oref) {
     return isHeaped(oref) ? uncheckedORefToPtr(oref) : nullptr;
 }
 
-struct Type {
+struct Type : FixedObject {
     Fixnum minSize;
     Fixnum align;
     Bool isBytes;
@@ -310,6 +310,11 @@ Fixnum AnyIndexedObject<CRTPSub, Item>::flexCount() const { return flexHeader()-
 
 struct String : IndexedObject<String, uint8_t> {
     Str str() const { return Str{flexData(), static_cast<size_t>(flexCount().val())}; }
+};
+
+struct StringIterator : FixedObject {
+    ORef string;
+    ORef byteIdx;
 };
 
 struct Symbol : public FlexObject<Symbol, uint8_t> {
@@ -404,6 +409,9 @@ struct Namespace : public FixedObject {
     HRef<ArrayMut> vals;
     Fixnum count;
 };
+
+/// FIXME: Should have zero size but a byte is forced upon us :(
+struct End : public FixedObject {};
 
 // TODO: Eliminate all the other error types:
 struct FatalError : public FlexObject<FatalError, ORef> {

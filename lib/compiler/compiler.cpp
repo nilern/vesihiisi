@@ -190,7 +190,7 @@ void setParamType(Compiler* compiler, IRDomain* domain, size_t idx, IRName typeN
         size_t newCap = domain->cap + domain->cap / 2;
         if (idx >= newCap) { newCap = idx + 1; }
         domain->vals =
-            (IRName*)arealloc(&compiler->arena, domain->vals, domain->cap,
+            (IRName*)arealloc(&compiler->arena, domain->vals, domain->cap * sizeof *domain->vals,
                                 newCap * sizeof *domain->vals);
         domain->cap = newCap;
     }
@@ -208,7 +208,9 @@ void setParamType(Compiler* compiler, IRDomain* domain, size_t idx, IRName typeN
 void completeIRDomain(Compiler *compiler, IRDomain *domain, size_t arity) {
     if (domain->vals) {
         if (arity > domain->cap) {
-            domain->vals = (IRName*)arealloc(&compiler->arena, domain->vals, domain->cap, arity);
+            domain->vals =
+                (IRName*)arealloc(&compiler->arena, domain->vals,
+                                  domain->cap * sizeof *domain->vals, arity * sizeof *domain->vals);
             domain->cap = arity;
         }
 

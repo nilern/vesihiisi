@@ -63,9 +63,9 @@ private:
         size_t const newCap = currCap + currCap / 2;
 
         start = static_cast<decltype(start)>(
-            arealloc(arena, start,currCap * sizeof *start, newCap * sizeof *start));
+            arealloc(arena, start, currCap * sizeof *start, newCap * sizeof *start));
         end = start + currCount;
-        capEnd = start + currCap;
+        capEnd = start + newCap;
     }
 };
 

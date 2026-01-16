@@ -32,6 +32,9 @@ public:
     AVec(AVec<T> const&) = delete;
     AVec<T>& operator=(AVec<T> const&) = delete;
 
+    AVec(AVec<T>&&) = default;
+    AVec<T>& operator=(AVec<T>&&) = default;
+
     Slice<T const> slice() const { return Slice{static_cast<T const*>(start), count()}; }
 
     size_t count() const { return end - start; }

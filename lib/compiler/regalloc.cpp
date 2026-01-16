@@ -129,17 +129,16 @@ Reg allocVarReg(RegEnv* env, IRName var) {
     exit(EXIT_FAILURE); // FIXME: Unlikely to happen, but still should fail just compile instead
 }
 
-typedef struct MaybeMove {
+struct Move {
     Reg dest;
     Reg src;
-    bool hasVal;
-} MaybeMove;
+};
 
-MaybeMove allocTransferArgReg(RegEnv* env, IRName var, Reg reg) {
+Maybe<Move> allocTransferArgReg(RegEnv* env, IRName var, Reg reg, bool delayDupDeallocs) {
     assert(isRegFree(env, reg));
 
     MaybeReg const maybeDest = env->varRegs[var.index];
-    if (maybeDest.hasVal) {
+    if (!delayDupDeallocs && maybeDest.hasVal) {
         env->regVars[maybeDest.val.index] = invalidIRName;
         // No need to `shrinkRegEnvMaxVarCount` since it will get grown to `reg.index + 1`:
         assert(maybeDest.val.index < reg.index);
@@ -150,8 +149,20 @@ MaybeMove allocTransferArgReg(RegEnv* env, IRName var, Reg reg) {
     ensureRegEnvMaxCount(env, reg.index + 1);
 
     return maybeDest.hasVal
-        ? MaybeMove{.dest = maybeDest.val, .src = reg, .hasVal = true}
-        : MaybeMove{};
+        ? Maybe{Move{.dest = maybeDest.val, .src = reg}}
+        : Maybe<Move>{};
+}
+
+void delayedDeallocTransferArgRegs(RegEnv* env, Slice<Move const> moves) {
+    size_t const moveCount = moves.count;
+    for (size_t i = 0; i < moveCount; ++i) {
+        Reg const dest = moves[i].dest;
+        assert(!isRegFree(env, dest));
+
+        env->regVars[dest.index] = invalidIRName;
+    }
+
+    shrinkRegEnvMaxVarCount(env);
 }
 
 Reg deallocVarReg(RegEnv* env, IRName var) {
@@ -321,32 +332,47 @@ void regAllocBlock(
     Compiler* compiler, SavedRegEnvs* savedEnvs, BitSet* visited, IRFn* fn, IRBlock* block
 );
 
-IRName regAllocCallee(
-    Compiler* compiler, RegEnv* env, IRBlock* block, IRName callee, ORef maybeLoc
-) {
+IRName regAllocCallee(RegEnv* env, IRName callee) {
     Reg const reg = Reg{calleeReg};
 
-    MaybeMove const maybeCalleeMove = allocTransferArgReg(env, callee, reg);
-    if (maybeCalleeMove.hasVal) {
-        pushIRStmt(compiler, &block->stmts, moveToStmt(MoveStmt{
-            .dest = IRName{maybeCalleeMove.dest.index},
-            .src = IRName{maybeCalleeMove.src.index}
-        }, maybeLoc));
-    }
+    [[maybe_unused]] Maybe<Move> const maybeCalleeMove =
+        allocTransferArgReg(env, callee, reg, true);
+    assert(!maybeCalleeMove.hasVal); // Callees are processed in empty env so no move should result
 
     return IRName{reg.index};
 }
 
-void regAllocArgs(Compiler* compiler, RegEnv* env, IRBlock* block, Args* args, ORef maybeLoc) {
+[[nodiscard]]
+AVec<Move> regAllocCallArgs(Compiler* compiler, RegEnv* env, Args* args) {
+    auto moves = AVec<Move>{&compiler->arena};
+
     size_t const arity = args->count;
     for (size_t i = 0; i < arity; ++i) {
         Reg const reg = Reg{(uint8_t)(2 + i)};
 
-        MaybeMove const maybeMove = allocTransferArgReg(env, args->names[i], reg);
+        Maybe<Move> const maybeMove = allocTransferArgReg(env, args->names[i], reg, true);
+        if (maybeMove.hasVal) {
+            moves.push(maybeMove.val);
+        }
+
+        args->names[i] = IRName{reg.index};
+    }
+
+    return moves;
+}
+
+void regAllocTailcallArgs(
+    Compiler* compiler, RegEnv* env, IRBlock* block, Args* args, ORef maybeLoc
+) {
+    size_t const arity = args->count;
+    for (size_t i = 0; i < arity; ++i) {
+        Reg const reg = Reg{(uint8_t)(2 + i)};
+
+        Maybe<Move> const maybeMove = allocTransferArgReg(env, args->names[i], reg, false);
         if (maybeMove.hasVal) {
             pushIRStmt(compiler, &block->stmts, moveToStmt(MoveStmt{
-                .dest = IRName{maybeMove.dest.index},
-                .src = IRName{maybeMove.src.index}
+               .dest = IRName{maybeMove.val.dest.index},
+               .src = IRName{maybeMove.val.src.index}
             }, maybeLoc));
         }
 
@@ -372,13 +398,25 @@ RegEnv regAllocTransfer(
 
         RegEnv env = newRegEnv(compiler);
 
-        call->callee = regAllocCallee(compiler, &env, block, call->callee, transfer->maybeLoc);
+        call->callee = regAllocCallee(&env, call->callee);
 
-        regAllocArgs(compiler, &env, block, &call->args, transfer->maybeLoc);
+        AVec<Move> moves = regAllocCallArgs(compiler, &env, &call->args);
 
         for (size_t i = call->closes.count; i-- > 0;) {
             call->closes.names[i] = IRName{getVarReg(&env, call->closes.names[i]).index};
         }
+
+        // Do the duplicate arg moves that were delayed to avoid clobbering spillees:
+        size_t const moveCount = moves.count();
+        for (size_t i = 0; i < moveCount; ++i) {
+            Move const move = moves[i];
+
+            pushIRStmt(compiler, &block->stmts, moveToStmt(MoveStmt{
+               .dest = IRName{move.dest.index},
+               .src = IRName{move.src.index}
+            }, transfer->maybeLoc));
+        }
+        delayedDeallocTransferArgRegs(&env, moves.slice());
 
         return env;
     }; break;
@@ -388,16 +426,15 @@ RegEnv regAllocTransfer(
 
         RegEnv env = newRegEnv(compiler);
 
-        tailcall->callee =
-            regAllocCallee(compiler, &env, block, tailcall->callee, transfer->maybeLoc);
+        tailcall->callee = regAllocCallee(&env, tailcall->callee);
 
         Reg const contReg = Reg{retContReg};
-        [[maybe_unused]] MaybeMove const maybeContMove =
-            allocTransferArgReg(&env, tailcall->retFrame, contReg);
+        [[maybe_unused]] Maybe<Move> const maybeContMove =
+            allocTransferArgReg(&env, tailcall->retFrame, contReg, false);
         assert(!maybeContMove.hasVal);
         tailcall->retFrame = IRName{contReg.index};
 
-        regAllocArgs(compiler, &env, block, &tailcall->args, transfer->maybeLoc);
+        regAllocTailcallArgs(compiler, &env, block, &tailcall->args, transfer->maybeLoc);
 
         return env;
     }; break;
@@ -451,13 +488,14 @@ RegEnv regAllocTransfer(
         RegEnv env = newRegEnv(compiler);
 
         Reg const calleeReg = Reg{retContReg};
-        [[maybe_unused]] MaybeMove const maybeContMove =
-            allocTransferArgReg(&env, ret->callee, calleeReg);
+        [[maybe_unused]] Maybe<Move> const maybeContMove =
+            allocTransferArgReg(&env, ret->callee, calleeReg, false);
         assert(!maybeContMove.hasVal);
         ret->callee = IRName{calleeReg.index};
 
         Reg const valReg = Reg{retReg};
-        [[maybe_unused]] MaybeMove const maybeValMove = allocTransferArgReg(&env, ret->arg, valReg);
+        [[maybe_unused]] Maybe<Move> const maybeValMove =
+            allocTransferArgReg(&env, ret->arg, valReg, false);
         assert(!maybeValMove.hasVal);
         ret->arg = IRName{valReg.index};
 

@@ -376,6 +376,9 @@
               0 vs)
         #f))))
 
+(def source-location-filename (fn ((: loc <source-location>)) (slot-get loc 0)))
+(def source-location-byte-index (fn ((: loc <source-location>)) (slot-get loc 1)))
+
 ;;; Self-Hosting Reader
 ;;; ================================================================================================
 

@@ -41,7 +41,6 @@ PrimopRes primopAbort(State* state) {
     fputs("Runtime error: ", stderr);
     print(state, stderr, error);
 
-    fputs(" at ", stderr);
     assert(isa(state, state->types.continuation, state->regs[retContReg]));
     Continuation const* const cont =
         HRef<Continuation>::fromUnchecked(state->regs[retContReg]).ptr();
@@ -52,18 +51,35 @@ PrimopRes primopAbort(State* state) {
         size_t const callerPc = uint64_t(cont->pc.val()); // FIXME: This is return PC, not *call* PC
         auto const maybeLoc = locatePc(caller, callerPc);
 
+        ORef const maybeCallerName = caller.ptr()->maybeName;
+        if (isSymbol(state, maybeCallerName)) {
+            fputs(" in ", stderr);
+            print(state, stderr, HRef<Symbol>::fromUnchecked(maybeCallerName));
+        }
+
+        fputs(" at ", stderr);
+
         if (maybeLoc.hasVal) {
             auto const loc = maybeLoc.val;
 
+            bool posPrinted = false;
             ORef const maybeFilename = loc.maybeFilename;
             if (isString(state, maybeFilename)) {
                 auto const filename = HRef<String>::fromUnchecked(maybeFilename);
 
                 printFilename(stderr, filename.ptr()->str());
+
+                Maybe<Coord> const maybePos =
+                    fileByteIdxToCoord(filename.ptr()->str(), loc.srcByteIdx);
+                if (maybePos.hasVal) {
+                    putc(':', stderr);
+                    maybePos.val.print(stderr);
+
+                    posPrinted = true;
+                }
             }
 
-            // TODO: line:col (when possible):
-            fprintf(stderr, " at byte %lu", loc.srcByteIdx);
+            if (!posPrinted) { fprintf(stderr, " at byte %lu", loc.srcByteIdx); }
         }
     } else {
         // FIXME: Exit continuation should have a method that inherits toplevel thunk location to

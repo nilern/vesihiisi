@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdbit.h>
+#include <utility>
 
 #include "../vesihiisi.h"
 
@@ -98,15 +99,58 @@ uint64_t fnv1aHash(Str s);
 
 uint64_t hashCombine(uint64_t h1, uint64_t h2);
 
+constexpr bool isUTF8Cont(uint8_t b) { return (b & 0xc0) == 0x80; }
+
 int utf8EncodedWidth(int32_t codepoint);
+
+class UTF8InputFile {
+    static constexpr size_t bufCap = 4;
+
+    FILE* cfile;
+    size_t bufCount = 0;
+    uint8_t buf[bufCap];
+
+    explicit UTF8InputFile(Str filename);
+
+public:
+    UTF8InputFile() : cfile{nullptr} {}
+
+    bool isValid() const { return static_cast<bool>(cfile); }
+
+    [[nodiscard]]
+    static bool open(UTF8InputFile& dest, Str filename) {
+        dest = UTF8InputFile{filename};
+        return dest.isValid();
+    }
+
+    ~UTF8InputFile() { if (cfile) { fclose(cfile); } }
+
+    UTF8InputFile(UTF8InputFile const&) = delete;
+    UTF8InputFile& operator=(UTF8InputFile const&) = delete;
+
+    UTF8InputFile(UTF8InputFile&& that) { *this = std::move(that); }
+
+    UTF8InputFile& operator=(UTF8InputFile&& that) {
+        cfile = that.cfile;
+        bufCount = that.bufCount;
+        memcpy(buf, that.buf, bufCount);
+
+        that.cfile = nullptr;
+
+        return *this;
+    }
+
+    /// @return Positive codepoint on success, EOF at end, EOF - 1 on invalid UTF-8
+    int32_t getc();
+
+    size_t skipInvalid();
+};
 
 void printFilename(FILE* dest, Str filename);
 
 struct Coord {
-    size_t line;
-    size_t col;
-
-    Coord() : line{1}, col{1} {}
+    size_t line = 1;
+    size_t col = 1;
 
     void advance(int32_t c) {
         if (c != '\n') {
@@ -117,7 +161,7 @@ struct Coord {
         }
     }
 
-    void print(FILE* dest) { fprintf(dest, "%lu:%lu", line, col); }
+    void print(FILE* dest) const { fprintf(dest, "%lu:%lu", line, col); }
 };
 
 // A bit slow but will save lots of debug info space. And fixing the error that the position is
@@ -125,5 +169,6 @@ struct Coord {
 // available (if the user lost it they have bigger problems than missing line and column
 // numbers...).
 Coord byteIdxToCoord(Str src, size_t byteIdx);
+Maybe<Coord> fileByteIdxToCoord(Str filename, size_t byteIdx);
 
 } // namespace

@@ -79,6 +79,54 @@ int utf8EncodedWidth(int32_t codepoint) {
         : 4;
 }
 
+UTF8InputFile::UTF8InputFile(Str filename) {
+    // OPTIMIZE: Do not require copy (ultimately requires storing null terminator in Vesihiisi
+    // `String`s):
+    char* const cfilename = static_cast<char*>(malloc(filename.len + 1));
+    memcpy(cfilename, filename.data, filename.len);
+    cfilename[filename.len] = '\0';
+    cfile = fopen(cfilename, "rb");
+    free(cfilename);
+}
+
+size_t UTF8InputFile::skipInvalid() {
+    assert(bufCount > 0
+           && ({int32_t sink; utf8proc_iterate(buf, ssize_t(bufCount), &sink) < 0;}));
+
+    size_t skipCount = 1; // There must be at least one invalid byte
+
+    // Skip any following continuation bytes:
+    for (; skipCount < bufCount && isUTF8Cont(buf[skipCount]); ++skipCount) {}
+
+    bufCount -= skipCount;
+    memmove(buf, buf + skipCount, bufCount);
+
+    return skipCount;
+}
+
+int32_t UTF8InputFile::getc() {
+    if (bufCount > 0) {
+        int32_t maybeCp;
+        ssize_t const cpWidth = utf8proc_iterate(buf, ssize_t(bufCount), &maybeCp);
+        if (cpWidth > 0) {
+            bufCount -= size_t(cpWidth);
+            memmove(buf, buf + cpWidth, bufCount);
+            return maybeCp;
+        }
+    }
+
+    bufCount += fread(buf + bufCount, sizeof *buf, bufCap - bufCount, cfile);
+
+    int32_t maybeCp;
+    ssize_t const cpWidth = utf8proc_iterate(buf, ssize_t(bufCount), &maybeCp);
+    if (cpWidth < 0) { return EOF - 1; }
+    if (cpWidth == 0) { return EOF; }
+
+    bufCount -= size_t(cpWidth);
+    memmove(buf, buf + cpWidth, bufCount);
+    return maybeCp;
+}
+
 void printFilename(FILE* dest, Str filename) {
     auto const chars = reinterpret_cast<char const*>(filename.data);
     std::filesystem::path const path{chars, chars + filename.len};
@@ -92,10 +140,6 @@ void printFilename(FILE* dest, Str filename) {
     }
 }
 
-// A bit slow but will save lots of debug info space. And fixing the error that the position is
-// calculated for will be far slower still. While we do not have e.g. .fasl files `src` should be
-// available (if the user lost it they have bigger problems than missing line and column
-// numbers...).
 Coord byteIdxToCoord(Str src, size_t byteIdx) {
     Coord pos{};
 
@@ -127,5 +171,32 @@ Coord byteIdxToCoord(Str src, size_t byteIdx) {
     return pos;
 }
 
-} // namespace
+Maybe<Coord> fileByteIdxToCoord(Str filename, size_t byteIdx) {
+    Coord pos{};
 
+    UTF8InputFile file;
+    if (!UTF8InputFile::open(file, filename)) { return Maybe<Coord>{}; }
+    size_t i = 0;
+    for (/*size_t i = 0*/; i < byteIdx;) {
+        int32_t const maybeCp = file.getc();
+        if (maybeCp == EOF) {
+            // Surely if we got here the error is at the end of the file:
+            return Maybe{pos};
+        }
+
+        if (maybeCp > EOF) {
+            pos.advance(maybeCp);
+
+            i += size_t(utf8EncodedWidth(maybeCp));
+        } else { // Best effort recovery:
+            size_t const skipCount = file.skipInvalid();
+            pos.advance(' '); // Count invalid bytes as one codepoint
+
+            i += skipCount;
+        }
+    }
+
+    return Maybe{pos};
+}
+
+} // namespace

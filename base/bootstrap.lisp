@@ -427,6 +427,13 @@
                                 (fn (c) #f) ; Theoretically off but makes this work in e.g. `seq->`
                                 #t))
 
+        (parser-placeholder (fn (nullable)
+                              (make <parser>
+                                    (fn (input byte-idx)
+                                      (error (quote uninitialized-parser) input byte-idx))
+                                    (fn (c) (error (quote uninitialized-parser) c))
+                                    nullable)))
+
         ;; Could use varargs but the reader is so fundamental that hand-unrolling is warranted:
         ;; p q etc.
         (seq-> (make-multimethod
@@ -611,7 +618,7 @@
 
         ;;; Now for the actual concrete S-expression parsing:
 
-        (expr-box (box #f))
+        (expr-box (box (parser-placeholder #f)))
 
         ;; FIXME:
         ;; \s+|;[^\n]*(\n|$)

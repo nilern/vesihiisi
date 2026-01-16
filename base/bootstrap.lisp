@@ -598,6 +598,15 @@
                                      #f)
                                    #f)))))
 
+        ;; Would not work for a bool-valued parser but we do not need that:
+        (opt (fn (p)
+               (make <parser> (fn (input byte-idx)
+                                (if (look-ahead? p (peek input))
+                                  (parse p input byte-idx)
+                                  #f))
+                              (fn (c) (look-ahead? p c))
+                              #t)))
+
         ;; accp p*
         (mfoldl (fn (f accp p)
                   (make <parser> (fn (input byte-idx)
@@ -654,6 +663,16 @@
         ;; '(' ws (non-empty-list-tail empty-list-tail)
         (list (seq-> #"(" ws (alt non-empty-list-tail empty-list-tail) (fn (_ __ ls) ls)))
 
+        (initial? (fn (c)
+                    (if (char-alphabetic? c)
+                      #t
+                      (index-of "_:!?+-*/=<>" c))))
+        (initial (sat initial? "symbol initial ([\\p{L}_:!?+\\-*/=<>])"))
+        (subsequent? (fn (c)
+                       (if (initial? c)
+                         #t
+                         (char-numeric? c))))
+        (subsequent (sat subsequent? "symbol subsequent ([\\p{L}_:!?+\\-*/=<>]\\p{Nd})"))
         ;; initial subsequent*
         (symbol (seq-> (mfoldl (fn (c builder) (push! builder c) builder)
                                (seq-> initial
@@ -665,6 +684,7 @@
                        (fn (builder) (build-symbol builder))))
 
         ;; [^"\\] | '\\' [abtnr\\]
+        (normal-string-char? (fn (c) (if (= c #"\"") #f (not (= c #"\\")))))
         (string-char (alt (sat normal-string-char? "normal string char ([^\"\\\\])")
 
                           (seq-> #"\\"
@@ -716,24 +736,23 @@
                                        #f)
                                      #f))
                                  #f)))))
-        (digit (fn (radix)
-                 (let ((acceptable? (if (= radix 10)
-                                      decimal-digit?
-                                      (if (= radix 16)
-                                        hex-digit?
-                                        (error (quote unimplemented-radix) radix))))
-                       (description (if (= radix 10)
-                                      "decimal digit ([0-9])"
-                                      (if (= radix 16)
-                                        "hexadecimal digit ([0-9A-Fa-f])"
-                                        (error (quote unimplemented-radix) radix))))
-                       (digit-value (if (= radix 10)
-                                      decimal-digit-value
-                                      (if (= radix 16)
-                                        hex-digit-value
-                                        (error (quote unimplemented-radix) radix)))))
-                   (seq-> (sat? acceptable? description) digit-value))))
-
+        (digit-in (fn (radix)
+                    (let ((acceptable? (if (= radix 10)
+                                         decimal-digit?
+                                         (if (= radix 16)
+                                           hex-digit?
+                                           (error (quote unimplemented-radix) radix))))
+                          (description (if (= radix 10)
+                                         "decimal digit ([0-9])"
+                                         (if (= radix 16)
+                                           "hexadecimal digit ([0-9A-Fa-f])"
+                                           (error (quote unimplemented-radix) radix))))
+                          (digit-value (if (= radix 10)
+                                         decimal-digit-value
+                                         (if (= radix 16)
+                                           hex-digit-value
+                                           (error (quote unimplemented-radix) radix)))))
+                      (seq-> (sat acceptable? description) digit-value))))
         ;; TODO: Improve flonum precision:
         ;; <digit radix>+ ('.' <digit radix>*)?
         (number (fn (radix)

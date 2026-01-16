@@ -59,28 +59,7 @@ PrimopRes primopAbort(State* state) {
 
         fputs(" at ", stderr);
 
-        if (maybeLoc.hasVal) {
-            auto const loc = maybeLoc.val;
-
-            bool posPrinted = false;
-            ORef const maybeFilename = loc.maybeFilename;
-            if (isString(state, maybeFilename)) {
-                auto const filename = HRef<String>::fromUnchecked(maybeFilename);
-
-                printFilename(stderr, filename.ptr()->str());
-
-                Maybe<Coord> const maybePos =
-                    fileByteIdxToCoord(filename.ptr()->str(), loc.srcByteIdx);
-                if (maybePos.hasVal) {
-                    putc(':', stderr);
-                    maybePos.val.print(stderr);
-
-                    posPrinted = true;
-                }
-            }
-
-            if (!posPrinted) { fprintf(stderr, " at byte %lu", loc.srcByteIdx); }
-        }
+        if (maybeLoc.hasVal) { maybeLoc.val.print(*state, stderr); }
     } else {
         // FIXME: Exit continuation should have a method that inherits toplevel thunk location to
         // make this work.

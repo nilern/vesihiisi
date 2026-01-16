@@ -51,6 +51,8 @@ constexpr uint8_t retReg = firstArgReg;
 struct ZLoc {
     ORef maybeFilename;
     size_t srcByteIdx;
+
+    void print(State const& state, FILE* dest) const;
 };
 
 void disassemble(State const* state, FILE* dest, HRef<Method> methodRef);

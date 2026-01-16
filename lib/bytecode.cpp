@@ -20,6 +20,25 @@ int64_t decodeVarInt(size_t* i, Slice<uint8_t const> src) {
     return res;
 }
 
+void ZLoc::print(State const& state, FILE *dest) const {
+    bool posPrinted = false;
+    if (isString(&state, maybeFilename)) {
+        auto const filename = HRef<String>::fromUnchecked(maybeFilename);
+
+        printFilename(dest, filename.ptr()->str());
+
+        Maybe<Coord> const maybePos = fileByteIdxToCoord(filename.ptr()->str(), srcByteIdx);
+        if (maybePos.hasVal) {
+            putc(':', dest);
+            maybePos.val.print(dest);
+
+            posPrinted = true;
+        }
+    }
+
+    if (!posPrinted) { fprintf(dest, " at byte %lu", srcByteIdx); }
+}
+
 class Disassembler {
 protected:
     State const* state;

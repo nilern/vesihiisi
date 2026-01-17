@@ -383,7 +383,7 @@ struct Closure : public FlexObject<Closure, ORef> {
 
 struct Multimethod : public FixedObject {
     HRef<Array> methods;
-    // TODO: ORef maybeName
+    ORef maybeName;
 };
 
 struct Continuation : FlexObject<Continuation, ORef> {

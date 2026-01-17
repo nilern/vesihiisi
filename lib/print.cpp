@@ -113,6 +113,17 @@ void print(State const* state, FILE* dest, ORef v) {
             }
 
             putc('>', dest);
+        } else if (isMultimethod(state, v)) {
+            Multimethod const* const multimethod = HRef<Multimethod>::fromUnchecked(v).ptr();
+
+            fputs("#<multimethod", dest);
+
+            if (isHeaped(multimethod->maybeName)) {
+                putc(' ', dest);
+                print(state, dest, multimethod->maybeName);
+            }
+
+            putc('>', dest);
         } else if (isType(state, v)) {
             Type const* const type = HRef<Type>::fromUnchecked(v).ptr();
 

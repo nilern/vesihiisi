@@ -160,7 +160,7 @@
             (meet-domains* method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2)))))))
 
 (def make-multimethod
-  (fn methods
+  (fn (name . methods) ; FIXME: `((: name <symbol>) . methods)` (breaks due to compiler bug)
     (let ((ensure-unambiguous
            (fn (f i)
              (array!-fold-left
@@ -178,19 +178,19 @@
           (fx+ i 1))
         0 methods)
 
-      (make <multimethod> (array!->array methods)))))
+      (make <multimethod> (array!->array methods) name))))
 
 ;; TODO: Support `(apply f x y zs)` (needs to be done in native code to be efficient for
 ;; `apply-array(!)`:
 (def apply
-  (make-multimethod
+  (make-multimethod 'apply
     apply-array
     apply-array!
     (fn (f (: xs <pair>)) (apply-list f xs))
     (fn (f (: xs <empty-list>)) (f))))
 
 (def +
-  (make-multimethod
+  (make-multimethod '+
     (fn () 0) ; Additive identity
     (fn ((: x <fixnum>)) x)
     (fn ((: x <flonum>)) x)
@@ -201,7 +201,7 @@
     (fn (x y z . ns) (array!-fold-left (fn (v acc) (+ acc v)) (+ (+ x y) z) ns))))
 
 (def -
-  (make-multimethod
+  (make-multimethod '-
     (fn ((: x <fixnum>)) (fx- 0 x)) ; OPTIMIZE: `fx-neg`?
     (fn ((: x <flonum>)) (fl- 0.0 x)) ; OPTIMIZE: `fl-neg`?
     fx-
@@ -211,7 +211,7 @@
     (fn (x y z . ns) (array!-fold-left (fn (v acc) (- acc v)) (- (- x y) z) ns))))
 
 (def *
-  (make-multimethod
+  (make-multimethod '*
     (fn () 1) ; Multiplicative identity
     (fn ((: x <fixnum>)) x)
     (fn ((: x <flonum>)) x)
@@ -222,23 +222,23 @@
     (fn (x y z . ns) (array!-fold-left (fn (v acc) (* acc v)) (* (* x y) z) ns))))
 
 (def /
-  (make-multimethod
+  (make-multimethod '/
     (fn ((: x <flonum>)) (fl/ 1.0 x))
     fl/))
 
 (def <
-  (make-multimethod
+  (make-multimethod '<
     (fn ((: x <fixnum>) (: y <fixnum>)) (fx< x y))))
 
 (def > (fn (x y) (< y x)))
 
 (def inexact
-  (make-multimethod
+  (make-multimethod 'inexact
     (fn ((: n <fixnum>)) (fixnum->flonum n))
     (fn ((: n <flonum>)) n)))
 
 (def concat
-  (make-multimethod
+  (make-multimethod 'concat
     (fn () ())
     (fn (xs) xs)
     (fn (xs ys) (fold-right cons xs ys))
@@ -256,7 +256,7 @@
           (concat xs (concat ys (concat zs (concat-nonempty-array! xss)))))))))
 
 (def =-impl
-  (make-multimethod
+  (make-multimethod '=-impl
     (fn ((: x <fixnum>) (: y <fixnum>)) (identical? x y))
 
     (fn ((: x <empty-list>) (: y <empty-list>)) #t)

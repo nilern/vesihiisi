@@ -33,6 +33,7 @@ PrimopRes primopFlAdd(State* state);
 PrimopRes primopFlSub(State* state);
 PrimopRes primopFlMul(State* state);
 PrimopRes primopFlDiv(State* state);
+PrimopRes primopCharLt(State* state);
 PrimopRes primopCharIsAlphabetic(State* state);
 PrimopRes primopCharIsWhitespace(State* state);
 PrimopRes primopStringIteratorNext(State* state);

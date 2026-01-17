@@ -915,6 +915,8 @@ State* State::tryCreate(size_t heapSize) {
                   false, Fixnum{2l}, dest->types.flonum, dest->types.flonum);
     installPrimop(dest, strLit("fl/"), (MethodCode)primopFlDiv,
                   false, Fixnum{2l}, dest->types.flonum, dest->types.flonum);
+    installPrimop(dest, strLit("char<"), (MethodCode)primopCharLt,
+                  false, Fixnum{2l}, dest->types.charr, dest->types.charr);
     installPrimop(dest, strLit("char-alphabetic?"), (MethodCode)primopCharIsAlphabetic,
                   false, Fixnum{1l}, dest->types.charr);
     installPrimop(dest, strLit("char-whitespace?"), (MethodCode)primopCharIsWhitespace,

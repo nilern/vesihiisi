@@ -5,6 +5,11 @@
 (def fx<= (fn (x y) (not (fx< y x))))
 (def fx>= (fn (x y) (not (fx< x y))))
 
+;; OPTIMIZE: separate primops?:
+(def char> (fn (x y) (char< y x)))
+(def char<= (fn (x y) (not (char< y x))))
+(def char>= (fn (x y) (not (char< x y))))
+
 (def cons (fn (x xs) (make <pair> x xs 0.)))
 
 (def car (fn ((: xs <pair>)) (slot-get xs 0)))
@@ -231,19 +236,23 @@
 
 (def <
   (make-multimethod '<
-    (fn ((: x <fixnum>) (: y <fixnum>)) (fx< x y))))
+    (fn ((: x <fixnum>) (: y <fixnum>)) (fx< x y))
+    (fn ((: x <char>) (: y <char>)) (char< x y))))
 
 (def >
   (make-multimethod '>
-    (fn ((: x <fixnum>) (: y <fixnum>)) (fx> x y))))
+    (fn ((: x <fixnum>) (: y <fixnum>)) (fx> x y))
+    (fn ((: x <char>) (: y <char>)) (char> x y))))
 
 (def <=
   (make-multimethod '<=
-    (fn ((: x <fixnum>) (: y <fixnum>)) (fx<= x y))))
+    (fn ((: x <fixnum>) (: y <fixnum>)) (fx<= x y))
+    (fn ((: x <char>) (: y <char>)) (char<= x y))))
 
 (def >=
   (make-multimethod '>=
-    (fn ((: x <fixnum>) (: y <fixnum>)) (fx>= x y))))
+    (fn ((: x <fixnum>) (: y <fixnum>)) (fx>= x y))
+    (fn ((: x <char>) (: y <char>)) (char>= x y))))
 
 (def > (fn (x y) (< y x)))
 

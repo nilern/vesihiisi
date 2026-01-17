@@ -812,6 +812,20 @@ PrimopRes primopFlDiv(State* state) {
     return PrimopRes::CONTINUE;
 }
 
+PrimopRes primopCharIsAlphabetic(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    auto const c = int32_t(Char::fromUnchecked(state->regs[firstArgReg]).val());
+
+    utf8proc_category_t const cat = utf8proc_category(c);
+    bool const isAlphabetic = (UTF8PROC_CATEGORY_LU <= cat && cat <= UTF8PROC_CATEGORY_LO)
+                              || cat == UTF8PROC_CATEGORY_NL;
+    state->regs[retReg] = Bool{isAlphabetic};
+
+    return PrimopRes::CONTINUE;
+}
+
 PrimopRes primopCharIsWhitespace(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }

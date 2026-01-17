@@ -663,6 +663,7 @@ PrimopRes primopFlAdd(State* state);
 PrimopRes primopFlSub(State* state);
 PrimopRes primopFlMul(State* state);
 PrimopRes primopFlDiv(State* state);
+PrimopRes primopCharIsAlphabetic(State* state);
 PrimopRes primopCharIsWhitespace(State* state);
 PrimopRes primopStringIteratorNext(State* state);
 PrimopRes primopWrite(State* state);
@@ -950,6 +951,8 @@ State* State::tryCreate(size_t heapSize) {
                   false, Fixnum{2l}, dest->types.flonum, dest->types.flonum);
     installPrimop(dest, strLit("fl/"), (MethodCode)primopFlDiv,
                   false, Fixnum{2l}, dest->types.flonum, dest->types.flonum);
+    installPrimop(dest, strLit("char-alphabetic?"), (MethodCode)primopCharIsAlphabetic,
+                  false, Fixnum{1l}, dest->types.charr);
     installPrimop(dest, strLit("char-whitespace?"), (MethodCode)primopCharIsWhitespace,
                   false, Fixnum{1l}, dest->types.charr);
     installPrimop(dest, strLit("string-iterator-next!"), (MethodCode)primopStringIteratorNext,

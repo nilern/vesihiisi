@@ -280,3 +280,33 @@
 (def box (fn (v) (make <box> v)))
 (def box-get (fn (bx) (slot-get bx 0)))
 (def box-set! (fn (bx v) (slot-set! bx 0 v)))
+
+(def next!
+  (make-multimethod 'next!
+    string-iterator-next!))
+
+(def iter-fold!
+  (fn (f acc it)
+    (letfn (((loop acc)
+               (let ((miv (next! it)))
+                 (if (not (identical? miv end))
+                   (loop (f miv acc))
+                   acc))))
+      (loop acc))))
+
+(def string-fold (fn (f acc (: s <string>)) (iter-fold! f acc (make <string-iterator> s 0))))
+
+(def fold
+  (make-multimethod 'fold
+    string-fold))
+
+(def index-of
+  (fn (vs v)
+    (call-with-current-continuation
+      (fn (return)
+        (fold (fn (itv i)
+                (if (= itv v)
+                  (continue return i)
+                  (fx+ i 1)))
+              0 vs)
+        #f))))

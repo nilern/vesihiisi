@@ -1,6 +1,9 @@
 (def not (fn (x) (if x #f #t)))
 
-(def fx> (fn (x y) (fx< y x))) ; OPTIMIZE: separate primop?
+;; OPTIMIZE: separate primops?:
+(def fx> (fn (x y) (fx< y x)))
+(def fx<= (fn (x y) (not (fx< y x))))
+(def fx>= (fn (x y) (not (fx< x y))))
 
 (def cons (fn (x xs) (make <pair> x xs 0.)))
 
@@ -229,6 +232,18 @@
 (def <
   (make-multimethod '<
     (fn ((: x <fixnum>) (: y <fixnum>)) (fx< x y))))
+
+(def >
+  (make-multimethod '>
+    (fn ((: x <fixnum>) (: y <fixnum>)) (fx> x y))))
+
+(def <=
+  (make-multimethod '<=
+    (fn ((: x <fixnum>) (: y <fixnum>)) (fx<= x y))))
+
+(def >=
+  (make-multimethod '>=
+    (fn ((: x <fixnum>) (: y <fixnum>)) (fx>= x y))))
 
 (def > (fn (x y) (< y x)))
 

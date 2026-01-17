@@ -980,6 +980,42 @@ PrimopRes primopArrayMutToString(State* state) {
     return PrimopRes::CONTINUE;
 }
 
+PrimopRes primopStringIteratorPeek(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    StringIterator* const iter =
+        HRef<StringIterator>::fromUnchecked(state->regs[firstArgReg]).ptr();
+
+    ORef const maybeString = iter->string;
+    if (!isString(state, maybeString)) {
+        return primopError(state, createTypeError(state, state->types.string, maybeString));
+    }
+    auto const string = HRef<String>::fromUnchecked(maybeString);
+    ORef const maybeByteIdx = iter->byteIdx;
+    if (!isFixnum(maybeByteIdx)) {
+        return primopError(state, createTypeError(state, state->types.fixnum, maybeString));
+    }
+    ssize_t const byteIdx = Fixnum::fromUnchecked(maybeByteIdx).val();
+    ssize_t const cap = string.ptr()->flexCount().val();
+
+    if (byteIdx >= cap) {
+        state->regs[retReg] = state->singletons.end;
+        return PrimopRes::CONTINUE;
+    }
+
+    int32_t maybeCp;
+    [[maybe_unused]] ssize_t cpWidth =
+        utf8proc_iterate(string.ptr()->flexData() + byteIdx, cap, &maybeCp);
+    assert(cpWidth > 0); // Strings should always have been created from valid UTF-8
+    auto const cp = uint32_t(maybeCp);
+
+    state->regs[retReg] = Char{cp};
+    return PrimopRes::CONTINUE;
+}
+
+// TODO: Very similar to `primopStringIteratorPeek`, but would it make sense to abstract out what is
+// mostly sanity checks on the iterator?
 PrimopRes primopStringIteratorNext(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }

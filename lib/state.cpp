@@ -975,6 +975,8 @@ State* State::tryCreate(size_t heapSize) {
                   false, Fixnum{1l}, dest->types.charr);
     installPrimop(dest, strLit("array!->string"), (MethodCode)primopArrayMutToString,
                   false, Fixnum{1l}, dest->types.arrayMut);
+    installPrimop(dest, strLit("string-iterator-peek"), (MethodCode)primopStringIteratorPeek,
+                  false, Fixnum{1l}, dest->types.stringIterator);
     installPrimop(dest, strLit("string-iterator-next!"), (MethodCode)primopStringIteratorNext,
                   false, Fixnum{1l}, dest->types.stringIterator);
     installPrimop(dest, strLit("string->symbol"), (MethodCode)primopStringToSymbol,

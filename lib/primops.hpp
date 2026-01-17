@@ -59,6 +59,7 @@ PrimopRes primopCharIsWhitespace(State* state);
 
 // Strings
 PrimopRes primopArrayMutToString(State* state);
+PrimopRes primopStringIteratorPeek(State* state);
 PrimopRes primopStringIteratorNext(State* state);
 PrimopRes primopStringToSymbol(State* state);
 

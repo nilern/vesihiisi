@@ -26,7 +26,7 @@ typedef struct Shadowstack {
 #define REG_COUNT 256
 
 #define BOOTSTRAP_TYPE_COUNT 29
-#define BOOTSTRAP_SINGLETON_COUNT 5
+#define BOOTSTRAP_SINGLETON_COUNT 6
 
 struct NamedTypes {
     HRef<Type> flonum;
@@ -67,6 +67,7 @@ struct NamedSingletons {
     HRef<EmptyList> emptyList;
     HRef<Unbound> unbound;
     HRef<Continuation> exit;
+    HRef<Symbol> quote;
     HRef<Symbol> ofType;
 };
 static_assert(sizeof(NamedSingletons) / sizeof(ORef) == BOOTSTRAP_SINGLETON_COUNT);
@@ -199,6 +200,7 @@ inline ByteArray* allocByteArrayOrDie(State* state, Fixnum count) {
 HRef<Loc> createLoc(State* state, HRef<String> filename, Fixnum byteIdx);
 
 HRef<Pair> allocPair(State* state);
+HRef<Pair> createPair(State* state, ORef car, ORef cdr, ORef maybeLoc);
 
 Method* tryAllocBytecodeMethod(
     State* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,

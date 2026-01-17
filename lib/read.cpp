@@ -522,6 +522,21 @@ ReadExprRes readExpr(State* state, Parser* parser) {
         popStackRoots(state, 1);
         return ReadExprRes{{tailRes.val, loc}};
     }; break;
+
+    case '\'': {
+        parser->skipUnchecked(1); // '"'
+
+        HRef<Loc> loc = createLoc(state, HRef<String>::fromUnchecked(parser->filename),
+                                  Fixnum{(int64_t)byteIdx});
+        pushStackRoot(state, &loc);
+
+        auto const quotee = TRY(ReadExprRes, readExpr(state, parser));
+        auto quotation = createPair(state, quotee.val, state->singletons.emptyList, quotee.loc);
+        quotation = createPair(state, state->singletons.quote, quotation, loc);
+
+        popStackRoots(state, 1);
+        return ReadExprRes{{quotation, loc}};
+    }; break;
     }
 
     if (isInitial(c)) {

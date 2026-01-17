@@ -866,6 +866,7 @@ State* State::tryCreate(size_t heapSize) {
             .emptyList = HRef(emptyList),
             .unbound = HRef(unbound),
             .exit = HRef(exit),
+            .quote = HRef<Symbol>::fromUnchecked(ORef{0}), // HACK
             .ofType = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
         },
         ns,
@@ -873,6 +874,7 @@ State* State::tryCreate(size_t heapSize) {
     };
     if (!dest) { return nullptr; }
 
+    dest->singletons.quote = intern(dest, strLit("quote"));
     dest->singletons.ofType = intern(dest, strLit(":"));
 
     for (size_t i = 0; i < BOOTSTRAP_TYPE_COUNT; ++i) {
@@ -1263,6 +1265,22 @@ HRef<Pair> allocPair(State* state) {
         ptr = (Pair*)state->heap.tospace.allocOrDie(state->types.pair.ptr());
     }
     
+    return HRef(ptr);
+}
+
+HRef<Pair> createPair(State *state, ORef car, ORef cdr, ORef maybeLoc) {
+    Pair* ptr = (Pair*)state->heap.tospace.tryAlloc(state->types.pair.ptr());
+    if (mustCollect(ptr)) {
+        pushStackRoot(state, &car);
+        pushStackRoot(state, &cdr);
+        pushStackRoot(state, &maybeLoc);
+        collect(state);
+        popStackRoots(state, 3);
+        ptr = (Pair*)state->heap.tospace.allocOrDie(state->types.pair.ptr());
+    }
+
+    *ptr = Pair{.car = car, .cdr = cdr, .maybeLoc = maybeLoc};
+
     return HRef(ptr);
 }
 

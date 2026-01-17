@@ -350,6 +350,10 @@
   (make-multimethod 'next!
     string-iterator-next!))
 
+(def peek
+  (make-multimethod
+    string-iterator-peek))
+
 (def iter-fold!
   (fn (f acc it)
     (letfn (((loop acc)

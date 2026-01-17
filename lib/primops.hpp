@@ -40,6 +40,7 @@ PrimopRes primopCharToInteger(State* state);
 PrimopRes primopCharIsAlphabetic(State* state);
 PrimopRes primopCharIsWhitespace(State* state);
 PrimopRes primopArrayMutToString(State* state);
+PrimopRes primopStringIteratorPeek(State* state);
 PrimopRes primopStringIteratorNext(State* state);
 PrimopRes primopStringToSymbol(State* state);
 PrimopRes primopWrite(State* state);

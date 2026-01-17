@@ -304,6 +304,33 @@
         (=-impl x y)
         #f))))
 
+(def <string-builder> (make-slots-type '<string-builder> 2 #f))
+(def string-builder (fn () (make <string-builder> (make-flex <array!> 2) 0)))
+
+(def string-builder-push!
+   (fn ((: builder <string-builder>) v)
+     (let ((vs (slot-get builder 0))
+           (len (slot-get builder 1))
+           (cap (array!-count vs))
+           (vs (if (= len cap)
+                 (let ((cap* (+ cap (fx-quot cap 2)))
+                       (vs* (make-flex <array!> cap*)))
+                   (flex-copy! vs* 0 vs 0 len)
+                   (slot-set! builder 0 vs*))
+                 vs)))
+       (flex-set! vs len v)
+       (slot-set! builder 1 (+ len 1))
+       v)))
+
+(def build-string
+  (fn ((: builder <string-builder>))
+    (let ((cs (flex-copy (slot-get builder 0) 0 (slot-get builder 1))))
+      (array!->string cs))))
+
+(def push!
+  (make-multimethod 'push!
+    string-builder-push!))
+
 (def newline (fn () (write-char #"\n")))
 
 (def <box> (make-slots-type (quote <box>) 1 #f))

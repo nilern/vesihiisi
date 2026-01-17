@@ -338,6 +338,11 @@ struct ByteArray : public IndexedObject<ByteArray, uint8_t> {
     Slice<uint8_t const> items() const { return flexItems(); }
 };
 
+struct ByteArrayMut : public IndexedMutObject<ByteArrayMut, uint8_t> {
+    Slice<uint8_t const> items() const { return flexItems(); }
+    Slice<uint8_t> itemsMut() { return flexItemsMut(); }
+};
+
 struct Loc : public FixedObject {
     HRef<String> filename;
     Fixnum byteIdx;

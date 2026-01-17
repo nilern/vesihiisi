@@ -591,6 +591,35 @@ PrimopRes primopFlexGet(State* state) {
     return PrimopRes::CONTINUE;
 }
 
+PrimopRes primopFlexSet(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    ORef const v = state->regs[firstArgReg];
+    int64_t const i = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
+    ORef const iv = state->regs[firstArgReg + 2];
+
+    Type const* type = typeOf(state, v).ptr();
+    if (!type->isFlex.val()) {
+        assert(false); // TODO: Proper nonflex error
+    }
+    if (type->isBytes.val()) {
+        assert(false); // TODO: Proper nonslots error
+    }
+
+    void const* const ptr = uncheckedORefToPtr(v);
+    int64_t const count = ((FlexHeader const*)ptr - 1)->count.val();
+    if (i < 0 || i >= count) {
+        assert(false); // TODO: Proper bounds error
+    }
+
+    ORef* const flexSlots = (ORef*)((char const*)ptr + type->minSize.val());
+    flexSlots[i] = iv;
+    state->regs[retReg] = iv; // Once again most convenient and consistent to just return this
+
+    return PrimopRes::CONTINUE;
+}
+
 PrimopRes primopFlexCopy(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
@@ -630,6 +659,49 @@ PrimopRes primopFlexCopy(State* state) {
     char const* const srcVals = (char const*)uncheckedUntypedFlexPtr(src);
     size_t const elemSize = isBytesRef.val() ? sizeof(uint8_t) : sizeof(ORef);
     memmove(destVals, srcVals, copyCount * elemSize);
+
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes primopFlexClone(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    ORef src = state->regs[firstArgReg];
+    intptr_t const startS = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
+    intptr_t const endS = Fixnum::fromUnchecked(state->regs[firstArgReg + 2]).val();
+    HRef<Type> typeRef = typeOf(state, src);
+    Type const* type = typeRef.ptr();
+
+    if (!type->isFlex.val()) { exit(EXIT_FAILURE); } // TODO: Proper nonflex error
+
+    size_t const srcCount = (uintptr_t)uncheckedFlexHeader(src)->count.val();
+
+    if (startS < 0) { exit(EXIT_FAILURE); } // Negative index TODO: Proper bounds error
+    size_t const start = (uintptr_t)startS;
+    if (endS < 0) { exit(EXIT_FAILURE); } // Negative index TODO: Proper bounds error
+    size_t const end = (uintptr_t)endS;
+    if (end > srcCount) { exit(EXIT_FAILURE); } // TODO: Proper bounds error
+    if (start > end) { exit(EXIT_FAILURE); } // TODO: Proper bounds error
+
+    size_t const copyCount = end - start;
+
+    Object* dest = state->heap.tospace.tryAllocFlex(type, Fixnum{int64_t(copyCount)});
+    if (mustCollect(dest)) {
+        pushStackRoot(state, &src);
+        pushStackRoot(state, &typeRef);
+        collect(state);
+        popStackRoots(state, 2);
+        type = typeRef.ptr();
+        dest = state->heap.tospace.allocFlexOrDie(type, Fixnum{int64_t(copyCount)});
+    }
+
+    auto const minSize = size_t(type->minSize.val());
+    size_t const elemSize = type->isBytes.val() ? sizeof(uint8_t) : sizeof(ORef);
+    memcpy(dest, (char*)uncheckedUntypedFlexPtr(src) + start * elemSize,
+           minSize + copyCount * elemSize);
+
+    state->regs[retReg] = HRef{dest};
 
     return PrimopRes::CONTINUE;
 }
@@ -858,6 +930,40 @@ PrimopRes primopCharIsWhitespace(State* state) {
     // FIXME: Does not include various cp:s like \n, \t etc. that are CC instead:
     state->regs[retReg] = Bool{utf8proc_category(c) == UTF8PROC_CATEGORY_ZS};
 
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes primopArrayMutToString(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    auto vs = HRef<ArrayMut>::fromUnchecked(state->regs[firstArgReg]);
+    pushStackRoot(state, &vs);
+
+    auto const cpCount = size_t(vs.ptr()->flexCount().val());
+    auto tmpRef = createByteArrayMut(state, Fixnum{int64_t(cpCount * 4)});
+    pushStackRoot(state, &tmpRef);
+    auto tmp = tmpRef.ptr();
+    auto const cps = vs.ptr()->flexData();
+    auto const tmpData = tmp->flexDataMut();
+    ssize_t stringSize = 0;
+    for (size_t i = 0; i < cpCount; ++i) {
+        ORef const v = cps[i];
+        if (!isChar(v)) {
+            return primopError(state, createTypeError(state, state->types.charr, v));
+        }
+        auto const cp = Char::fromUnchecked(v).val();
+
+        stringSize += utf8proc_encode_char(int32_t(cp), tmpData + stringSize);
+    }
+
+    String* const res = allocString(state, Fixnum{stringSize});
+    tmp = tmpRef.ptr(); // Post-GC reload
+    memcpy(const_cast<uint8_t*>(res->flexData()), tmp->flexData(), size_t(stringSize));
+
+    state->regs[retReg] = HRef{res};
+
+    popStackRoots(state, 2);
     return PrimopRes::CONTINUE;
 }
 

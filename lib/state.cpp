@@ -24,6 +24,7 @@ char const* const typeNames[] = {
     "<string-iterator>",
     "<array>",
     "<array!>",
+    "<byte-array>",
     "<byte-array!>",
     "<symbol>",
     "<source-location>",
@@ -299,6 +300,24 @@ Type* tryCreateArrayMutType(Semispace* semispace, Type const* typeType) {
 }
 
 Type* tryCreateByteArrayType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = semispace->tryAlloc(typeType);
+    if (!maybeType) { return nullptr; }
+
+    Type* const type = (Type*)maybeType;
+    *type = Type{
+        .minSize = Fixnum{0l},
+        .align = Fixnum((intptr_t)objectMinAlign),
+        .isBytes = True,
+        .hasCodePtr = False,
+        .isFlex = True,
+        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
+        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
+    };
+
+    return type;
+}
+
+Type* tryCreateByteArrayMutType(Semispace* semispace, Type const* typeType) {
     void* const maybeType = semispace->tryAlloc(typeType);
     if (!maybeType) { return nullptr; }
 
@@ -728,6 +747,8 @@ State* State::tryCreate(size_t heapSize) {
     if (!arrayMutType) { return nullptr; }
     Type* const byteArrayType = tryCreateByteArrayType(&heap.tospace, typeType);
     if (!byteArrayType) { return nullptr; }
+    Type* const byteArrayMutType = tryCreateByteArrayMutType(&heap.tospace, typeType);
+    if (!byteArrayMutType) { return nullptr; }
     Type* const symbolType = tryCreateSymbolType(&heap.tospace, typeType);
     if (!symbolType) { return nullptr; }
     Type* const locType = tryCreateFixedType<Loc, false>(&heap.tospace, typeType);
@@ -807,6 +828,7 @@ State* State::tryCreate(size_t heapSize) {
             .array = HRef(arrayType),
             .arrayMut = HRef(arrayMutType),
             .byteArray = HRef(byteArrayType),
+            .byteArrayMut = HRef(byteArrayMutType),
             .symbol = HRef(symbolType),
             .loc = HRef{locType},
             .pair = HRef(pairType),
@@ -892,9 +914,13 @@ State* State::tryCreate(size_t heapSize) {
                   false, Fixnum{1l}, dest->types.any);
     installPrimop(dest, strLit("flex-get"), (MethodCode)primopFlexGet,
                   false, Fixnum{2l}, dest->types.any, dest->types.fixnum);
+    installPrimop(dest, strLit("flex-set!"), (MethodCode)primopFlexSet,
+                  false, Fixnum{3l}, dest->types.any, dest->types.fixnum, dest->types.any);
     installPrimop(dest, strLit("flex-copy!"), (MethodCode)primopFlexCopy,
                   false, Fixnum{5l}, dest->types.any, dest->types.fixnum,
                   dest->types.any, dest->types.fixnum, dest->types.fixnum);
+    installPrimop(dest, strLit("flex-copy"), (MethodCode)primopFlexClone,
+                  false, Fixnum{3l}, dest->types.any, dest->types.fixnum, dest->types.fixnum);
     installPrimop(dest, strLit("fx+"), (MethodCode)primopFxAdd,
                   false, Fixnum{2l}, dest->types.fixnum, dest->types.fixnum);
     installPrimop(dest, strLit("fx-"), (MethodCode)primopFxSub,
@@ -923,6 +949,8 @@ State* State::tryCreate(size_t heapSize) {
                   false, Fixnum{1l}, dest->types.charr);
     installPrimop(dest, strLit("char-whitespace?"), (MethodCode)primopCharIsWhitespace,
                   false, Fixnum{1l}, dest->types.charr);
+    installPrimop(dest, strLit("array!->string"), (MethodCode)primopArrayMutToString,
+                  false, Fixnum{1l}, dest->types.arrayMut);
     installPrimop(dest, strLit("string-iterator-next!"), (MethodCode)primopStringIteratorNext,
                   false, Fixnum{1l}, dest->types.stringIterator);
     installPrimop(dest, strLit("write"), (MethodCode)primopWrite,
@@ -1080,18 +1108,25 @@ HRef<Type> createSlotsType(State* state, HRef<Symbol> name, Fixnum slotCount, Bo
     return HRef{ptr};
 }
 
-HRef<String> createString(State* state, Str str) {
-    char* stringPtr =
-        (char*)state->heap.tospace.tryAllocFlex(state->types.string.ptr(), Fixnum((intptr_t)str.len));
-    if (mustCollect(stringPtr)) {
+String* allocString(State* state, Fixnum byteCount) {
+    String* ptr =
+        static_cast<String*>(state->heap.tospace.tryAllocFlex(state->types.string.ptr(),
+                             byteCount));
+    if (mustCollect(ptr)) {
         collect(state);
-        stringPtr = (char*)state->heap.tospace.allocFlexOrDie(state->types.string.ptr(),
-                                Fixnum((intptr_t)str.len));
+        ptr = static_cast<String*>(state->heap.tospace.allocFlexOrDie(state->types.string.ptr(),
+                                   byteCount));
     }
+
+    return ptr;
+}
+
+HRef<String> createString(State* state, Str str) {
+    String* const string = allocString(state, Fixnum((intptr_t)str.len));
     
-    memcpy(stringPtr, str.data, str.len);
+    memcpy(const_cast<uint8_t*>(string->flexData()), str.data, str.len);
     
-    return HRef((String*)stringPtr);
+    return HRef{string};
 }
 
 HRef<ArrayMut> createArrayMut(State* state, Fixnum count) {
@@ -1102,6 +1137,18 @@ HRef<ArrayMut> createArrayMut(State* state, Fixnum count) {
     }
 
     return HRef((ArrayMut*)ptr);
+}
+
+HRef<ByteArrayMut> createByteArrayMut(State* state, Fixnum count) {
+    ByteArrayMut* ptr = static_cast<ByteArrayMut*>(
+        state->heap.tospace.tryAllocFlex(state->types.byteArrayMut.ptr(), count));
+    if (mustCollect(ptr)) {
+        collect(state);
+        ptr = static_cast<ByteArrayMut*>(
+            state->heap.tospace.allocFlexOrDie(state->types.byteArrayMut.ptr(), count));
+    }
+
+    return HRef{ptr};
 }
 
 HRef<Symbol> createUninternedSymbol(State* state, Fixnum hash, Str name) {

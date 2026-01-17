@@ -812,6 +812,17 @@ PrimopRes primopFlDiv(State* state) {
     return PrimopRes::CONTINUE;
 }
 
+PrimopRes primopCharToInteger(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    uint32_t const c = Char::fromUnchecked(state->regs[firstArgReg]).val();
+
+    state->regs[retReg] = Fixnum{int64_t(c)};
+
+    return PrimopRes::CONTINUE;
+}
+
 PrimopRes primopCharLt(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }

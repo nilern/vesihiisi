@@ -1,3 +1,9 @@
+(def isa?
+  (fn (t v)
+    (if (identical? t <any>)
+      #t
+      (identical? (type-of v) t))))
+
 (def not (fn (x) (if x #f #t)))
 
 ;; OPTIMIZE: separate primops?:

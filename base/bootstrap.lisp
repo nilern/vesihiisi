@@ -351,7 +351,7 @@
     string-iterator-next!))
 
 (def peek
-  (make-multimethod
+  (make-multimethod 'peek
     string-iterator-peek))
 
 (def iter-fold!
@@ -395,7 +395,7 @@
         (parser-look-ahead (fn ((: p <parser>)) (slot-get p 1)))
         (parser-nullable (fn ((: p <parser>)) (slot-get p 2)))
 
-        (parse (make-multimethod
+        (parse (make-multimethod 'parse
                  (fn ((: p <parser>) input byte-idx) ((parser-parse p) input byte-idx))
 
                  (fn ((: p-box <box>) input byte-idx)
@@ -409,12 +409,12 @@
                          ic)
                        (error (quote read-error) ic c))))))
 
-        (look-ahead? (make-multimethod
+        (look-ahead? (make-multimethod 'look-ahead?
                        (fn ((: p <parser>) c) ((parser-look-ahead p) c))
                        (fn ((: p-box <box>) c) ((parser-look-ahead (box-get p-box)) c))
                        (fn ((: c <char>) ic) (= ic c))))
 
-        (nullable? (make-multimethod
+        (nullable? (make-multimethod 'nullable?
                      parser-nullable
                      (fn ((: p-box <box>)) (parser-nullable (box-get p-box)))
                      (fn ((: c <char>)) #f)))
@@ -443,7 +443,7 @@
 
         ;; Could use varargs but the reader is so fundamental that hand-unrolling is warranted:
         ;; p q etc.
-        (seq-> (make-multimethod
+        (seq-> (make-multimethod 'seq->
                  (fn (p f)
                    (make <parser> (fn (input byte-idx) (f (parse p input byte-idx)))
                                   (fn (c) (look-ahead? p c))
@@ -488,7 +488,7 @@
         ;; Could use varargs but the reader is so fundamental that hand-unrolling is warranted:
         ;; Does not support nullable alternatives but we do not need them:
         ;; p | q etc.
-        (alt (make-multimethod
+        (alt (make-multimethod 'alt
                (fn (p q)
                  (make <parser> (fn (input byte-idx)
                                   (if (look-ahead? p (peek input))
@@ -799,11 +799,11 @@
 
 ;; FIXME: Need to provide start position as well as the end:
 (def read*
-  (make-multimethod
+  (make-multimethod 'read*
     (fn (input (: loc <source-location>)) (do-read* input loc))
     (fn (input (: filename <string>)) (read* input (make <source-location> filename 0)))))
 
 (def read
-  (make-multimethod
+  (make-multimethod 'read
     (fn (input) (car (read* input "???")))
     (fn () (read standard-input))))

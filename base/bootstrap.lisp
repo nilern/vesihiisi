@@ -711,37 +711,43 @@
                        #"\""
                        (fn (builder _) (build-string builder))))
 
-        (decimal-digit? (fn (c) (if (>= c #"0") (<= c #"9") #f)))
+        (decimal-digit? (fn (c) (if (isa? <char> c) (if (>= c #"0") (<= c #"9") #f) #f)))
         (decimal-digit-value (fn (c)
-                               (if (>= c #"0")
-                                 (if (<= c #"9")
-                                   (- (char->integer c) (char->integer #"0"))
+                               (if (isa? <char> c)
+                                 (if (>= c #"0")
+                                   (if (<= c #"9")
+                                     (- (char->integer c) (char->integer #"0"))
+                                     #f)
                                    #f)
                                  #f)))
         (hex-digit? (fn (c) ;; Yuck, but we haven't bootstrapped `and` and `or` yet:
                       (if (decimal-digit? c)
                         #t
-                        (if (>= c #"A")
-                          (if (<= c #"F")
-                            #t
-                            (if (>= c #"a")
-                              (if (<= c #"f")
-                                #t
-                                #f)
-                              #f))
+                        (if (isa? <char> c)
+                          (if (>= c #"A")
+                            (if (<= c #"F")
+                              #t
+                              (if (>= c #"a")
+                                (if (<= c #"f")
+                                  #t
+                                  #f)
+                                #f))
+                            #f)
                           #f))))
         (hex-digit-value (fn (c)
                            (let ((d (decimal-digit-value c)))
                              (if d
                                d
-                               (if (>= c #"A")
-                                 (if (<= c #"F")
-                                   (- (char->integer c) (char->integer #"A"))
-                                   (if (>= c #"a")
-                                     (if (<= c #"f")
-                                       (- (char->integer c) (char->integer #"a"))
-                                       #f)
-                                     #f))
+                               (if (isa? <char> c)
+                                 (if (>= c #"A")
+                                   (if (<= c #"F")
+                                     (- (char->integer c) (char->integer #"A"))
+                                     (if (>= c #"a")
+                                       (if (<= c #"f")
+                                         (- (char->integer c) (char->integer #"a"))
+                                         #f)
+                                       #f))
+                                   #f)
                                  #f)))))
         (digit-in (fn (radix)
                     (let ((acceptable? (if (= radix 10)
@@ -759,7 +765,8 @@
                                          (if (= radix 16)
                                            hex-digit-value
                                            (error (quote unimplemented-radix) radix)))))
-                      (seq-> (sat acceptable? description) digit-value))))
+                      (seq-> (sat acceptable? description)
+                             (fn (c) (if c (digit-value c) c))))))
         ;; TODO: Improve flonum precision:
         ;; <digit radix>+ ('.' <digit radix>*)?
         (number (fn (radix)
@@ -767,14 +774,14 @@
                         (digit (digit-in radix)))
                     (seq-> (mfoldl (fn (d n) (+ (* radix n) d)) digit digit)
                            (opt (mfoldl (fn (d acc)
-                                          (let ((c-frac (/ d (cdr acc))))
+                                          (let ((c-frac (/ (inexact d) (cdr acc))))
                                             ;; OPTIMIZE: `set-c(a|d)r!` instead of `cons`:
                                             (cons (+ (car acc) c-frac)
                                                   (* (cdr acc) fl-radix))))
                                         (seq-> #"." (fn (_) (cons 0. fl-radix)))
                                         digit))
                            (fn (integral acc)
-                             (if (not fraction)
+                             (if (not acc)
                                integral
                                (+ (inexact integral) (car acc))))))))
         (decimal-number (number 10))
@@ -783,9 +790,10 @@
         ;; '#' ('t' | 'f' | '"' string-char '"' | 'x' hex-number)
         (crunchy (seq-> #"#"
                         (alt (seq-> #"t" (fn (_) #t))
-                             (seq-> #"f" (fn (_) #t))
+                             (seq-> #"f" (fn (_) #f))
                              (seq-> #"\"" string-char #"\"" (fn (_ c __) c))
-                             (seq-> #"x" hex-number (fn (_ n) n)))))
+                             (seq-> #"x" hex-number (fn (_ n) n)))
+                        (fn (_ v) v)))
 
         (expr (alt list symbol string decimal-number crunchy))
 
@@ -795,7 +803,7 @@
     (fn (input loc)
       (let ((byte-idx (box (source-location-byte-index loc)))
             (v (parse ws-expr input byte-idx)))
-        (cons v (box-get byte-idx))))))
+        (cons v (make <source-location> (source-location-filename loc) (box-get byte-idx)))))))
 
 ;; FIXME: Need to provide start position as well as the end:
 (def read*

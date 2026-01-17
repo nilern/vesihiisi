@@ -258,6 +258,7 @@
 (def =-impl
   (make-multimethod '=-impl
     (fn ((: x <fixnum>) (: y <fixnum>)) (identical? x y))
+    (fn ((: x <char>) (: y <char>)) (identical? x y))
 
     (fn ((: x <empty-list>) (: y <empty-list>)) #t)
     (fn ((: x <pair>) (: y <pair>))

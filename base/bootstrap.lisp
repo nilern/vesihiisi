@@ -794,7 +794,7 @@
 
     (fn (input loc)
       (let ((byte-idx (box (source-location-byte-index loc)))
-            (v (parse ws-expr input loc)))
+            (v (parse ws-expr input byte-idx)))
         (cons v (box-get byte-idx))))))
 
 ;; FIXME: Need to provide start position as well as the end:

@@ -568,8 +568,8 @@
                                        (if (look-ahead? r c)
                                          #t
                                          (if (look-ahead? s c)
-                                           (look-ahead? t c)
-                                           #f)))))
+                                           #t
+                                           (look-ahead? t c))))))
                                  (if (nullable? p)
                                    (if (nullable? q)
                                      (if (nullable? r)
@@ -605,8 +605,8 @@
                                          (if (look-ahead? s c)
                                            #t
                                            (if (look-ahead? t c)
-                                             (look-ahead? u c)
-                                             #f))))))
+                                             #t
+                                             (look-ahead? u c)))))))
                                  (if (nullable? p)
                                    (if (nullable? q)
                                      (if (nullable? r)

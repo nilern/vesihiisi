@@ -1001,6 +1001,17 @@ PrimopRes primopStringIteratorNext(State* state) {
     return PrimopRes::CONTINUE;
 }
 
+PrimopRes primopStringToSymbol(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    auto const str = HRef<String>::fromUnchecked(state->regs[firstArgReg]);
+
+    state->regs[retReg] = internHeaped(state, str);
+
+    return PrimopRes::CONTINUE;
+}
+
 PrimopRes primopWrite(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }

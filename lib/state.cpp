@@ -953,6 +953,8 @@ State* State::tryCreate(size_t heapSize) {
                   false, Fixnum{1l}, dest->types.arrayMut);
     installPrimop(dest, strLit("string-iterator-next!"), (MethodCode)primopStringIteratorNext,
                   false, Fixnum{1l}, dest->types.stringIterator);
+    installPrimop(dest, strLit("string->symbol"), (MethodCode)primopStringToSymbol,
+                  false, Fixnum{1l}, dest->types.string);
     installPrimop(dest, strLit("write"), (MethodCode)primopWrite,
                   false, Fixnum{1l}, dest->types.any);
     installPrimop(dest, strLit("write-char"), (MethodCode)primopWriteChar,
@@ -1166,6 +1168,23 @@ HRef<Symbol> createUninternedSymbol(State* state, Fixnum hash, Str name) {
     return HRef(ptr);
 }
 
+HRef<Symbol> createUninternedSymbolFromHeaped(State* state, Fixnum hash, HRef<String> name) {
+    Symbol* ptr = (Symbol*)state->heap.tospace.tryAllocFlex(
+        state->types.symbol.ptr(), name.ptr()->flexCount());
+    if (mustCollect(ptr)) {
+        pushStackRoot(state, &name);
+        collect(state);
+        popStackRoots(state, 1);
+        ptr = (Symbol*)state->heap.tospace.allocFlexOrDie(
+            state->types.symbol.ptr(), name.ptr()->flexCount());
+    }
+
+    ptr->hash = hash;
+    memcpy((char*)ptr->flexData(), name.ptr()->flexData(), size_t(name.ptr()->flexCount().val()));
+
+    return HRef(ptr);
+}
+
 inline Fixnum hashStr(Str s) { return Fixnum((intptr_t)fnv1aHash(s)); }
 
 typedef struct IndexOfSymbolRes {
@@ -1242,6 +1261,29 @@ HRef<Symbol> intern(State* state, Str name) {
         }
         
         HRef<Symbol> const symbol = createUninternedSymbol(state, hash, name);
+        state->symbols.entries[ires.index] = symbol.oref();
+        state->symbols.count = newCount;
+        return symbol;
+    }
+}
+
+// TODO: DRY wrt. `intern`
+HRef<Symbol> internHeaped(State* state, HRef<String> name) {
+    Str const nameStr = name.ptr()->str();
+    Fixnum const hash = hashStr(nameStr);
+
+    IndexOfSymbolRes ires = indexOfSymbol(&state->symbols, hash, nameStr);
+    if (ires.exists) {
+        return HRef<Symbol>::fromUnchecked(state->symbols.entries[ires.index]);;
+    } else {
+        size_t const newCount = state->symbols.count + 1;
+        size_t const capacity = state->symbols.cap;
+        if (capacity / 2 < newCount) {
+            rehashSymbols(state);
+            ires = indexOfSymbol(&state->symbols, hash, nameStr);
+        }
+
+        HRef<Symbol> const symbol = createUninternedSymbolFromHeaped(state, hash, name);
         state->symbols.entries[ires.index] = symbol.oref();
         state->symbols.count = newCount;
         return symbol;

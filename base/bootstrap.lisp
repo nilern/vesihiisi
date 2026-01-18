@@ -16,6 +16,12 @@
 (def char<= (fn (x y) (not (char< y x))))
 (def char>= (fn (x y) (not (char< x y))))
 
+(def symbol->string
+  (fn ((: sym <symbol>))
+    (let ((len (flex-count sym))
+          (str (make-flex <string> len)))
+      (flex-copy! str 0 sym 0 len))))
+
 (def cons (fn (x xs) (make <pair> x xs 0.)))
 
 (def car (fn ((: xs <pair>)) (slot-get xs 0)))

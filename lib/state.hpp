@@ -174,6 +174,8 @@ HRef<String> createString(State* state, Str str);
 // `name` must not point into GC heap:
 HRef<Symbol> intern(State* state, Str name);
 
+HRef<Symbol> internHeaped(State* state, HRef<String> name);
+
 inline Array* tryAllocArray(State* state, Fixnum count) {
     return (Array*)state->heap.tospace.tryAllocFlex(state->types.array.ptr(), count);
 }

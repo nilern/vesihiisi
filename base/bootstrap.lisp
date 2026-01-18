@@ -19,7 +19,9 @@
 (def cons (fn (x xs) (make <pair> x xs 0.)))
 
 (def car (fn ((: xs <pair>)) (slot-get xs 0)))
+(def set-car! (fn ((: xs <pair>) v) (slot-set! xs 0 v)))
 (def cdr (fn ((: xs <pair>)) (slot-get xs 1)))
+(def set-cdr! (fn ((: xs <pair>) v) (slot-set! xs 1 v)))
 
 (def caar (fn (xs) (car (car xs))))
 (def cadr (fn (xs) (car (cdr xs))))

@@ -484,25 +484,30 @@
                                       #f)
                                     #f)))))
 
-        ;; FIXME: Gives error from last branch only when no lookaheads match:
         ;; Could use varargs but the reader is so fundamental that hand-unrolling is warranted:
         ;; Does not support nullable alternatives but we do not need them:
         ;; p | q etc.
         (alt (make-multimethod 'alt
-               (fn (p q)
+               (fn (expected p q)
                  (make <parser> (fn (input byte-idx)
-                                  (if (look-ahead? p (peek input))
-                                    (parse p input byte-idx)
-                                    (parse q input byte-idx)))
+                                  (let ((c (peek input)))
+                                    (if (look-ahead? p c)
+                                      (parse p input byte-idx)
+                                      (if (look-ahead? q c)
+                                        (parse q input byte-idx)
+                                        (error 'read-error c expected)))))
                                 (fn (c) (if (look-ahead? p c) #t (look-ahead? q c)))
                                 (if (nullable? p) (nullable? q) #f)))
-               (fn (p q r)
+               (fn (expected p q r)
                  (make <parser> (fn (input byte-idx)
-                                  (if (look-ahead? p (peek input))
-                                    (parse p input byte-idx)
-                                    (if (look-ahead? q (peek input))
-                                      (parse q input byte-idx)
-                                      (parse r input byte-idx))))
+                                  (let ((c (peek input)))
+                                    (if (look-ahead? p (peek input))
+                                      (parse p input byte-idx)
+                                      (if (look-ahead? q (peek input))
+                                        (parse q input byte-idx)
+                                        (if (look-ahead? r (peek input))
+                                          (parse r input byte-idx)
+                                          (error 'read-error c expected))))))
                                 (fn (c)
                                   (if (look-ahead? p c)
                                     #t
@@ -514,15 +519,18 @@
                                     (nullable? r)
                                     #f)
                                   #f)))
-               (fn (p q r s)
+               (fn (expected p q r s)
                  (make <parser> (fn (input byte-idx)
-                                  (if (look-ahead? p (peek input))
-                                    (parse p input byte-idx)
-                                    (if (look-ahead? q (peek input))
-                                      (parse q input byte-idx)
-                                      (if (look-ahead? r (peek input))
-                                        (parse r input byte-idx)
-                                        (parse s input byte-idx)))))
+                                  (let ((c (peek input)))
+                                    (if (look-ahead? p (peek input))
+                                      (parse p input byte-idx)
+                                      (if (look-ahead? q (peek input))
+                                        (parse q input byte-idx)
+                                        (if (look-ahead? r (peek input))
+                                          (parse r input byte-idx)
+                                          (if (look-ahead? s (peek input))
+                                            (parse s input byte-idx)
+                                            (error 'read-error c expected)))))))
                                  (fn (c)
                                    (if (look-ahead? p c)
                                      #t
@@ -538,17 +546,20 @@
                                        #f)
                                      #f)
                                    #f)))
-                (fn (p q r s t)
+                (fn (expected p q r s t)
                   (make <parser> (fn (input byte-idx)
-                                   (if (look-ahead? p (peek input))
-                                     (parse p input byte-idx)
-                                     (if (look-ahead? q (peek input))
-                                       (parse q input byte-idx)
-                                       (if (look-ahead? r (peek input))
-                                         (parse r input byte-idx)
-                                         (if (look-ahead? s (peek input))
-                                           (parse s input byte-idx)
-                                           (parse t input byte-idx))))))
+                                   (let ((c (peek input)))
+                                     (if (look-ahead? p (peek input))
+                                       (parse p input byte-idx)
+                                       (if (look-ahead? q (peek input))
+                                         (parse q input byte-idx)
+                                         (if (look-ahead? r (peek input))
+                                           (parse r input byte-idx)
+                                           (if (look-ahead? s (peek input))
+                                             (parse s input byte-idx)
+                                             (if (look-ahead? t (peek input))
+                                               (parse t input byte-idx)
+                                               (error 'read-error c expected))))))))
                                  (fn (c)
                                    (if (look-ahead? p c)
                                      #t
@@ -568,19 +579,22 @@
                                        #f)
                                      #f)
                                    #f)))
-                (fn (p q r s t u)
+                (fn (expected p q r s t u)
                   (make <parser> (fn (input byte-idx)
-                                   (if (look-ahead? p (peek input))
-                                     (parse p input byte-idx)
-                                     (if (look-ahead? q (peek input))
-                                       (parse q input byte-idx)
-                                       (if (look-ahead? r (peek input))
-                                         (parse r input byte-idx)
-                                         (if (look-ahead? s (peek input))
-                                           (parse s input byte-idx)
-                                           (if (look-ahead? t (peek input))
-                                             (parse t input byte-idx)
-                                             (parse u input byte-idx)))))))
+                                   (let ((c (peek input)))
+                                     (if (look-ahead? p (peek input))
+                                       (parse p input byte-idx)
+                                       (if (look-ahead? q (peek input))
+                                         (parse q input byte-idx)
+                                         (if (look-ahead? r (peek input))
+                                           (parse r input byte-idx)
+                                           (if (look-ahead? s (peek input))
+                                             (parse s input byte-idx)
+                                             (if (look-ahead? t (peek input))
+                                               (parse t input byte-idx)
+                                               (if (look-ahead? u (peek input))
+                                                 (parse u input byte-idx)
+                                                 (error 'read-error c expected)))))))))
                                  (fn (c)
                                    (if (look-ahead? p c)
                                      #t
@@ -640,12 +654,13 @@
         ;; \s+|;[^\n]*(\n|$)
         (ws-seg (let ((whitespace-char (sat char-whitespace? "whitespace char (\\s)"))
                       (online (sat (fn (c) (not (= c #"\n"))) "not newline (#\"\\n\")")))
-                   (alt (mfoldl (fn (_ acc) acc)
+                   (alt "\\s|;"
+                        (mfoldl (fn (_ acc) acc)
                                 (seq-> whitespace-char (fn (_) #f))
                                 whitespace-char)
                         (seq-> #";"
                                (mfoldl (fn (_ acc) acc) epsilon online)
-                               (alt #"\n" end)
+                               (alt "\n|$" #"\n" end)
                                (fn (_ __ ___) #f)))))
         ;; ws-seg*
         (ws (mfoldl (fn (_ acc) acc) epsilon ws-seg))
@@ -666,12 +681,18 @@
                                                      (let ((first-pair (cons v #f)))
                                                        (cons first-pair first-pair))))
                                             ws-expr-ws)
-                                    (alt proper-list-terminator
+                                    (alt "[).]"
+                                         proper-list-terminator
                                          (seq-> #"." ws-expr-ws #")" (fn (_ v __) v)))
                                     (fn (acc tail) (set-cdr! (cdr acc) tail) (car acc))))
 
         ;; '(' ws (non-empty-list-tail proper-list-terminator)
-        (list (seq-> #"(" ws (alt non-empty-list-tail proper-list-terminator) (fn (_ __ ls) ls)))
+        (list (seq-> #"("
+                     ws
+                     (alt "S-expr or #\")\""
+                          non-empty-list-tail
+                          proper-list-terminator)
+                     (fn (_ __ ls) ls)))
 
         (initial? (fn (c)
                     (if (char-alphabetic? c)
@@ -695,10 +716,11 @@
 
         ;; [^"\\] | '\\' [abtnr\\]
         (normal-string-char? (fn (c) (if (= c #"\"") #f (not (= c #"\\")))))
-        (string-char (alt (sat normal-string-char? "normal string char ([^\"\\\\])")
-
+        (string-char (alt "[^\"]"
+                          (sat normal-string-char? "normal string char ([^\"\\\\])")
                           (seq-> #"\\"
-                                 (alt (seq-> #"a" (fn (_) #"\a"))
+                                 (alt "[abtnr\\\\]"
+                                      (seq-> #"a" (fn (_) #"\a"))
                                       (seq-> #"b" (fn (_) #"\b"))
                                       (seq-> #"t" (fn (_) #"\t"))
                                       (seq-> #"n" (fn (_) #"\n"))
@@ -792,13 +814,14 @@
 
         ;; '#' ('t' | 'f' | '"' string-char '"' | 'x' hex-number)
         (crunchy (seq-> #"#"
-                        (alt (seq-> #"t" (fn (_) #t))
+                        (alt "[tf\\\\x]"
+                             (seq-> #"t" (fn (_) #t))
                              (seq-> #"f" (fn (_) #f))
                              (seq-> #"\"" string-char #"\"" (fn (_ c __) c))
                              (seq-> #"x" hex-number (fn (_ n) n)))
                         (fn (_ v) v)))
 
-        (expr (alt list symbol string decimal-number crunchy))
+        (expr (alt "S-expr" list symbol string decimal-number crunchy))
 
         (ws-expr (seq-> ws expr (fn (_ v) v))))
     (box-set! expr-box expr)

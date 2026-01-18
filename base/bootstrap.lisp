@@ -386,6 +386,8 @@
 ;;; Self-Hosting Reader
 ;;; ================================================================================================
 
+(def build-symbol (fn (builder) (string->symbol (build-string builder))))
+
 (def do-read*
   ;;; Let over Lambda to the max!:
 
@@ -695,14 +697,18 @@
                      (fn (_ __ ls) ls)))
 
         (initial? (fn (c)
-                    (if (char-alphabetic? c)
-                      #t
-                      (index-of "_:!?+-*/=<>" c))))
+                    (if (isa? <char> c)
+                      (if (char-alphabetic? c)
+                        #t
+                        (index-of "_:!?+-*/=<>" c))
+                      #f)))
         (initial (sat initial? "symbol initial ([\\p{L}_:!?+\\-*/=<>])"))
         (subsequent? (fn (c)
                        (if (initial? c)
                          #t
-                         (char-numeric? c))))
+                         (if (isa? <char> c)
+                           (char-numeric? c)
+                           #f))))
         (subsequent (sat subsequent? "symbol subsequent ([\\p{L}_:!?+\\-*/=<>]\\p{Nd})"))
         ;; initial subsequent*
         (symbol (seq-> (mfoldl (fn (c builder) (push! builder c) builder)

@@ -650,25 +650,28 @@
         ;; ws-seg*
         (ws (mfoldl (fn (_ acc) acc) epsilon ws-seg))
 
-        (expr-ws (seq-> expr-box ws (fn (v _) v)))
-
-        ;; TODO: Source locations
-        ;; (expr ws)+ (')' | '.' expr ws ')')
-        (non-empty-list-tail (seq-> (mfoldl (fn (v acc) (set-cdr! (cdr acc) v) acc)
-                                             (seq-> expr-ws
-                                                    (fn (v)
-                                                      (let ((first-pair (cons v #f)))
-                                                        (cons first-pair first-pair))))
-                                             expr-ws)
-                                    (alt #")"
-                                         (seq-> #"." expr-ws #")" (fn (_ v __) v)))
-                                    (fn (acc tail) (set-cdr! (cdr acc) tail) (car acc))))
+        (ws-expr-ws (seq-> ws expr-box ws (fn (_ v __) v)))
 
         ;; ')'
-        (empty-list-tail (seq-> #")" (fn (_) ())))
+        (proper-list-terminator (seq-> #")" (fn (_) ())))
+        ;; TODO: Source locations
+        ;; (ws expr ws)+ (')' | '.' ws expr ws ')')
+        (non-empty-list-tail (seq-> (mfoldl (fn (v acc)
+                                              (let ((pair (cons v #f)))
+                                                (set-cdr! (cdr acc) pair)
+                                                (set-cdr! acc pair))
+                                              acc)
+                                            (seq-> ws-expr-ws
+                                                   (fn (v)
+                                                     (let ((first-pair (cons v #f)))
+                                                       (cons first-pair first-pair))))
+                                            ws-expr-ws)
+                                    (alt proper-list-terminator
+                                         (seq-> #"." ws-expr-ws #")" (fn (_ v __) v)))
+                                    (fn (acc tail) (set-cdr! (cdr acc) tail) (car acc))))
 
-        ;; '(' ws (non-empty-list-tail empty-list-tail)
-        (list (seq-> #"(" ws (alt non-empty-list-tail empty-list-tail) (fn (_ __ ls) ls)))
+        ;; '(' ws (non-empty-list-tail proper-list-terminator)
+        (list (seq-> #"(" ws (alt non-empty-list-tail proper-list-terminator) (fn (_ __ ls) ls)))
 
         (initial? (fn (c)
                     (if (char-alphabetic? c)

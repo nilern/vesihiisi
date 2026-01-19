@@ -390,11 +390,11 @@
 
 (def build-symbol (fn (builder) (string->symbol (build-string builder))))
 
-(def do-read*
-  ;;; Let over Lambda to the max!:
+;;; Let over Lambda to the max!:
 
-  ;;; First, an embedded LL(1) parser combinator library:
-  (let ((<parser> (make-slots-type (quote <parser>) 3 #f))
+;;; TODO: Fix indentation when code stabilizes:
+;;; First, an embedded LL(1) parser combinator library:
+(let ((<parser> (make-slots-type (quote <parser>) 3 #f))
         (parser-parse (fn ((: p <parser>)) (slot-get p 0)))
         (parser-look-ahead (fn ((: p <parser>)) (slot-get p 1)))
         (parser-nullable (fn ((: p <parser>)) (slot-get p 2)))
@@ -702,9 +702,9 @@
                     (if (isa? <char> c)
                       (if (char-alphabetic? c)
                         #t
-                        (index-of "_:!?+-*/=<>" c))
+                        (index-of "_:!?+-*/=<>&|" c))
                       #f)))
-        (initial (sat initial? "symbol initial ([\\p{L}_:!?+\\-*/=<>])"))
+        (initial (sat initial? "symbol initial ([\\p{L}_:!?+\\-*/=<>&|])"))
         (subsequent? (fn (c)
                        (if (initial? c)
                          #t
@@ -834,12 +834,19 @@
         (ws-expr (seq-> ws expr (fn (_ v) v))))
     (box-set! expr-box expr)
 
+  (def do-read*
     (fn (input loc)
       (let ((byte-idx (box (source-location-byte-index loc)))
             (v (parse ws-expr input byte-idx)))
-        (cons v (make <source-location> (source-location-filename loc) (box-get byte-idx)))))))
+        (cons v (make <source-location> (source-location-filename loc) (box-get byte-idx))))))
 
-;; FIXME: Need to provide start position as well as the end:
+  (def skip-whitespace
+    (fn (input)
+      (let ((byte-idx (box 0)))
+        (parse ws input byte-idx)
+        (box-get byte-idx)))))
+
+;; FIXME: Need to provide start location as well as the end:
 (def read*
   (make-multimethod 'read*
     (fn (input (: loc <source-location>)) (do-read* input loc))
@@ -849,3 +856,27 @@
   (make-multimethod 'read
     (fn (input) (car (read* input "???")))
     (fn () (read standard-input))))
+
+;; FIXME: Provide start location:
+(def read*-all
+  (make-multimethod 'read*-all
+    (fn (input (: loc <source-location>))
+      (let ((ws-count (skip-whitespace input)))
+        (if (not (= (peek input) end))
+          (let ((filename (source-location-filename loc))
+                (byte-idx (+ (source-location-byte-index loc) ws-count))
+                (v&loc (read* input (make <source-location> filename byte-idx)))
+                (pair (cons (car v&loc) ()))
+                (sexprs pair)
+                (byte-idx (source-location-byte-index (cdr v&loc))))
+            (letfn (((read*-remaining pair byte-idx)
+                       (if (not (= (peek input) end))
+                         (let ((v&loc (read* input (make <source-location> filename byte-idx)))
+                               (pair* (cons  (car v&loc) ()))
+                               (_ (set-cdr! pair pair*))
+                               (byte-idx (source-location-byte-index (cdr v&loc)))
+                               (ws-count (skip-whitespace input)))
+                           (read*-remaining pair* (+ byte-idx ws-count)))
+                         sexprs)))
+             (read*-remaining pair byte-idx)))
+          ())))))

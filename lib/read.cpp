@@ -183,7 +183,8 @@ bool online(int mc) { return !(mc == '\n' || mc == EOF); }
 inline bool isInitial(int mc) {
     return isalpha(mc) || mc == '_' || mc == ':' || mc == '!' || mc == '?'
            || mc == '+' || mc == '-' || mc == '*' || mc == '/'
-           || mc == '=' || mc == '<' || mc == '>';
+           || mc == '=' || mc == '<' || mc == '>'
+           || mc == '&' || mc == '|';
 }
 
 inline bool isSubsequent(int mc) { return isInitial(mc) || isdigit(mc); }

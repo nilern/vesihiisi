@@ -348,11 +348,13 @@
 
 (def next!
   (make-multimethod 'next!
-    string-iterator-next!))
+    string-iterator-next!
+    read-char))
 
 (def peek
   (make-multimethod 'peek
-    string-iterator-peek))
+    string-iterator-peek
+    peek-char))
 
 (def iter-fold!
   (fn (f acc it)

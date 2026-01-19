@@ -54,6 +54,7 @@ PrimopRes primopFlDiv(State* state);
 PrimopRes primopCharLt(State* state);
 PrimopRes primopCharToInteger(State* state);
 PrimopRes primopCharIsAlphabetic(State* state);
+PrimopRes primopCharIsNumeric(State* state);
 PrimopRes primopCharIsWhitespace(State* state);
 
 // Strings

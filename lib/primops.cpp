@@ -921,6 +921,16 @@ PrimopRes primopCharIsAlphabetic(State* state) {
     return PrimopRes::CONTINUE;
 }
 
+PrimopRes primopCharIsNumeric(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    auto const c = Char::fromUnchecked(state->regs[firstArgReg]).val();
+
+    state->regs[retReg] = Bool{utf8proc_category(int32_t(c)) == UTF8PROC_CATEGORY_ND};
+    return PrimopRes::CONTINUE;
+}
+
 PrimopRes primopCharIsWhitespace(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }

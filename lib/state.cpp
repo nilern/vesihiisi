@@ -969,6 +969,8 @@ State* State::tryCreate(size_t heapSize) {
                   false, Fixnum{2l}, dest->types.charr, dest->types.charr);
     installPrimop(dest, strLit("char-alphabetic?"), (MethodCode)primopCharIsAlphabetic,
                   false, Fixnum{1l}, dest->types.charr);
+    installPrimop(dest, strLit("char-numeric?"), (MethodCode)primopCharIsNumeric,
+                  false, Fixnum{1l}, dest->types.charr);
     installPrimop(dest, strLit("char-whitespace?"), (MethodCode)primopCharIsWhitespace,
                   false, Fixnum{1l}, dest->types.charr);
     installPrimop(dest, strLit("array!->string"), (MethodCode)primopArrayMutToString,

@@ -104,7 +104,32 @@ size_t UTF8InputFile::skipInvalid() {
     return skipCount;
 }
 
+int32_t UTF8InputFile::peec() {
+    if (!isValid()) { return EOF; }
+
+    if (bufCount > 0) {
+        int32_t maybeCp;
+        ssize_t const cpWidth = utf8proc_iterate(buf, ssize_t(bufCount), &maybeCp);
+        if (cpWidth > 0) {
+            return maybeCp;
+        }
+    }
+
+    bufCount += fread(buf + bufCount, sizeof *buf, bufCap - bufCount, cfile);
+
+    int32_t maybeCp;
+    ssize_t const cpWidth = utf8proc_iterate(buf, ssize_t(bufCount), &maybeCp);
+    if (cpWidth < 0) { return EOF - 1; }
+    if (cpWidth == 0) { return EOF; }
+
+    return maybeCp;
+}
+
+// TODO: DRY wrt. `peec`. (Easy to simply implement on top of `peec`, but that once again requires
+// redundant computation of `utf8EncodedWidth`.)
 int32_t UTF8InputFile::getc() {
+    if (!isValid()) { return EOF; }
+
     if (bufCount > 0) {
         int32_t maybeCp;
         ssize_t const cpWidth = utf8proc_iterate(buf, ssize_t(bufCount), &maybeCp);

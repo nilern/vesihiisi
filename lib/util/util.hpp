@@ -123,6 +123,11 @@ public:
         return dest.isValid();
     }
 
+    void close() {
+        fclose(cfile);
+        cfile = nullptr;
+    }
+
     ~UTF8InputFile() { if (cfile) { fclose(cfile); } }
 
     UTF8InputFile(UTF8InputFile const&) = delete;
@@ -139,6 +144,9 @@ public:
 
         return *this;
     }
+
+    /// @return Positive codepoint on success, EOF at end, EOF - 1 on invalid UTF-8
+    int32_t peec();
 
     /// @return Positive codepoint on success, EOF at end, EOF - 1 on invalid UTF-8
     int32_t getc();

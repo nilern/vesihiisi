@@ -1012,6 +1012,63 @@ PrimopRes primopStringToSymbol(State* state) {
     return PrimopRes::CONTINUE;
 }
 
+PrimopRes primopOpenInputFile(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    auto const filename = HRef<String>::fromUnchecked(state->regs[firstArgReg]);
+
+    ORef port = Default;
+    if (!InputFile::open(state, static_cast<HRef<InputFile>&>(port), filename)) {
+        exit(EXIT_FAILURE); // TODO
+    }
+
+    state->regs[retReg] = port;
+
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes primopClosePort(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    auto const port = HRef<InputFile>::fromUnchecked(state->regs[firstArgReg]);
+
+    port.ptr()->file.close();
+
+    return PrimopRes::CONTINUE; // Implicitly returns `port`
+}
+
+PrimopRes primopPeekChar(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    auto const port = HRef<InputFile>::fromUnchecked(state->regs[firstArgReg]);
+
+    auto const maybeCp = port.ptr()->file.peec();
+    if (maybeCp < 0) { exit(EXIT_FAILURE); } // TODO
+    auto const cp = uint32_t(maybeCp);
+
+    state->regs[retReg] = Char{cp};
+
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes primopReadChar(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    auto const port = HRef<InputFile>::fromUnchecked(state->regs[firstArgReg]);
+
+    auto const maybeCp = port.ptr()->file.getc();
+    if (maybeCp < 0) { exit(EXIT_FAILURE); } // TODO
+    auto const cp = uint32_t(maybeCp);
+
+    state->regs[retReg] = Char{cp};
+
+    return PrimopRes::CONTINUE;
+}
+
 PrimopRes primopWrite(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }

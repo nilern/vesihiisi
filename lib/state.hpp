@@ -25,7 +25,7 @@ typedef struct Shadowstack {
 
 #define REG_COUNT 256
 
-#define BOOTSTRAP_TYPE_COUNT 30
+#define BOOTSTRAP_TYPE_COUNT 31
 #define BOOTSTRAP_SINGLETON_COUNT 6
 
 struct NamedTypes {
@@ -55,6 +55,7 @@ struct NamedTypes {
     HRef<Type> knot;
     HRef<Type> ns;
     HRef<Type> end;
+    HRef<Type> inputFile;
     HRef<Type> fatalError;
     HRef<Type> unboundError;
     HRef<Type> typeError;
@@ -227,6 +228,8 @@ HRef<Continuation> allocContinuation(
     State* state, HRef<Method> method, Fixnum pc, Fixnum cloverCount);
 
 HRef<Knot> allocKnot(State* state);
+
+HRef<InputFile> createInputFile(State* state, UTF8InputFile&& file);
 
 HRef<UnboundError> createUnboundError(State* state, HRef<Symbol> name);
 

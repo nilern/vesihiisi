@@ -62,6 +62,10 @@ PrimopRes primopStringIteratorNext(State* state);
 PrimopRes primopStringToSymbol(State* state);
 
 // I/O
+PrimopRes primopOpenInputFile(State* state);
+PrimopRes primopClosePort(State* state);
+PrimopRes primopPeekChar(State* state);
+PrimopRes primopReadChar(State* state);
 PrimopRes primopWrite(State* state);
 PrimopRes primopWriteChar(State* state);
 PrimopRes primopWriteString(State* state);

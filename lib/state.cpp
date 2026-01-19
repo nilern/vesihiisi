@@ -39,6 +39,7 @@ char const* const typeNames[] = {
     "<knot>",
     "<ns>",
     "<end>",
+    "<input-file>",
     "<fatal-error>",
     "<unbound-error>",
     "<type-error>",
@@ -515,6 +516,24 @@ Type* tryCreateNamespaceType(Semispace* semispace, Type const* typeType) {
     return type;
 }
 
+Type* tryCreateInputFileType(Semispace* semispace, Type const* typeType) {
+    void* const maybeType = semispace->tryAlloc(typeType);
+    if (!maybeType) { return nullptr; }
+
+    Type* const type = (Type*)maybeType;
+    *type = Type{
+        .minSize = Fixnum((int64_t)sizeof(InputFile)),
+        .align = Fixnum((int64_t)alignof(InputFile)),
+        .isBytes = True,
+        .hasCodePtr = False,
+        .isFlex = False,
+        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
+        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
+    };
+
+    return type;
+}
+
 Type* tryCreateEndType(Semispace* semispace, Type const* typeType) {
     void* const maybeType = semispace->tryAlloc(typeType);
     if (!maybeType) { return nullptr; }
@@ -773,6 +792,8 @@ State* State::tryCreate(size_t heapSize) {
     if (!knotType) { return nullptr; }
     Type* const nsType = tryCreateNamespaceType(&heap.tospace, typeType);
     if (!nsType) { return nullptr; }
+    Type* const inputFileType = tryCreateInputFileType(&heap.tospace, typeType);
+    if (!inputFileType) { return nullptr; }
     Type* const endType = tryCreateEndType(&heap.tospace, typeType);
     if (!endType) { return nullptr; }
     Type* const fatalErrorType = tryCreateFatalErrorType(&heap.tospace, typeType);
@@ -842,6 +863,7 @@ State* State::tryCreate(size_t heapSize) {
             .knot = HRef(knotType),
             .ns = HRef(nsType),
             .end = HRef{endType},
+            .inputFile = HRef{inputFileType},
             .fatalError = HRef(fatalErrorType),
             .unboundError = HRef(unboundErrorType),
             .typeError = HRef(typeErrorType),
@@ -955,6 +977,14 @@ State* State::tryCreate(size_t heapSize) {
                   false, Fixnum{1l}, dest->types.stringIterator);
     installPrimop(dest, strLit("string->symbol"), (MethodCode)primopStringToSymbol,
                   false, Fixnum{1l}, dest->types.string);
+    installPrimop(dest, strLit("open-input-file"), (MethodCode)primopOpenInputFile,
+                  false, Fixnum{1l}, dest->types.string);
+    installPrimop(dest, strLit("close-port"), (MethodCode)primopClosePort,
+                  false, Fixnum{1l}, dest->types.inputFile);
+    installPrimop(dest, strLit("peek-char"), (MethodCode)primopPeekChar,
+                  false, Fixnum{1l}, dest->types.inputFile);
+    installPrimop(dest, strLit("read-char"), (MethodCode)primopReadChar,
+                  false, Fixnum{1l}, dest->types.inputFile);
     installPrimop(dest, strLit("write"), (MethodCode)primopWrite,
                   false, Fixnum{1l}, dest->types.any);
     installPrimop(dest, strLit("write-char"), (MethodCode)primopWriteChar,
@@ -1516,6 +1546,20 @@ HRef<Knot> allocKnot(State* state) {
     }
 
     return HRef(ptr);
+}
+
+HRef<InputFile> createInputFile(State* state, UTF8InputFile&& file) {
+    InputFile* ptr = static_cast<decltype(ptr)>(
+        state->heap.tospace.tryAlloc(state->types.inputFile.ptr()));
+    if (mustCollect(ptr)) {
+        collect(state);
+        ptr = static_cast<decltype(ptr)>(
+            state->heap.tospace.allocOrDie(state->types.inputFile.ptr()));
+    }
+
+    *ptr = InputFile{std::move(file)};
+
+    return HRef{ptr};
 }
 
 HRef<UnboundError> createUnboundError(State* state, HRef<Symbol> name) {

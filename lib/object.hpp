@@ -418,6 +418,14 @@ struct Namespace : public FixedObject {
 /// FIXME: Should have zero size but a byte is forced upon us :(
 struct End : public FixedObject {};
 
+struct InputFile : public FixedObject {
+    UTF8InputFile file;
+
+    InputFile(UTF8InputFile&& t_file) : file{std::move(t_file)} {}
+
+    static bool open(State* state, HRef<InputFile>& res, HRef<String> filename);
+};
+
 // TODO: Eliminate all the other error types:
 struct FatalError : public FlexObject<FatalError, ORef> {
     HRef<Symbol> name;

@@ -935,10 +935,13 @@ PrimopRes primopCharIsWhitespace(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
 
-    auto const c = int32_t(Char::fromUnchecked(state->regs[firstArgReg]).val());
+    auto const c = Char::fromUnchecked(state->regs[firstArgReg]).val();
 
-    // FIXME: Does not include various cp:s like \n, \t etc. that are CC instead:
-    state->regs[retReg] = Bool{utf8proc_category(c) == UTF8PROC_CATEGORY_ZS};
+    utf8proc_category_t const cat = utf8proc_category(int32_t(c));
+    bool const isWhitespace =
+        (UTF8PROC_CATEGORY_ZS <= cat && cat <= UTF8PROC_CATEGORY_ZP) // Space cats
+        || (9 <= c && c <= 13) || c == 133; // Whitespace ctrls
+    state->regs[retReg] = Bool{isWhitespace};
 
     return PrimopRes::CONTINUE;
 }

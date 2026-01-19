@@ -656,7 +656,8 @@
 
         ;; FIXME:
         ;; \s+|;[^\n]*(\n|$)
-        (ws-seg (let ((whitespace-char (sat char-whitespace? "whitespace char (\\s)"))
+        (ws-seg (let ((whitespace-char (sat (fn (c) (if (isa? <char> c) (char-whitespace? c) #f))
+                                            "whitespace char (\\s)"))
                       (online (sat (fn (c) (not (= c #"\n"))) "not newline (#\"\\n\")")))
                    (alt "\\s|;"
                         (mfoldl (fn (_ acc) acc)
@@ -880,3 +881,4 @@
                          sexprs)))
              (read*-remaining pair byte-idx)))
           ())))))
+

@@ -1046,11 +1046,14 @@ PrimopRes primopPeekChar(State* state) {
     auto const port = HRef<InputFile>::fromUnchecked(state->regs[firstArgReg]);
 
     auto const maybeCp = port.ptr()->file.peec();
-    if (maybeCp < 0) { exit(EXIT_FAILURE); } // TODO
+    if (maybeCp == EOF) {
+        state->regs[retReg] = state->singletons.end;
+        return PrimopRes::CONTINUE;
+    }
+    if (maybeCp < EOF) { exit(EXIT_FAILURE); } // TODO
     auto const cp = uint32_t(maybeCp);
 
     state->regs[retReg] = Char{cp};
-
     return PrimopRes::CONTINUE;
 }
 
@@ -1061,7 +1064,11 @@ PrimopRes primopReadChar(State* state) {
     auto const port = HRef<InputFile>::fromUnchecked(state->regs[firstArgReg]);
 
     auto const maybeCp = port.ptr()->file.getc();
-    if (maybeCp < 0) { exit(EXIT_FAILURE); } // TODO
+    if (maybeCp == EOF) {
+        state->regs[retReg] = state->singletons.end;
+        return PrimopRes::CONTINUE;
+    }
+    if (maybeCp < EOF) { exit(EXIT_FAILURE); } // TODO
     auto const cp = uint32_t(maybeCp);
 
     state->regs[retReg] = Char{cp};

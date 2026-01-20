@@ -725,18 +725,41 @@
 
         ;; [^"\\] | '\\' [abtnr\\]
         (normal-string-char? (fn (c) (if (= c #"\"") #f (not (= c #"\\")))))
+        (string-escapee? (fn (c)
+                           (if (= c #"\"")
+                             #t
+                             (if (= c #"a")
+                               #t
+                               (if (= c #"b")
+                                 #t
+                                 (if (= c #"t")
+                                   #t
+                                   (if (= c #"n")
+                                     #t
+                                     (if (= c #"r")
+                                       #t
+                                       (= c #"\\")))))))))
+        (escape (fn (c)
+                  (if (= c #"\"")
+                    c
+                    (if (= c #"a")
+                      #"\a"
+                      (if (= c #"b")
+                        #"\b"
+                        (if (= c #"t")
+                          #"\t"
+                          (if (= c #"n")
+                            #"\n"
+                            (if (= c #"r")
+                              #"\r"
+                              (if (= c #"\\")
+                                c
+                                #f)))))))))
         (string-char (alt "[^\"]"
                           (sat normal-string-char? "normal string char ([^\"\\\\])")
                           (seq-> #"\\"
-                                 (alt "[abtnr\\\\]"
-                                      (seq-> #"a" (fn (_) #"\a"))
-                                      (seq-> #"b" (fn (_) #"\b"))
-                                      (seq-> #"t" (fn (_) #"\t"))
-                                      (seq-> #"n" (fn (_) #"\n"))
-                                      (seq-> #"r" (fn (_) #"\r"))
-                                      (seq-> #"\\" (fn (_) #"\\")))
-                                      ;; TODO: \"
-                                 (fn (_ c) c))))
+                                 (sat string-escapee? "[abtnr\\\\]")
+                                 (fn (_ c) (escape c)))))
 
         ;; '"' string-char* '"'
         (string (seq-> (mfoldl (fn (c builder) (push! builder c) builder)

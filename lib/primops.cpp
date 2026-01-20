@@ -10,6 +10,7 @@
 #include "util/util.hpp"
 #include "bytecode.hpp"
 #include "dispatch.hpp"
+#include "compiler/compiler.hpp"
 
 namespace {
 
@@ -1195,11 +1196,16 @@ PrimopRes primopEval(State* state) {
     auto const loc = HRef<Loc>::fromUnchecked(state->regs[firstArgReg + 1]);
     bool const debug = Bool::fromUnchecked(state->regs[firstArgReg + 2]).val();
 
-    EvalRes const res = eval(reinterpret_cast<Vshs_State*>(state), expr, loc, debug);
-    if (!res.success) { exit(EXIT_FAILURE); } // TODO
+    CompilationRes const compilationRes =
+        compile(state, expr, HRef<Loc>::fromUnchecked(loc), debug);
+    if (!compilationRes.success) {
+        exit(EXIT_FAILURE); // TODO
+    }
+    auto const method = compilationRes.val;
 
-    state->regs[retReg] = res.val;
-    return PrimopRes::CONTINUE;
+    state->regs[calleeReg] = allocClosure(state, method, Fixnum{0l});
+    state->entryRegc = calleeReg + 1;
+    return PrimopRes::TAILCALL;
 }
 
 PrimopRes primopExit(State* state) {

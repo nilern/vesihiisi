@@ -311,7 +311,20 @@
     (fn ((: x <pair>) (: y <pair>))
       (if (= (car x) (car y))
         (= (cdr x) (cdr y))
-        #f))))
+        #f))
+
+    (fn ((: s1 <string>) (: s2 <string>))
+      (let ((it1 (make <string-iterator> s1 0))
+            (it2 (make <string-iterator> s2 0)))
+        (letfn (((loop)
+                   (let ((mc1 (next! it1))
+                         (mc2 (next! it2)))
+                     (if (identical? mc1 mc2)
+                       (if (identical? mc1 end)
+                         #t
+                         (loop))
+                       #f))))
+          (loop))))))
 
 (def =
   (fn (x y)
@@ -928,3 +941,20 @@
                          (array start-loc sexprs))))
               (read*-remaining pair byte-idx)))
           (array start-loc ()))))))
+
+(def read-line
+  (fn (input)
+    (let ((builder (string-builder)))
+      (letfn (((loop)
+                (let ((mc (next! input)))
+                  (if (identical? mc #"\n")
+                    (build-string builder)
+                    (if (identical? mc end)
+                      (let ((line (build-string builder)))
+                        (if (not (= line ""))
+                          line
+                          end))
+                      (let ()
+                        (string-builder-push! builder mc)
+                        (loop)))))))
+        (loop)))))

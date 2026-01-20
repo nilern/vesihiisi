@@ -401,146 +401,172 @@
 
 ;;; Let over Lambda to the max!:
 
-;;; TODO: Fix indentation when code stabilizes:
 ;;; First, an embedded LL(1) parser combinator library:
 (let ((<parser> (make-slots-type (quote <parser>) 3 #f))
-        (parser-parse (fn ((: p <parser>)) (slot-get p 0)))
-        (parser-look-ahead (fn ((: p <parser>)) (slot-get p 1)))
-        (parser-nullable (fn ((: p <parser>)) (slot-get p 2)))
+      (parser-parse (fn ((: p <parser>)) (slot-get p 0)))
+      (parser-look-ahead (fn ((: p <parser>)) (slot-get p 1)))
+      (parser-nullable (fn ((: p <parser>)) (slot-get p 2)))
 
-        (parse (make-multimethod 'parse
-                 (fn ((: p <parser>) input filename byte-idx)
-                   ((parser-parse p) input filename byte-idx))
+      (parse (make-multimethod 'parse
+               (fn ((: p <parser>) input filename byte-idx)
+                 ((parser-parse p) input filename byte-idx))
 
-                 (fn ((: p-box <box>) input filename byte-idx)
-                   ((parser-parse (box-get p-box)) input filename byte-idx))
+               (fn ((: p-box <box>) input filename byte-idx)
+                 ((parser-parse (box-get p-box)) input filename byte-idx))
 
-                 (fn ((: c <char>) input filename byte-idx)
-                   (let ((ic (next! input)))
-                     (if (= ic c)
-                       (let ()
-                         (box-set! byte-idx (+ (box-get byte-idx) 1))
-                         ic)
-                       (error (quote read-error) ic c))))))
+               (fn ((: c <char>) input filename byte-idx)
+                 (let ((ic (next! input)))
+                   (if (= ic c)
+                     (let ()
+                       (box-set! byte-idx (+ (box-get byte-idx) 1))
+                       ic)
+                     (error (quote read-error) ic c))))))
 
-        (look-ahead? (make-multimethod 'look-ahead?
-                       (fn ((: p <parser>) c) ((parser-look-ahead p) c))
-                       (fn ((: p-box <box>) c) ((parser-look-ahead (box-get p-box)) c))
-                       (fn ((: c <char>) ic) (= ic c))))
+      (look-ahead? (make-multimethod 'look-ahead?
+                     (fn ((: p <parser>) c) ((parser-look-ahead p) c))
+                     (fn ((: p-box <box>) c) ((parser-look-ahead (box-get p-box)) c))
+                     (fn ((: c <char>) ic) (= ic c))))
 
-        (nullable? (make-multimethod 'nullable?
-                     parser-nullable
-                     (fn ((: p-box <box>)) (parser-nullable (box-get p-box)))
-                     (fn ((: c <char>)) #f)))
+      (nullable? (make-multimethod 'nullable?
+                   parser-nullable
+                   (fn ((: p-box <box>)) (parser-nullable (box-get p-box)))
+                   (fn ((: c <char>)) #f)))
 
-        (sat (fn (acceptable? description)
-               (make <parser> (fn (input filename byte-idx)
-                                (let ((c (next! input)))
-                                  (if (acceptable? c)
-                                    (let ()
-                                      (box-set! byte-idx (+ (box-get byte-idx) 1))
-                                      c)
-                                    (error (quote read-error) c description))))
-                              acceptable?
-                              #f)))
+      (sat (fn (acceptable? description)
+             (make <parser> (fn (input filename byte-idx)
+                              (let ((c (next! input)))
+                                (if (acceptable? c)
+                                  (let ()
+                                    (box-set! byte-idx (+ (box-get byte-idx) 1))
+                                    c)
+                                  (error (quote read-error) c description))))
+                            acceptable?
+                            #f)))
 
-        (epsilon (make <parser> (fn (input filename byte-idx) #f)
-                                (fn (c) #f) ; Theoretically off but makes this work in e.g. `seq->`
-                                #t))
+      (epsilon (make <parser> (fn (input filename byte-idx) #f)
+                              (fn (c) #f) ; Theoretically off but makes this work in e.g. `seq->`
+                              #t))
 
-        (loc (make <parser> (fn (input filename byte-idx)
-                              (make <source-location> filename (box-get byte-idx)))
-                            (fn (c) #f) ; Theoretically off but makes this work in e.g. `seq->`
-                            #t))
+      (loc (make <parser> (fn (input filename byte-idx)
+                            (make <source-location> filename (box-get byte-idx)))
+                          (fn (c) #f) ; Theoretically off but makes this work in e.g. `seq->`
+                          #t))
 
-        (parser-placeholder (fn (nullable)
-                              (make <parser>
-                                    (fn (input filename byte-idx)
-                                      (error (quote uninitialized-parser) input filename byte-idx))
-                                    (fn (c) (error (quote uninitialized-parser) c))
-                                    nullable)))
+      (parser-placeholder (fn (nullable)
+                            (make <parser>
+                                  (fn (input filename byte-idx)
+                                    (error (quote uninitialized-parser) input filename byte-idx))
+                                  (fn (c) (error (quote uninitialized-parser) c))
+                                  nullable)))
 
         ;; Could use varargs but the reader is so fundamental that hand-unrolling is warranted:
         ;; p q etc.
-        (seq-> (make-multimethod 'seq->
-                 (fn (p f)
-                   (make <parser> (fn (input filename byte-idx)
-                                    (f (parse p input filename byte-idx)))
-                                  (fn (c) (look-ahead? p c))
-                                  (nullable? p)))
+      (seq-> (make-multimethod 'seq->
+               (fn (p f)
+                 (make <parser> (fn (input filename byte-idx)
+                                  (f (parse p input filename byte-idx)))
+                                (fn (c) (look-ahead? p c))
+                                (nullable? p)))
 
-                 (fn (p q f)
-                   (make <parser> (fn (input filename byte-idx)
-                                    (let ((x (parse p input filename byte-idx))
-                                          (y (parse q input filename byte-idx)))
-                                      (f x y)))
-                                  (fn (c)
-                                    (if (look-ahead? p c)
-                                      #t
-                                      (if (nullable? p)
-                                        (look-ahead? q c)
-                                        #f)))
-                                  (if (nullable? p) (nullable? q) #f)))
+               (fn (p q f)
+                 (make <parser> (fn (input filename byte-idx)
+                                  (let ((x (parse p input filename byte-idx))
+                                        (y (parse q input filename byte-idx)))
+                                    (f x y)))
+                                (fn (c)
+                                  (if (look-ahead? p c)
+                                    #t
+                                    (if (nullable? p)
+                                      (look-ahead? q c)
+                                      #f)))
+                                (if (nullable? p) (nullable? q) #f)))
 
-                 (fn (p q r f)
-                   (make <parser> (fn (input filename byte-idx)
-                                    (let ((x (parse p input filename byte-idx))
-                                          (y (parse q input filename byte-idx))
-                                          (z (parse r input filename byte-idx)))
-                                      (f x y z)))
-                                  (fn (c)
-                                    (if (look-ahead? p c)
-                                      #t
-                                      (if (nullable? p)
-                                        (if (look-ahead? q c)
-                                          #t
-                                          (if (nullable? q)
-                                            (look-ahead? r c)
-                                            #f))
-                                        #f)))
-                                  (if (nullable? p)
-                                    (if (nullable? q)
-                                      (nullable? r)
-                                      #f)
-                                    #f)))))
+               (fn (p q r f)
+                 (make <parser> (fn (input filename byte-idx)
+                                  (let ((x (parse p input filename byte-idx))
+                                        (y (parse q input filename byte-idx))
+                                        (z (parse r input filename byte-idx)))
+                                    (f x y z)))
+                                (fn (c)
+                                  (if (look-ahead? p c)
+                                    #t
+                                    (if (nullable? p)
+                                      (if (look-ahead? q c)
+                                        #t
+                                        (if (nullable? q)
+                                          (look-ahead? r c)
+                                          #f))
+                                      #f)))
+                                (if (nullable? p)
+                                  (if (nullable? q)
+                                    (nullable? r)
+                                    #f)
+                                  #f)))))
 
         ;; Could use varargs but the reader is so fundamental that hand-unrolling is warranted:
         ;; Does not support nullable alternatives but we do not need them:
         ;; p | q etc.
-        (alt (make-multimethod 'alt
-               (fn (expected p q)
-                 (make <parser> (fn (input filename byte-idx)
-                                  (let ((c (peek input)))
-                                    (if (look-ahead? p c)
-                                      (parse p input filename byte-idx)
-                                      (if (look-ahead? q c)
-                                        (parse q input filename byte-idx)
-                                        (error 'read-error c expected)))))
-                                (fn (c) (if (look-ahead? p c) #t (look-ahead? q c)))
-                                (if (nullable? p) (nullable? q) #f)))
-               (fn (expected p q r)
-                 (make <parser> (fn (input filename byte-idx)
-                                  (let ((c (peek input)))
-                                    (if (look-ahead? p c)
-                                      (parse p input filename byte-idx)
-                                      (if (look-ahead? q c)
-                                        (parse q input filename byte-idx)
-                                        (if (look-ahead? r c)
-                                          (parse r input filename byte-idx)
-                                          (error 'read-error c expected))))))
+      (alt (make-multimethod 'alt
+             (fn (expected p q)
+               (make <parser> (fn (input filename byte-idx)
+                                (let ((c (peek input)))
+                                  (if (look-ahead? p c)
+                                    (parse p input filename byte-idx)
+                                    (if (look-ahead? q c)
+                                      (parse q input filename byte-idx)
+                                      (error 'read-error c expected)))))
+                              (fn (c) (if (look-ahead? p c) #t (look-ahead? q c)))
+                              (if (nullable? p) (nullable? q) #f)))
+             (fn (expected p q r)
+               (make <parser> (fn (input filename byte-idx)
+                                (let ((c (peek input)))
+                                  (if (look-ahead? p c)
+                                    (parse p input filename byte-idx)
+                                    (if (look-ahead? q c)
+                                      (parse q input filename byte-idx)
+                                      (if (look-ahead? r c)
+                                        (parse r input filename byte-idx)
+                                        (error 'read-error c expected))))))
+                              (fn (c)
+                                (if (look-ahead? p c)
+                                  #t
+                                  (if (look-ahead? q c)
+                                    #t
+                                    (look-ahead? r c))))
+                              (if (nullable? p)
+                                (if (nullable? q)
+                                  (nullable? r)
+                                  #f)
+                                #f)))
+             (fn (expected p q r s)
+               (make <parser> (fn (input filename byte-idx)
+                                (let ((c (peek input)))
+                                  (if (look-ahead? p c)
+                                    (parse p input filename byte-idx)
+                                    (if (look-ahead? q c)
+                                      (parse q input filename byte-idx)
+                                      (if (look-ahead? r c)
+                                        (parse r input filename byte-idx)
+                                        (if (look-ahead? s c)
+                                          (parse s input filename byte-idx)
+                                          (error 'read-error c expected)))))))
                                 (fn (c)
                                   (if (look-ahead? p c)
                                     #t
                                     (if (look-ahead? q c)
                                       #t
-                                      (look-ahead? r c))))
+                                      (if (look-ahead? r c)
+                                        #t
+                                        (look-ahead? s c)))))
                                 (if (nullable? p)
                                   (if (nullable? q)
-                                    (nullable? r)
+                                    (if (nullable? r)
+                                      (nullable? s)
+                                      #f)
                                     #f)
                                   #f)))
-               (fn (expected p q r s)
-                 (make <parser> (fn (input filename byte-idx)
+              (fn (expected p q r s t)
+                (make <parser> (fn (input filename byte-idx)
                                   (let ((c (peek input)))
                                     (if (look-ahead? p c)
                                       (parse p input filename byte-idx)
@@ -550,334 +576,307 @@
                                           (parse r input filename byte-idx)
                                           (if (look-ahead? s c)
                                             (parse s input filename byte-idx)
-                                            (error 'read-error c expected)))))))
-                                 (fn (c)
-                                   (if (look-ahead? p c)
-                                     #t
-                                     (if (look-ahead? q c)
-                                       #t
-                                       (if (look-ahead? r c)
-                                         #t
-                                         (look-ahead? s c)))))
-                                 (if (nullable? p)
-                                   (if (nullable? q)
-                                     (if (nullable? r)
-                                       (nullable? s)
-                                       #f)
-                                     #f)
-                                   #f)))
-                (fn (expected p q r s t)
-                  (make <parser> (fn (input filename byte-idx)
-                                   (let ((c (peek input)))
-                                     (if (look-ahead? p c)
-                                       (parse p input filename byte-idx)
-                                       (if (look-ahead? q c)
-                                         (parse q input filename byte-idx)
-                                         (if (look-ahead? r c)
-                                           (parse r input filename byte-idx)
-                                           (if (look-ahead? s c)
-                                             (parse s input filename byte-idx)
-                                             (if (look-ahead? t c)
-                                               (parse t input filename byte-idx)
-                                               (error 'read-error c expected))))))))
-                                 (fn (c)
-                                   (if (look-ahead? p c)
-                                     #t
-                                     (if (look-ahead? q c)
-                                       #t
-                                       (if (look-ahead? r c)
-                                         #t
-                                         (if (look-ahead? s c)
-                                           #t
-                                           (look-ahead? t c))))))
-                                 (if (nullable? p)
-                                   (if (nullable? q)
-                                     (if (nullable? r)
-                                       (if (nullable? s)
-                                         (nullable? t)
-                                         #f)
-                                       #f)
-                                     #f)
-                                   #f)))
-                (fn (expected p q r s t u)
-                  (make <parser> (fn (input filename byte-idx)
-                                   (let ((c (peek input)))
-                                     (if (look-ahead? p c)
-                                       (parse p input filename byte-idx)
-                                       (if (look-ahead? q c)
-                                         (parse q input filename byte-idx)
-                                         (if (look-ahead? r c)
-                                           (parse r input filename byte-idx)
-                                           (if (look-ahead? s c)
-                                             (parse s input filename byte-idx)
-                                             (if (look-ahead? t c)
-                                               (parse t input filename byte-idx)
-                                               (if (look-ahead? u c)
-                                                 (parse u input filename byte-idx)
-                                                 (error 'read-error c expected)))))))))
-                                 (fn (c)
-                                   (if (look-ahead? p c)
-                                     #t
-                                     (if (look-ahead? q c)
-                                       #t
-                                       (if (look-ahead? r c)
-                                         #t
-                                         (if (look-ahead? s c)
-                                           #t
-                                           (if (look-ahead? t c)
-                                             #t
-                                             (look-ahead? u c)))))))
-                                 (if (nullable? p)
-                                   (if (nullable? q)
-                                     (if (nullable? r)
-                                       (if (nullable? s)
-                                         (if (nullable? t)
-                                           (nullable? u)
-                                           #f)
-                                         #f)
-                                       #f)
-                                     #f)
-                                   #f)))))
+                                            (if (look-ahead? t c)
+                                              (parse t input filename byte-idx)
+                                              (error 'read-error c expected))))))))
+                                (fn (c)
+                                  (if (look-ahead? p c)
+                                    #t
+                                    (if (look-ahead? q c)
+                                      #t
+                                      (if (look-ahead? r c)
+                                        #t
+                                        (if (look-ahead? s c)
+                                          #t
+                                          (look-ahead? t c))))))
+                                (if (nullable? p)
+                                  (if (nullable? q)
+                                    (if (nullable? r)
+                                      (if (nullable? s)
+                                        (nullable? t)
+                                        #f)
+                                      #f)
+                                    #f)
+                                  #f)))
+              (fn (expected p q r s t u)
+                (make <parser> (fn (input filename byte-idx)
+                                  (let ((c (peek input)))
+                                    (if (look-ahead? p c)
+                                      (parse p input filename byte-idx)
+                                      (if (look-ahead? q c)
+                                        (parse q input filename byte-idx)
+                                        (if (look-ahead? r c)
+                                          (parse r input filename byte-idx)
+                                          (if (look-ahead? s c)
+                                            (parse s input filename byte-idx)
+                                            (if (look-ahead? t c)
+                                              (parse t input filename byte-idx)
+                                              (if (look-ahead? u c)
+                                                (parse u input filename byte-idx)
+                                                (error 'read-error c expected)))))))))
+                                (fn (c)
+                                  (if (look-ahead? p c)
+                                    #t
+                                    (if (look-ahead? q c)
+                                      #t
+                                      (if (look-ahead? r c)
+                                        #t
+                                        (if (look-ahead? s c)
+                                          #t
+                                          (if (look-ahead? t c)
+                                            #t
+                                            (look-ahead? u c)))))))
+                                (if (nullable? p)
+                                  (if (nullable? q)
+                                    (if (nullable? r)
+                                      (if (nullable? s)
+                                        (if (nullable? t)
+                                          (nullable? u)
+                                          #f)
+                                        #f)
+                                      #f)
+                                    #f)
+                                  #f)))))
 
-        ;; Would not work for a bool-valued parser but we do not need that:
-        (opt (fn (p)
-               (make <parser> (fn (input filename byte-idx)
-                                (if (look-ahead? p (peek input))
-                                  (parse p input filename byte-idx)
-                                  #f))
-                              (fn (c) (look-ahead? p c))
-                              #t)))
+      ;; Would not work for a bool-valued parser but we do not need that:
+      (opt (fn (p)
+              (make <parser> (fn (input filename byte-idx)
+                              (if (look-ahead? p (peek input))
+                                (parse p input filename byte-idx)
+                                #f))
+                            (fn (c) (look-ahead? p c))
+                            #t)))
 
-        ;; accp p*
-        (mfoldl (fn (f accp p)
-                  (make <parser> (fn (input filename byte-idx)
-                                   (let ((acc (parse accp input filename byte-idx)))
-                                     (letfn (((parse-ps acc)
-                                               (if (look-ahead? p (peek input))
-                                                 (let ((v (parse p input filename byte-idx)))
-                                                   (parse-ps (f v acc)))
-                                                 acc)))
-                                       (parse-ps acc))))
-                                 (fn (c)
-                                   (if (look-ahead? accp c)
-                                     #t
-                                     (if (nullable? accp)
-                                       (look-ahead? p c)
-                                       #f)))
-                                 (nullable? accp))))
+      ;; accp p*
+      (mfoldl (fn (f accp p)
+                (make <parser> (fn (input filename byte-idx)
+                                  (let ((acc (parse accp input filename byte-idx)))
+                                    (letfn (((parse-ps acc)
+                                              (if (look-ahead? p (peek input))
+                                                (let ((v (parse p input filename byte-idx)))
+                                                  (parse-ps (f v acc)))
+                                                acc)))
+                                      (parse-ps acc))))
+                                (fn (c)
+                                  (if (look-ahead? accp c)
+                                    #t
+                                    (if (nullable? accp)
+                                      (look-ahead? p c)
+                                      #f)))
+                                (nullable? accp))))
 
-        ;;; Now for the actual concrete S-expression parsing:
+;;; Now for the actual concrete S-expression parsing:
 
-        (expr-box (box (parser-placeholder #f)))
+      (expr-box (box (parser-placeholder #f)))
 
-        ;; \s+|;[^\n]*(\n|$)
-        (ws-seg (let ((whitespace-char (sat (fn (c) (if (isa? <char> c) (char-whitespace? c) #f))
-                                            "whitespace char (\\s)"))
-                      (online (sat (fn (c) (not (= c #"\n"))) "not newline (#\"\\n\")")))
-                   (alt "\\s|;"
-                        (mfoldl (fn (_ acc) acc)
-                                (seq-> whitespace-char (fn (_) #f))
-                                whitespace-char)
-                        (seq-> #";"
-                               (mfoldl (fn (_ acc) acc) epsilon online)
-                               (alt "\n|$" #"\n" end)
-                               (fn (_ __ ___) #f)))))
-        ;; ws-seg*
-        (ws (mfoldl (fn (_ acc) acc) epsilon ws-seg))
+      ;; \s+|;[^\n]*(\n|$)
+      (ws-seg (let ((whitespace-char (sat (fn (c) (if (isa? <char> c) (char-whitespace? c) #f))
+                                          "whitespace char (\\s)"))
+                    (online (sat (fn (c) (not (= c #"\n"))) "not newline (#\"\\n\")")))
+                  (alt "\\s|;"
+                      (mfoldl (fn (_ acc) acc)
+                              (seq-> whitespace-char (fn (_) #f))
+                              whitespace-char)
+                      (seq-> #";"
+                              (mfoldl (fn (_ acc) acc) epsilon online)
+                              (alt "\n|$" #"\n" end)
+                              (fn (_ __ ___) #f)))))
+      ;; ws-seg*
+      (ws (mfoldl (fn (_ acc) acc) epsilon ws-seg))
 
-        (ws-expr-ws (seq-> ws expr-box ws (fn (_ loc&v __) loc&v)))
+      (ws-expr-ws (seq-> ws expr-box ws (fn (_ loc&v __) loc&v)))
 
-        ;; ')'
-        (proper-list-terminator (seq-> #")" (fn (_) ())))
-        ;; (ws expr ws)+ (')' | '.' ws expr ws ')')
-        (non-empty-list-tail (seq-> (mfoldl (fn (loc&v acc)
-                                              (let ((loc (array-get loc&v 0))
-                                                    (v (array-get loc&v 1))
-                                                    (pair (cons* v #f loc)))
-                                                (set-cdr! (cdr acc) pair)
-                                                (set-cdr! acc pair))
-                                              acc)
-                                            (seq-> ws-expr-ws
-                                                   (fn (loc&v)
-                                                     (let ((loc (array-get loc&v 0))
-                                                           (v (array-get loc&v 1))
-                                                           (first-pair (cons* v #f loc)))
-                                                       (cons first-pair first-pair))))
-                                            ws-expr-ws)
-                                    (alt "[).]"
-                                         proper-list-terminator
-                                         (seq-> #"." ws-expr-ws #")"
-                                                (fn (_ loc&v __) (array-get loc&v 1))))
-                                    (fn (acc tail) (set-cdr! (cdr acc) tail) (car acc))))
+      ;; ')'
+      (proper-list-terminator (seq-> #")" (fn (_) ())))
+      ;; (ws expr ws)+ (')' | '.' ws expr ws ')')
+      (non-empty-list-tail (seq-> (mfoldl (fn (loc&v acc)
+                                            (let ((loc (array-get loc&v 0))
+                                                  (v (array-get loc&v 1))
+                                                  (pair (cons* v #f loc)))
+                                              (set-cdr! (cdr acc) pair)
+                                              (set-cdr! acc pair))
+                                            acc)
+                                          (seq-> ws-expr-ws
+                                                  (fn (loc&v)
+                                                    (let ((loc (array-get loc&v 0))
+                                                          (v (array-get loc&v 1))
+                                                          (first-pair (cons* v #f loc)))
+                                                      (cons first-pair first-pair))))
+                                          ws-expr-ws)
+                                  (alt "[).]"
+                                        proper-list-terminator
+                                        (seq-> #"." ws-expr-ws #")"
+                                              (fn (_ loc&v __) (array-get loc&v 1))))
+                                  (fn (acc tail) (set-cdr! (cdr acc) tail) (car acc))))
 
-        ;; '(' ws (non-empty-list-tail proper-list-terminator)
-        (list (seq-> #"("
-                     ws
-                     (alt "S-expr or #\")\""
-                          non-empty-list-tail
-                          proper-list-terminator)
-                     (fn (_ __ ls) ls)))
+      ;; '(' ws (non-empty-list-tail proper-list-terminator)
+      (list (seq-> #"("
+                    ws
+                    (alt "S-expr or #\")\""
+                        non-empty-list-tail
+                        proper-list-terminator)
+                    (fn (_ __ ls) ls)))
 
-        (initial? (fn (c)
-                    (if (isa? <char> c)
-                      (if (char-alphabetic? c)
-                        #t
-                        (index-of "_:!?+-*/=<>&|" c))
-                      #f)))
-        (initial (sat initial? "symbol initial ([\\p{L}_:!?+\\-*/=<>&|])"))
-        (subsequent? (fn (c)
-                       (if (initial? c)
-                         #t
-                         (if (isa? <char> c)
-                           (char-numeric? c)
-                           #f))))
-        (subsequent (sat subsequent? "symbol subsequent ([\\p{L}_:!?+\\-*/=<>]\\p{Nd})"))
-        ;; initial subsequent*
-        (symbol (seq-> (mfoldl (fn (c builder) (push! builder c) builder)
-                               (seq-> initial
-                                      (fn (c)
-                                        (let ((builder (string-builder)))
-                                          (push! builder c)
-                                          builder)))
-                               subsequent)
-                       (fn (builder) (build-symbol builder))))
-
-        ;; [^"\\] | '\\' [abtnr\\]
-        (normal-string-char? (fn (c) (if (= c #"\"") #f (not (= c #"\\")))))
-        (string-escapee? (fn (c)
-                           (if (= c #"\"")
-                             #t
-                             (if (= c #"a")
-                               #t
-                               (if (= c #"b")
-                                 #t
-                                 (if (= c #"t")
-                                   #t
-                                   (if (= c #"n")
-                                     #t
-                                     (if (= c #"r")
-                                       #t
-                                       (= c #"\\")))))))))
-        (escape (fn (c)
-                  (if (= c #"\"")
-                    c
-                    (if (= c #"a")
-                      #"\a"
-                      (if (= c #"b")
-                        #"\b"
-                        (if (= c #"t")
-                          #"\t"
-                          (if (= c #"n")
-                            #"\n"
-                            (if (= c #"r")
-                              #"\r"
-                              (if (= c #"\\")
-                                c
-                                #f)))))))))
-        (string-char (alt "[^\"]"
-                          (sat normal-string-char? "normal string char ([^\"\\\\])")
-                          (seq-> #"\\"
-                                 (sat string-escapee? "[abtnr\\\\]")
-                                 (fn (_ c) (escape c)))))
-
-        ;; '"' string-char* '"'
-        (string (seq-> (mfoldl (fn (c builder) (push! builder c) builder)
-                               (seq-> #"\"" (fn (_) (string-builder)))
-                               string-char)
-                       #"\""
-                       (fn (builder _) (build-string builder))))
-
-        (quotation (seq-> #"'" expr-box (fn (_ v) (cons 'quote (cons v ())))))
-
-        (decimal-digit? (fn (c) (if (isa? <char> c) (if (>= c #"0") (<= c #"9") #f) #f)))
-        (decimal-digit-value (fn (c)
-                               (if (isa? <char> c)
-                                 (if (>= c #"0")
-                                   (if (<= c #"9")
-                                     (- (char->integer c) (char->integer #"0"))
-                                     #f)
-                                   #f)
-                                 #f)))
-        (hex-digit? (fn (c) ;; Yuck, but we haven't bootstrapped `and` and `or` yet:
-                      (if (decimal-digit? c)
+      (initial? (fn (c)
+                  (if (isa? <char> c)
+                    (if (char-alphabetic? c)
+                      #t
+                      (index-of "_:!?+-*/=<>&|" c))
+                    #f)))
+      (initial (sat initial? "symbol initial ([\\p{L}_:!?+\\-*/=<>&|])"))
+      (subsequent? (fn (c)
+                      (if (initial? c)
                         #t
                         (if (isa? <char> c)
-                          (if (>= c #"A")
-                            (if (<= c #"F")
-                              #t
-                              (if (>= c #"a")
-                                (if (<= c #"f")
-                                  #t
-                                  #f)
-                                #f))
-                            #f)
+                          (char-numeric? c)
                           #f))))
-        (hex-digit-value (fn (c)
-                           (let ((d (decimal-digit-value c)))
-                             (if d
-                               d
-                               (if (isa? <char> c)
-                                 (if (>= c #"A")
-                                   (if (<= c #"F")
-                                     (- (char->integer c) (char->integer #"A"))
-                                     (if (>= c #"a")
-                                       (if (<= c #"f")
-                                         (- (char->integer c) (char->integer #"a"))
-                                         #f)
-                                       #f))
-                                   #f)
-                                 #f)))))
-        (digit-in (fn (radix)
-                    (let ((acceptable? (if (= radix 10)
-                                         decimal-digit?
-                                         (if (= radix 16)
-                                           hex-digit?
-                                           (error (quote unimplemented-radix) radix))))
-                          (description (if (= radix 10)
-                                         "decimal digit ([0-9])"
-                                         (if (= radix 16)
-                                           "hexadecimal digit ([0-9A-Fa-f])"
-                                           (error (quote unimplemented-radix) radix))))
-                          (digit-value (if (= radix 10)
-                                         decimal-digit-value
-                                         (if (= radix 16)
-                                           hex-digit-value
-                                           (error (quote unimplemented-radix) radix)))))
-                      (seq-> (sat acceptable? description)
-                             (fn (c) (if c (digit-value c) c))))))
-        ;; TODO: Improve flonum precision:
-        ;; <digit radix>+ ('.' <digit radix>*)?
-        (number (fn (radix)
-                  (let ((fl-radix (inexact radix))
-                        (digit (digit-in radix)))
-                    (seq-> (mfoldl (fn (d n) (+ (* radix n) d)) digit digit)
-                           (opt (mfoldl (fn (d acc)
-                                          (let ((c-frac (/ (inexact d) (cdr acc))))
-                                            ;; OPTIMIZE: `set-c(a|d)r!` instead of `cons`:
-                                            (cons (+ (car acc) c-frac)
-                                                  (* (cdr acc) fl-radix))))
-                                        (seq-> #"." (fn (_) (cons 0. fl-radix)))
-                                        digit))
-                           (fn (integral acc)
-                             (if (not acc)
-                               integral
-                               (+ (inexact integral) (car acc))))))))
-        (decimal-number (number 10))
-        (hex-number (number 16))
+      (subsequent (sat subsequent? "symbol subsequent ([\\p{L}_:!?+\\-*/=<>]\\p{Nd})"))
+      ;; initial subsequent*
+      (symbol (seq-> (mfoldl (fn (c builder) (push! builder c) builder)
+                              (seq-> initial
+                                    (fn (c)
+                                      (let ((builder (string-builder)))
+                                        (push! builder c)
+                                        builder)))
+                              subsequent)
+                      (fn (builder) (build-symbol builder))))
 
-        ;; '#' ('t' | 'f' | '"' string-char '"' | 'x' hex-number)
-        (crunchy (seq-> #"#"
-                        (alt "[tf\\\\x]"
-                             (seq-> #"t" (fn (_) #t))
-                             (seq-> #"f" (fn (_) #f))
-                             (seq-> #"\"" string-char #"\"" (fn (_ c __) c))
-                             (seq-> #"x" hex-number (fn (_ n) n)))
-                        (fn (_ v) v)))
+      ;; [^"\\] | '\\' [abtnr\\]
+      (normal-string-char? (fn (c) (if (= c #"\"") #f (not (= c #"\\")))))
+      (string-escapee? (fn (c)
+                          (if (= c #"\"")
+                            #t
+                            (if (= c #"a")
+                              #t
+                              (if (= c #"b")
+                                #t
+                                (if (= c #"t")
+                                  #t
+                                  (if (= c #"n")
+                                    #t
+                                    (if (= c #"r")
+                                      #t
+                                      (= c #"\\")))))))))
+      (escape (fn (c)
+                (if (= c #"\"")
+                  c
+                  (if (= c #"a")
+                    #"\a"
+                    (if (= c #"b")
+                      #"\b"
+                      (if (= c #"t")
+                        #"\t"
+                        (if (= c #"n")
+                          #"\n"
+                          (if (= c #"r")
+                            #"\r"
+                            (if (= c #"\\")
+                              c
+                              #f)))))))))
+      (string-char (alt "[^\"]"
+                        (sat normal-string-char? "normal string char ([^\"\\\\])")
+                        (seq-> #"\\"
+                                (sat string-escapee? "[abtnr\\\\]")
+                                (fn (_ c) (escape c)))))
 
-        (expr (seq-> loc
-                     (alt "S-expr" list symbol string quotation decimal-number crunchy)
-                     (fn (loc v) (array loc v)))))
-    (box-set! expr-box expr)
+      ;; '"' string-char* '"'
+      (string (seq-> (mfoldl (fn (c builder) (push! builder c) builder)
+                              (seq-> #"\"" (fn (_) (string-builder)))
+                              string-char)
+                      #"\""
+                      (fn (builder _) (build-string builder))))
+
+      (quotation (seq-> #"'" expr-box (fn (_ v) (cons 'quote (cons v ())))))
+
+      (decimal-digit? (fn (c) (if (isa? <char> c) (if (>= c #"0") (<= c #"9") #f) #f)))
+      (decimal-digit-value (fn (c)
+                              (if (isa? <char> c)
+                                (if (>= c #"0")
+                                  (if (<= c #"9")
+                                    (- (char->integer c) (char->integer #"0"))
+                                    #f)
+                                  #f)
+                                #f)))
+      (hex-digit? (fn (c) ;; Yuck, but we haven't bootstrapped `and` and `or` yet:
+                    (if (decimal-digit? c)
+                      #t
+                      (if (isa? <char> c)
+                        (if (>= c #"A")
+                          (if (<= c #"F")
+                            #t
+                            (if (>= c #"a")
+                              (if (<= c #"f")
+                                #t
+                                #f)
+                              #f))
+                          #f)
+                        #f))))
+      (hex-digit-value (fn (c)
+                          (let ((d (decimal-digit-value c)))
+                            (if d
+                              d
+                              (if (isa? <char> c)
+                                (if (>= c #"A")
+                                  (if (<= c #"F")
+                                    (- (char->integer c) (char->integer #"A"))
+                                    (if (>= c #"a")
+                                      (if (<= c #"f")
+                                        (- (char->integer c) (char->integer #"a"))
+                                        #f)
+                                      #f))
+                                  #f)
+                                #f)))))
+      (digit-in (fn (radix)
+                  (let ((acceptable? (if (= radix 10)
+                                        decimal-digit?
+                                        (if (= radix 16)
+                                          hex-digit?
+                                          (error (quote unimplemented-radix) radix))))
+                        (description (if (= radix 10)
+                                        "decimal digit ([0-9])"
+                                        (if (= radix 16)
+                                          "hexadecimal digit ([0-9A-Fa-f])"
+                                          (error (quote unimplemented-radix) radix))))
+                        (digit-value (if (= radix 10)
+                                        decimal-digit-value
+                                        (if (= radix 16)
+                                          hex-digit-value
+                                          (error (quote unimplemented-radix) radix)))))
+                    (seq-> (sat acceptable? description)
+                            (fn (c) (if c (digit-value c) c))))))
+      ;; TODO: Improve flonum precision:
+      ;; <digit radix>+ ('.' <digit radix>*)?
+      (number (fn (radix)
+                (let ((fl-radix (inexact radix))
+                      (digit (digit-in radix)))
+                  (seq-> (mfoldl (fn (d n) (+ (* radix n) d)) digit digit)
+                          (opt (mfoldl (fn (d acc)
+                                        (let ((c-frac (/ (inexact d) (cdr acc))))
+                                          ;; OPTIMIZE: `set-c(a|d)r!` instead of `cons`:
+                                          (cons (+ (car acc) c-frac)
+                                                (* (cdr acc) fl-radix))))
+                                      (seq-> #"." (fn (_) (cons 0. fl-radix)))
+                                      digit))
+                          (fn (integral acc)
+                            (if (not acc)
+                              integral
+                              (+ (inexact integral) (car acc))))))))
+      (decimal-number (number 10))
+      (hex-number (number 16))
+
+      ;; '#' ('t' | 'f' | '"' string-char '"' | 'x' hex-number)
+      (crunchy (seq-> #"#"
+                      (alt "[tf\\\\x]"
+                            (seq-> #"t" (fn (_) #t))
+                            (seq-> #"f" (fn (_) #f))
+                            (seq-> #"\"" string-char #"\"" (fn (_ c __) c))
+                            (seq-> #"x" hex-number (fn (_ n) n)))
+                      (fn (_ v) v)))
+
+      (expr (seq-> loc
+                   (alt "S-expr" list symbol string quotation decimal-number crunchy)
+                   (fn (loc v) (array loc v)))))
+  (box-set! expr-box expr)
 
   (def skip-whitespace
     (fn (input)

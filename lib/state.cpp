@@ -905,8 +905,9 @@ State* State::tryCreate(size_t heapSize) {
     dest->errorHandler.ptr()->val = abortClosure.oref();
 
     installPrimordial(dest, strLit("abort"), abortClosure.oref());
+    popStackRoots(dest, 1); // abortClosure
     installPrimordial(dest, strLit("end"), dest->singletons.end);
-    popStackRoots(dest, 1);
+    installPrimordial(dest, strLit("standard-input"), createInputFile(dest, UTF8InputFile{stdin}));
     installPrimop(dest, strLit("apply-array"), (MethodCode)primopApplyArray,
                   false, Fixnum{2l}, dest->types.any, dest->types.array);
     // TODO: `array!` -> `array-mut` (everywhere):

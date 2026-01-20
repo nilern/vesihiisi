@@ -115,6 +115,8 @@ class UTF8InputFile {
 public:
     UTF8InputFile() : cfile{nullptr} {}
 
+    explicit UTF8InputFile(FILE* file) : cfile(file) {}
+
     bool isValid() const { return static_cast<bool>(cfile); }
 
     [[nodiscard]]

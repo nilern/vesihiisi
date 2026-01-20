@@ -1187,6 +1187,21 @@ PrimopRes primopJiffiesPerSecond(State* state) {
     return PrimopRes::CONTINUE;
 }
 
+PrimopRes primopEval(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    ORef const expr = state->regs[firstArgReg];
+    auto const loc = HRef<Loc>::fromUnchecked(state->regs[firstArgReg + 1]);
+    bool const debug = Bool::fromUnchecked(state->regs[firstArgReg + 2]).val();
+
+    EvalRes const res = eval(reinterpret_cast<Vshs_State*>(state), expr, loc, debug);
+    if (!res.success) { exit(EXIT_FAILURE); } // TODO
+
+    state->regs[retReg] = res.val;
+    return PrimopRes::CONTINUE;
+}
+
 PrimopRes primopExit(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }

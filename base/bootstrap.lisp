@@ -745,6 +745,8 @@
                        #"\""
                        (fn (builder _) (build-string builder))))
 
+        (quotation (seq-> #"'" expr-box (fn (_ v) (cons 'quote (cons v ())))))
+
         (decimal-digit? (fn (c) (if (isa? <char> c) (if (>= c #"0") (<= c #"9") #f) #f)))
         (decimal-digit-value (fn (c)
                                (if (isa? <char> c)
@@ -830,7 +832,7 @@
                              (seq-> #"x" hex-number (fn (_ n) n)))
                         (fn (_ v) v)))
 
-        (expr (alt "S-expr" list symbol string decimal-number crunchy))
+        (expr (alt "S-expr" list symbol string quotation decimal-number crunchy))
 
         (ws-expr (seq-> ws expr (fn (_ v) v))))
     (box-set! expr-box expr)
@@ -881,4 +883,3 @@
                          sexprs)))
              (read*-remaining pair byte-idx)))
           ())))))
-

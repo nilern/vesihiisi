@@ -179,7 +179,7 @@ VMRes run(State* state, HRef<Closure> selfRef) {
             uint16_t displacement = state->code[state->pc++];
             displacement = (uint16_t)(displacement << UINT8_WIDTH) | state->code[state->pc++];
 
-            if (!Bool::fromUnchecked(state->regs[condReg]).val()) {
+            if (eq(state->regs[condReg], False)) {
                 state->pc += displacement;
             }
         }; continue;

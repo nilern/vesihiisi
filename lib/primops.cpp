@@ -1161,6 +1161,19 @@ PrimopRes primopWriteString(State* state) {
     return PrimopRes::CONTINUE; // TODO: Maybe do not return written value?
 }
 
+PrimopRes primopFlushOutputPort(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    if (fflush(stdout) == EOF) {
+        state->regs[retReg] = False;
+        return PrimopRes::CONTINUE;
+    }
+
+    state->regs[retReg] = True;
+    return PrimopRes::CONTINUE;
+}
+
 PrimopRes primopCurrentSecond(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }

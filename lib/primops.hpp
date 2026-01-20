@@ -71,6 +71,7 @@ PrimopRes primopReadChar(State* state);
 PrimopRes primopWrite(State* state);
 PrimopRes primopWriteChar(State* state);
 PrimopRes primopWriteString(State* state);
+PrimopRes primopFlushOutputPort(State* state);
 
 // Time
 PrimopRes primopCurrentSecond(State* state);

@@ -964,7 +964,7 @@
     (let ((prompt "vesihiisi>> "))
       (letfn (((loop)
                  (write-string prompt)
-                 (newline) ;; FIXME: Flush without newline
+                 (flush-output-port)
                  (let ((line (read-line input)))
                    (if (not (identical? line end))
                      (let ((loc&expr (read* (make <string-iterator> line 0)

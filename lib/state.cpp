@@ -996,6 +996,8 @@ State* State::tryCreate(size_t heapSize) {
                   false, Fixnum{1l}, dest->types.charr);
     installPrimop(dest, strLit("write-string"), (MethodCode)primopWriteString,
                   false, Fixnum{1l}, dest->types.string);
+    installPrimop(dest, strLit("flush-output-port"), (MethodCode)primopFlushOutputPort,
+                  false, Fixnum{0l});
     installPrimop(dest, strLit("current-second"), (MethodCode)primopCurrentSecond,
                   false, Fixnum{0l});
     installPrimop(dest, strLit("current-jiffy"), (MethodCode)primopCurrentJiffy, false, Fixnum{0l});

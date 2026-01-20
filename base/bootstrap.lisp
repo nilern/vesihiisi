@@ -22,7 +22,8 @@
           (str (make-flex <string> len)))
       (flex-copy! str 0 sym 0 len))))
 
-(def cons (fn (x xs) (make <pair> x xs 0.)))
+(def cons* (fn (x xs loc) (make <pair> x xs loc)))
+(def cons (fn (x xs) (cons* x xs 0.)))
 
 (def car (fn ((: xs <pair>)) (slot-get xs 0)))
 (def set-car! (fn ((: xs <pair>) v) (slot-set! xs 0 v)))
@@ -68,6 +69,8 @@
 
 (def nth (fn (xs i) (car (drop i xs))))
 
+(def array! (fn xs xs))
+
 (def array!-count (fn ((: xs <array!>)) (flex-count xs)))
 
 (def array!-get (fn ((: xs <array!>) i) (flex-get xs i)))
@@ -95,6 +98,12 @@
     (let ((len (array!-count arr))
           (imm-arr (make-flex <array> len)))
       (flex-copy! imm-arr 0 arr 0 len))))
+
+(def array (fn xs (array!->array xs)))
+
+(def array-count (fn ((: xs <array>)) (flex-count xs)))
+
+(def array-get (fn ((: xs <array>) i) (flex-get xs i)))
 
 (def array!->list (fn (arr) (array!-fold-right cons arr ())))
 
@@ -860,19 +869,23 @@
         (ws-expr (seq-> ws expr (fn (_ v) v))))
     (box-set! expr-box expr)
 
-  (def do-read*
-    (fn (input loc)
-      (let ((byte-idx (box (source-location-byte-index loc)))
-            (v (parse ws-expr input byte-idx)))
-        (cons v (make <source-location> (source-location-filename loc) (box-get byte-idx))))))
-
   (def skip-whitespace
     (fn (input)
       (let ((byte-idx (box 0)))
         (parse ws input byte-idx)
-        (box-get byte-idx)))))
+        (box-get byte-idx))))
 
-;; FIXME: Need to provide start location as well as the end:
+  (def do-read*
+    (fn (input loc)
+      (let ((ws-count (skip-whitespace input))
+            (start-byte-idx (+ (source-location-byte-index loc) ws-count))
+            (byte-idx (box start-byte-idx))
+            (v (parse ws-expr input byte-idx))
+            (filename (source-location-filename loc)))
+        (array (make <source-location> filename start-byte-idx)
+               v
+               (make <source-location> filename (box-get byte-idx)))))))
+
 (def read*
   (make-multimethod 'read*
     (fn (input (: loc <source-location>)) (do-read* input loc))
@@ -880,29 +893,29 @@
 
 (def read
   (make-multimethod 'read
-    (fn (input) (car (read* input "???")))
+    (fn (input) (array-get (read* input "???") 1))
     (fn () (read standard-input))))
 
-;; FIXME: Provide start location:
 (def read*-all
   (make-multimethod 'read*-all
     (fn (input (: loc <source-location>))
-      (let ((ws-count (skip-whitespace input)))
+      (let ((ws-count (skip-whitespace input))
+            (filename (source-location-filename loc))
+            (start-byte-idx (+ (source-location-byte-index loc) ws-count))
+            (start-loc (make <source-location> filename start-byte-idx)))
         (if (not (= (peek input) end))
-          (let ((filename (source-location-filename loc))
-                (byte-idx (+ (source-location-byte-index loc) ws-count))
-                (v&loc (read* input (make <source-location> filename byte-idx)))
-                (pair (cons (car v&loc) ()))
+          (let ((loc&v&loc (read* input (make <source-location> filename start-byte-idx)))
+                (pair (cons (array-get loc&v&loc 1) ()))
                 (sexprs pair)
-                (byte-idx (source-location-byte-index (cdr v&loc))))
+                (byte-idx (source-location-byte-index (array-get loc&v&loc 2))))
             (letfn (((read*-remaining pair byte-idx)
                        (if (not (= (peek input) end))
-                         (let ((v&loc (read* input (make <source-location> filename byte-idx)))
-                               (pair* (cons  (car v&loc) ()))
+                         (let ((loc&v&loc (read* input (make <source-location> filename byte-idx)))
+                               (pair* (cons (array-get loc&v&loc 1) ()))
                                (_ (set-cdr! pair pair*))
-                               (byte-idx (source-location-byte-index (cdr v&loc)))
+                               (byte-idx (source-location-byte-index (array-get loc&v&loc 2)))
                                (ws-count (skip-whitespace input)))
                            (read*-remaining pair* (+ byte-idx ws-count)))
-                         sexprs)))
-             (read*-remaining pair byte-idx)))
-          ())))))
+                         (array start-loc sexprs))))
+              (read*-remaining pair byte-idx)))
+          (array start-loc ()))))))

@@ -958,3 +958,20 @@
                         (string-builder-push! builder mc)
                         (loop)))))))
         (loop)))))
+
+(def repl
+  (fn (input debug)
+    (let ((prompt "vesihiisi>> "))
+      (letfn (((loop)
+                 (write-string prompt)
+                 (newline) ;; FIXME: Flush without newline
+                 (let ((line (read-line input)))
+                   (if (not (identical? line end))
+                     (let ((loc&expr (read* (make <string-iterator> line 0)
+                                            (make <source-location> "REPL" 0)))
+                           (v (eval (array-get loc&expr 1) (array-get loc&expr 0) debug)))
+                       (write v)
+                       (newline)
+                       (loop))
+                     end))))
+        (loop)))))

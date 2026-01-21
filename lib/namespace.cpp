@@ -8,7 +8,7 @@ Var* tryCreateUnboundVar(Semispace* semispace, Type const* varType, HRef<Unbound
     Var* ptr = (Var*)semispace->tryAlloc(varType);
     if (!ptr) { return ptr; }
 
-    *ptr = Var{.val = unbound.oref()};
+    *ptr = Var{.val = unbound.oref(), .macroCategory = False};
 
     return ptr;
 }
@@ -20,7 +20,7 @@ HRef<Var> createUnboundVar(State* state) {
         ptr = (Var*)state->heap.tospace.allocOrDie(state->types.var.ptr());
     }
 
-    *ptr = Var{.val = state->singletons.unbound.oref()};
+    *ptr = Var{.val = state->singletons.unbound.oref(), .macroCategory = False};
 
     return HRef<Var>(ptr);
 }

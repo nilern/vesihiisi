@@ -29,6 +29,7 @@
 (def set-car! (fn ((: xs <pair>) v) (slot-set! xs 0 v)))
 (def cdr (fn ((: xs <pair>)) (slot-get xs 1)))
 (def set-cdr! (fn ((: xs <pair>) v) (slot-set! xs 1 v)))
+(def pair-loc (fn ((: p <pair>)) (slot-get p 2)))
 
 (def caar (fn (xs) (car (car xs))))
 (def cadr (fn (xs) (car (cdr xs))))
@@ -49,8 +50,25 @@
 
 (def map
   (fn (f xs)
-    (fold-right (fn (x acc) (cons (f x) acc))
-                xs ())))
+    (letfn (((map* xs*)
+               (if (isa? <pair> xs*)
+                 (cons* (f (car xs*)) (map* (cdr xs*)) (pair-loc xs*))
+                 (if (identical? xs* ())
+                   ()
+                   (error 'improper-list xs)))))
+      (map* xs))))
+
+;; Like `map`, but if `xs` is improper maps the tail with `f` instead of error e.g.
+;; `(map* (fn (x) (+ x 1)) '(1 2 . 3))` => `(2 3 . 4)
+(def map*
+  (fn (f xs)
+    (letfn (((map* xs)
+               (if (isa? <pair> xs)
+                 (cons* (f (car xs)) (map* (cdr xs)) (pair-loc xs))
+                 (if (identical? xs ())
+                   ()
+                   (f xs)))))
+      (map* xs))))
 
 (def filter
   (fn (pred? xs)
@@ -324,7 +342,9 @@
                          #t
                          (loop))
                        #f))))
-          (loop))))))
+          (loop))))
+
+    (fn ((: x <symbol>) (: y <symbol>)) (identical? x y))))
 
 (def =
   (fn (x y)
@@ -958,6 +978,212 @@
                         (string-builder-push! builder mc)
                         (loop)))))))
         (loop)))))
+
+;;; Macroexpander
+;;; ================================================================================================
+
+(def alist-get
+  (fn (alist k)
+    (letfn (((get alist)
+               (if (isa? <pair> alist)
+                 (let ((entry (car alist)))
+                   (if (= (car entry) k)
+                     (cdr entry)
+                     (get (cdr alist))))
+                 #f)))
+      (get alist))))
+
+(def var-val (fn ((: var <var>)) (slot-get var 0)))
+(def var-macro-category (fn ((: var <var>)) (slot-get var 1)))
+(def var-set-macro-category! (fn ((: var <var>) category) (slot-set! var 1 category)))
+
+(def <local-binding> (make-slots-type '<local-binding> 2 #f))
+(def local-binding (fn (val category) (make <local-binding> val category)))
+(def local-binding-val (fn ((: local <local-binding>)) (slot-get local 0)))
+(def local-binding-macro-category (fn ((: local <local-binding>)) (slot-get local 1)))
+
+(def macroexpand-1
+  (fn (env form)
+    (let ((call (isa? <pair> form))
+          (name (if call
+                  (let ((callee (car form)))
+                    (if (isa? <symbol> callee)
+                      callee ; Symbol application
+                      #f))
+                  (if (isa? <symbol> form)
+                    form
+                    #f)))); Symbol use
+      (if name
+        (let ((local-binding (alist-get env name)))
+          (if local-binding
+            (let ((cat (local-binding-macro-category local-binding)))
+              (if cat
+                (if (identical? cat 'fn-macro)
+                  (if call
+                    ((local-binding-val local-binding) env form) ; Expand call with local macro
+                    (error 'fn-macro-value form))
+                  (if (identical? cat 'symbol-macro)
+                    (if (not call)
+                      ((local-binding-val local-binding) env form) ; Expand use with local macro
+                      (error 'symbol-macro-call form))
+                    (error 'invalid-macro-category cat form)))
+                form)) ; Local `name` not bound to a macro
+            (let ((var (resolve name)))
+              (if var
+                (let ((cat (var-macro-category var)))
+                  (if cat
+                    (if (identical? cat 'fn-macro)
+                      (if call
+                        ((var-val var) env form) ; Expand call with global macro
+                        (error 'fn-macro-value form))
+                      (if (identical? cat 'symbol-macro)
+                        (if (not call)
+                          ((var-val var) env form) ; Expand use with global macro
+                          (error 'symbol-macro-call form))
+                        (error 'invalid-macro-category cat form)))
+                    form)) ; Global `name` not bound to a macro
+                form)))) ; Unbound (not an error at this point)
+        form)))) ; Non-expanding form
+
+(def macroexpand
+  (fn (env form)
+    (letfn (((macroexpand form)
+               (let ((form* (macroexpand-1 env form)))
+                 (if (identical? form* form)
+                   form*
+                   (macroexpand form*)))))
+      (macroexpand form))))
+
+(letfn ((;; For `fn`:
+         (expand-params env params)
+           (letfn (((macroexpand-param param)
+                      (if (isa? <symbol> param)
+                        param
+                        (if (isa? <pair> param)
+                          (let ((type-of-sym (car param))
+                                (param* (cdr param))
+                                (name (car param*))
+                                (param** (cdr param*))
+                                (type-expr (car param**)))
+                            (if (not (identical? type-of-sym ':))
+                              (error 'invalid-param-pattern type-of-sym param)
+                              #f)
+                            (if (not (isa? <symbol> name))
+                              (error 'invalid-param-name name param)
+                              #f)
+                            (if (not (identical? (cdr param**) ()))
+                              (error 'overlong-param param)
+                              #f)
+                            (cons* type-of-sym
+                                   (cons* name
+                                          (cons* (macroexpand-all env type-expr)
+                                                 ()
+                                                 (pair-loc param**))
+                                          (pair-loc param*))
+                                   (pair-loc param)))
+                          (error 'invalid-param param)))))
+             (map* macroexpand-param params)))
+        ((param-binding param)
+           (let ((name (if (isa? <symbol> param)
+                         param
+                         (cadr param)))) ; Param syntax already checked by `expand-params`
+             (cons name (local-binding name #f))))
+        ((bind-params env params)
+           (fold-left (fn (param env) (cons (param-binding param) env))
+                      env params))
+
+        ;; For `let`:
+        ((expand-bindings env bindings)
+           (let ((env (box env))
+                 (macroexpand-binding
+                  (fn (binding)
+                    (let ((name (car binding))
+                          (binding* (cdr binding))
+                          (expr (car binding*)))
+                      (if (not (isa? <symbol> name)) (error 'invalid-binder name) #f)
+                      (if (not (identical? (cdr binding*) ())) (error 'invalid-binding binding) #f)
+                      (let ((curr-env (box-get env))
+                            (expr (macroexpand-all curr-env expr)))
+                        (box-set! env (cons (cons name (local-binding expr #f)) curr-env))
+                        (cons* name
+                               (cons* expr () (pair-loc binding*))
+                               (pair-loc binding))))))
+                 (bindings (map macroexpand-binding bindings)))
+             (cons bindings (box-get env))))
+
+        ;; For `letfn`:
+        ((letfn-binding binding)
+           (if (not (isa? <pair> binding)) (error 'invalid-binding binding) #f)
+           (let ((binders (car binding))
+                 (_ (if (not (isa? <pair> binders)) (error 'invalid-binders binders) #f))
+                 (self (car binders)))
+             (cons self (local-binding self #f))))
+        ((bind-letfns env bindings)
+           (fold-left (fn (binding env) (cons (letfn-binding binding) env))
+                      env bindings))
+        ((expand-letfns env bindings)
+           (letfn (((expand-letfn binding)
+                      (let ((binders (car binding)) ; Already checked by `letfn-binding`
+                            (self (car binders)) ; Already checked by `letfn-binding`
+                            (params (cdr binders))
+                            (params* (expand-params env params))
+                            (env (bind-params env params*))
+                            (body (map (fn (form) (macroexpand-all env form)) (cdr binding))))
+                        (cons* (cons* self params* (pair-loc params))
+                               body
+                               (pair-loc binding)))))
+             (map expand-letfn bindings))))
+  (def macroexpand-all
+    (fn (env form)
+      (let ((form (macroexpand env form)))
+        (if (isa? <pair> form)
+          (let ((callee (car form)))
+            (if (isa? <symbol> callee)
+              (if (identical? callee 'quote)
+                form
+                (if (if (identical? callee 'if)
+                      #t
+                      (if (identical? callee 'def)
+                        #t
+                        (identical? callee 'set!)))
+                  (cons* (car form)
+                        (map (fn (form) (macroexpand-all env form)) (cdr form))
+                        (pair-loc form))
+                  (if (identical? callee 'fn)
+                    (let ((args (cdr form))
+                          (params (car args))
+                          (params (expand-params env params))
+                          (env (bind-params env params))
+                          (body (map (fn (form) (macroexpand-all env form)) (cdr args))))
+                      (cons* callee
+                            (cons* params body (pair-loc args))
+                            (pair-loc form)))
+                    (if (identical? callee 'let)
+                      (let ((args (cdr form))
+                            (bindings (car args))
+                            (bindings&env (expand-bindings env bindings))
+                            (env (cdr bindings&env))
+                            (body (map (fn (form) (macroexpand-all env form)) (cdr args))))
+                        (cons* callee
+                               (cons* (car bindings&env) body (pair-loc args))
+                               (pair-loc form)))
+                      (if (identical? callee 'letfn)
+                        (let ((args (cdr form))
+                              (bindings (car args))
+                              (env (bind-letfns env bindings))
+                              (bindings (expand-letfns env bindings))
+                              (body (map (fn (form) (macroexpand-all env form)) (cdr args))))
+                          (cons* callee
+                                 (cons* bindings body (pair-loc args))
+                                 (pair-loc form)))
+                        ;; TODO: `let-(symbol-)macro`
+                        ;; Named function application:
+                        (map (fn (form) (macroexpand-all env form)) form))))))
+              (map (fn (form) (macroexpand-all env form)) form))) ; Function application
+          form))))) ; Non-application
+
+;;; Self-Hosting REPL
+;;; ================================================================================================
 
 (def repl
   (fn (input debug)

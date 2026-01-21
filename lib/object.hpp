@@ -403,6 +403,7 @@ struct Unbound : public FixedObject {};
 
 struct Var : public FixedObject {
     ORef val;
+    ORef macroCategory;
 };
 
 struct Knot : public FixedObject {

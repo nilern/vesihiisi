@@ -846,6 +846,7 @@ IRName exprToIR(
                     return quoteToCPS(pass, block, args, k);
                 } else if (strEq(calleeSym.ptr()->name(), strLit("def"))) {
                     return defToCPS(pass, fn, env, block, args, maybeLoc, k);
+                // TODO: `set!`
                 } else if (strEq(calleeSym.ptr()->name(), strLit("let"))) {
                     return letToCPS(pass, fn, env, block, args, k);
                 } else if (strEq(calleeSym.ptr()->name(), strLit("letfn"))) {

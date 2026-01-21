@@ -819,7 +819,13 @@
                       #"\""
                       (fn (builder _) (build-string builder))))
 
-      (quotation (seq-> #"'" expr-box (fn (_ v) (cons 'quote (cons v ())))))
+      (quotation (seq-> loc
+                        #"'"
+                        expr-box
+                        (fn (quote-loc _ loc&v)
+                          (cons* 'quote
+                                 (cons* (array-get loc&v 1) () (array-get loc&v 0))
+                                 quote-loc))))
 
       (decimal-digit? (fn (c) (if (isa? <char> c) (if (>= c #"0") (<= c #"9") #f) #f)))
       (decimal-digit-value (fn (c)

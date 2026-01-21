@@ -107,49 +107,29 @@ size_t UTF8InputFile::skipInvalid() {
 int32_t UTF8InputFile::peec() {
     if (!isValid()) { return EOF; }
 
-    if (bufCount > 0) {
-        int32_t maybeCp;
-        ssize_t const cpWidth = utf8proc_iterate(buf, ssize_t(bufCount), &maybeCp);
-        if (cpWidth > 0) {
-            return maybeCp;
+    for (;/*ever*/;) {
+        // Read 1-4 bytes and try `utf8proc_iterate` for each intermediate length:
+        // OPTIMIZE: Actually the first byte in UTF-8 gives the length
+        while (bufCount < bufCap) {
+            int maybeByte = std::getc(cfile);
+            if (maybeByte < 0) { break; }
+            buf[bufCount++] = uint8_t(maybeByte);
+
+            int32_t maybeCp;
+            ssize_t const cpWidth = utf8proc_iterate(buf, ssize_t(bufCount), &maybeCp);
+            if (cpWidth > 0) { return maybeCp; }
         }
+
+        if (bufCount == 0) { return EOF; }
+
+        skipInvalid(); // If we got here `buf` has an invalid prefix, so remove that
     }
-
-    bufCount += fread(buf + bufCount, sizeof *buf, bufCap - bufCount, cfile);
-
-    int32_t maybeCp;
-    ssize_t const cpWidth = utf8proc_iterate(buf, ssize_t(bufCount), &maybeCp);
-    if (cpWidth < 0) { return EOF - 1; }
-    if (cpWidth == 0) { return EOF; }
-
-    return maybeCp;
 }
 
-// TODO: DRY wrt. `peec`. (Easy to simply implement on top of `peec`, but that once again requires
-// redundant computation of `utf8EncodedWidth`.)
 int32_t UTF8InputFile::getc() {
-    if (!isValid()) { return EOF; }
-
-    if (bufCount > 0) {
-        int32_t maybeCp;
-        ssize_t const cpWidth = utf8proc_iterate(buf, ssize_t(bufCount), &maybeCp);
-        if (cpWidth > 0) {
-            bufCount -= size_t(cpWidth);
-            memmove(buf, buf + cpWidth, bufCount);
-            return maybeCp;
-        }
-    }
-
-    bufCount += fread(buf + bufCount, sizeof *buf, bufCap - bufCount, cfile);
-
-    int32_t maybeCp;
-    ssize_t const cpWidth = utf8proc_iterate(buf, ssize_t(bufCount), &maybeCp);
-    if (cpWidth < 0) { return EOF - 1; }
-    if (cpWidth == 0) { return EOF; }
-
-    bufCount -= size_t(cpWidth);
-    memmove(buf, buf + cpWidth, bufCount);
-    return maybeCp;
+    int32_t const res = peec();
+    bufCount = 0;
+    return res;
 }
 
 void printFilename(FILE* dest, Str filename) {

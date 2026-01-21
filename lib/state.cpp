@@ -1003,6 +1003,8 @@ State* State::tryCreate(size_t heapSize) {
     installPrimop(dest, strLit("current-jiffy"), (MethodCode)primopCurrentJiffy, false, Fixnum{0l});
     installPrimop(dest, strLit("jiffies-per-second"), (MethodCode)primopJiffiesPerSecond,
                   false, Fixnum{0l});
+    installPrimop(dest, strLit("resolve"), (MethodCode)primopResolve,
+                  false, Fixnum{1l}, dest->types.symbol);
     installPrimop(dest, strLit("eval"), (MethodCode)primopEval,
                   false, Fixnum{3l}, dest->types.any, dest->types.loc, dest->types.booll);
     installPrimop(dest, strLit("exit"), (MethodCode)primopExit,

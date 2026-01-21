@@ -78,7 +78,8 @@ PrimopRes primopCurrentSecond(State* state);
 PrimopRes primopCurrentJiffy(State* state);
 PrimopRes primopJiffiesPerSecond(State* state);
 
-// Eval
+// Reflection
+PrimopRes primopResolve(State* state);
 PrimopRes primopEval(State* state);
 
 // System Interface

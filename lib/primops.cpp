@@ -10,6 +10,7 @@
 #include "util/util.hpp"
 #include "bytecode.hpp"
 #include "dispatch.hpp"
+#include "namespace.hpp"
 #include "compiler/compiler.hpp"
 
 namespace {
@@ -1198,6 +1199,24 @@ PrimopRes primopJiffiesPerSecond(State* state) {
 
     state->regs[retReg] = Fixnum{(int64_t)CLOCKS_PER_SEC};
 
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes primopResolve(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    auto const name = HRef<Symbol>::fromUnchecked(state->regs[firstArgReg]);
+
+    FindVarRes const findRes = findVar(state->ns, name);
+
+    state->regs[retReg] = [&]() -> ORef { // IIFE
+        switch (findRes.type) {
+        case FindVarRes::NS_FOUND_VAR: return findRes.var;
+        case FindVarRes::NS_FOUND_VAR_DEST_IDX: return False;
+        default: return Default; // Unreachable
+        }
+    }();
     return PrimopRes::CONTINUE;
 }
 

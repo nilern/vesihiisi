@@ -959,7 +959,7 @@
             (start-byte-idx (+ (source-location-byte-index loc) ws-count))
             (start-loc (make <source-location> filename start-byte-idx)))
         (if (not (= (peek input) end))
-          (let ((loc&v&loc (read* input (make <source-location> filename start-byte-idx)))
+          (let ((loc&v&loc (read* input start-loc))
                 (pair (cons* (array-get loc&v&loc 1) () (array-get loc&v&loc 0)))
                 (sexprs pair)
                 (byte-idx (source-location-byte-index (array-get loc&v&loc 2))))
@@ -1275,6 +1275,29 @@
                     form)))) ; Everything else is "self-quoting"
         (quasimodo 0 (car args))))))
 (var-set-macro-category! (resolve 'quasiquote) 'fn-macro)
+
+;;; Load
+;;; ================================================================================================
+
+(def load
+  (fn (filename debug)
+    (let ((input (open-input-file filename))
+          (start-byte-idx (skip-whitespace input))
+          (start-loc (make <source-location> filename start-byte-idx)))
+      (if (not (= (peek input) end))
+        (let ((loc&v&loc (read* input start-loc))
+              (_ (eval (array-get loc&v&loc 1) (array-get loc&v&loc 0) debug))
+              (byte-idx (source-location-byte-index (array-get loc&v&loc 2))))
+          (letfn (((load-remaining byte-idx)
+                     (if (not (= (peek input) end))
+                       (let ((loc&v&loc (read* input (make <source-location> filename byte-idx)))
+                             (_ (eval (array-get loc&v&loc 1) (array-get loc&v&loc 0) debug))
+                             (byte-idx (source-location-byte-index (array-get loc&v&loc 2)))
+                             (ws-count (skip-whitespace input)))
+                         (load-remaining (+ byte-idx ws-count)))
+                       #t)))
+            (load-remaining byte-idx)))
+        #t))))
 
 ;;; Self-Hosting REPL
 ;;; ================================================================================================

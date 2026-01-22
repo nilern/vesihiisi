@@ -90,8 +90,8 @@ UTF8InputFile::UTF8InputFile(Str filename) {
 }
 
 size_t UTF8InputFile::skipInvalid() {
-    assert(bufCount > 0
-           && ({int32_t sink; utf8proc_iterate(buf, ssize_t(bufCount), &sink) < 0;}));
+    assert(bufCount > 0);
+    assert(({int32_t sink; utf8proc_iterate(buf, ssize_t(bufCount), &sink) < 0;}));
 
     size_t skipCount = 1; // There must be at least one invalid byte
 
@@ -106,6 +106,11 @@ size_t UTF8InputFile::skipInvalid() {
 
 int32_t UTF8InputFile::peec() {
     if (!isValid()) { return EOF; }
+
+    // OPTIMIZE: Store decoded `int32_t` for this instead:
+    int32_t maybeCp;
+    ssize_t const cpWidth = utf8proc_iterate(buf, ssize_t(bufCount), &maybeCp);
+    if (cpWidth > 0) { return maybeCp; } // `buf` already holds a valid codepoint
 
     for (;/*ever*/;) {
         // Read 1-4 bytes and try `utf8proc_iterate` for each intermediate length:

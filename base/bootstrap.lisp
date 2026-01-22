@@ -306,7 +306,14 @@
   (make-multimethod 'concat
     (fn () ())
     (fn (xs) xs)
-    (fn (xs ys) (fold-right cons xs ys))
+    (fn (xs ys)
+      (letfn (((cat xs*)
+                 (if (isa? <pair> xs*)
+                   (cons* (car xs*) (cat (cdr xs*)) (pair-loc xs*))
+                   (if (identical? xs* ())
+                     ys
+                     (error 'improper-list xs)))))
+        (cat xs)))
     (letfn (((concat-nonempty-array! xss)
                (let ((last-idx (fx- (array!-count xss) 1)))
                  (letfn (((loop i acc)
@@ -1187,6 +1194,82 @@
                         (map (fn (form) (macroexpand-all env form)) form))))))
               (map (fn (form) (macroexpand-all env form)) form))) ; Function application
           form))))) ; Non-application
+
+;; TODO: Reader macros (for both readers)
+;; OPTIMIZE: Make output more efficient (there is a whole tradition about that):
+(def quasiquote
+  (fn (_ form)
+    (let ((args (cdr form)))
+      (if (not (identical? (cdr args) ())) (error 'arity quasiquote (count args)) #f)
+      (letfn (((quasimodo depth form)
+                (if (isa? <pair> form)
+                  (let ((head (car form)))
+                    (if (identical? head 'unquote)
+                      ;; `(unquote x)`:
+                      (let ((tail (cdr form)))
+                        (if (isa? <pair> tail)
+                          (if (identical? (cdr tail) ())
+                            (if (identical? depth 0)
+                              (car tail)
+                              (let ((loc (pair-loc form)))
+                                (cons* (cons* 'quote (cons* 'unquote () loc) loc)
+                                       (cons* (quasimodo (- depth 1) (car tail)) () (pair-loc tail))
+                                       loc)))
+                            (error 'overlong-unquote form))
+                          (error 'invalid-unquote form)))
+                      (if (identical? head 'quasiquote)
+                        ;; `(quasiquote x)`
+                        (let ((tail (cdr form))
+                              (_ (if (not (isa? <pair> tail)) (error 'invalid-quasiquote form) #f))
+                              (_ (if (not (identical? (cdr tail) ()))
+                                   (error 'overlong-quasiquote form)
+                                   #f))
+                              (loc (pair-loc form)))
+                          (cons* (cons* 'quote (cons* 'quasiquote () loc) loc)
+                                 (cons* (quasimodo (+ depth 1) (car tail)) () (pair-loc tail))
+                                 loc))
+                        (if (if (isa? <pair> head) (identical? (car head) 'unquote-splicing) #f)
+                          ;; `((unquote-splicing x) . yxs)`
+                          (let ((tail (cdr form))
+                                (head* (cdr head))
+                                (splicee (if (isa? <pair> head*)
+                                          (car head*)
+                                          (error 'invalid-unquote-splicing head)))
+                                (_ (if (not (identical? (cdr head*) ()))
+                                    (error 'overlong-unquote-splicing head)
+                                    #f))
+                                (loc (pair-loc form))
+                                ;; FIXME: The conditional crashes register allocator:
+                                (tail-loc 0.)) ; (if (isa? <pair> tail) (pair-loc tail) loc)))
+                            (if (identical? depth 0)
+                              (cons* 'concat
+                                     (cons* splicee
+                                            (cons* (quasimodo depth tail) () tail-loc)
+                                            (pair-loc head*))
+                                     loc)
+                              (cons* (cons* (cons* 'quote (cons* 'unquote-splicing () loc) loc)
+                                            (cons* (quasimodo (- depth 1) splicee) () tail-loc)
+                                            loc)
+                                     (cons* (quasimodo depth tail) () tail-loc)
+                                     loc)))
+                          ;; `(x . ys)`:
+                          (let ((loc (pair-loc form))
+                                (tail (cdr form))
+                                ;; FIXME: The conditional crashes register allocator:
+                                (tail-loc 0.)) ; (if (isa? <pair> tail) (pair-loc tail) loc)))
+                            (cons* 'cons*
+                                   (cons* (quasimodo depth head)
+                                          (cons* (quasimodo depth tail)
+                                                 (cons* loc () loc)
+                                                 tail-loc)
+                                          loc)
+                                   loc))))))
+                  ;; Atom:
+                  (if (isa? <symbol> form)
+                    (cons 'quote (cons form ())) ; TODO: Locations
+                    form)))) ; Everything else is "self-quoting"
+        (quasimodo 0 (car args))))))
+(var-set-macro-category! (resolve 'quasiquote) 'fn-macro)
 
 ;;; Self-Hosting REPL
 ;;; ================================================================================================

@@ -23,7 +23,7 @@ typedef struct MaybeORef {
 
 struct Vshs_State;
 
-struct Vshs_State* tryCreateState(size_t heapSize);
+struct Vshs_State* tryCreateState(size_t heapSize, int argc, char const* argv[]);
 void freeState(struct Vshs_State* state);
 
 void pushStackRoot(struct Vshs_State* state, ORef* stackLoc);

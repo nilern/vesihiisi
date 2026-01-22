@@ -229,7 +229,7 @@ int main(int argc, char const* argv[static argc]) {
         return EXIT_SUCCESS;
     }
 
-    struct Vshs_State* state = tryCreateState(1024*1024);
+    struct Vshs_State* state = tryCreateState(1024*1024, argc, argv);
     if (!state) {
         puts("Insufficient memory");
         return EXIT_FAILURE;

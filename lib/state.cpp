@@ -723,6 +723,21 @@ void nameType(State* state, HRef<Type> typeRef, Str name) {
     type->name = nameSym;
 }
 
+HRef<Array> createCommandLine(State* state, int argc, char const* argv[]) {
+    HRef<Array> commandLine = createArray(state, Fixnum{int64_t(argc)});
+    pushStackRoot(state, &commandLine);
+
+    for (size_t i = 0; i < size_t(argc); ++i) {
+        char const* const segCStr = argv[i];
+        HRef<String> const seg =
+            createString(state, Str{reinterpret_cast<uint8_t const*>(segCStr), strlen(segCStr)});
+        const_cast<ORef*>(commandLine.ptr()->flexData())[i] = seg; // Initializing store
+    }
+
+    popStackRoots(state, 1);
+    return commandLine;
+}
+
 State::State(
     Heap heap, NamedTypes types, NamedSingletons singletons, HRef<Namespace> ns,
     HRef<Var> errorHandler
@@ -748,7 +763,7 @@ State::State(
     shadowstack{newShadowstack()}
 {}
 
-State* State::tryCreate(size_t heapSize) {
+State* State::tryCreate(size_t heapSize, int argc, char const* argv[]) {
     Heap heap = Heap::tryCreate(heapSize);
     if (!heap.isValid()) { return nullptr; }
     
@@ -908,6 +923,8 @@ State* State::tryCreate(size_t heapSize) {
     popStackRoots(dest, 1); // abortClosure
     installPrimordial(dest, strLit("end"), dest->singletons.end);
     installPrimordial(dest, strLit("standard-input"), createInputFile(dest, UTF8InputFile{stdin}));
+    installPrimordial(dest, strLit("*command-line*"), createCommandLine(dest, argc, argv));
+
     installPrimop(dest, strLit("apply-array"), (MethodCode)primopApplyArray,
                   false, Fixnum{2l}, dest->types.any, dest->types.array);
     // TODO: `array!` -> `array-mut` (everywhere):
@@ -1170,6 +1187,16 @@ HRef<String> createString(State* state, Str str) {
     memcpy(const_cast<uint8_t*>(string->flexData()), str.data, str.len);
     
     return HRef{string};
+}
+
+HRef<Array> createArray(State* state, Fixnum count) {
+    Array* ptr = tryAllocArray(state, count);
+    if (mustCollect(ptr)) {
+        collect(state);
+        ptr = allocArrayOrDie(state, count);
+    }
+
+    return HRef((Array*)ptr);
 }
 
 HRef<ArrayMut> createArrayMut(State* state, Fixnum count) {
@@ -1694,8 +1721,8 @@ HRef<FatalError> createDivByZeroError(
 
 } // namespace
 
-extern "C" Vshs_State* tryCreateState(size_t heapSize) {
-    return (Vshs_State*)State::tryCreate(heapSize);
+extern "C" Vshs_State* tryCreateState(size_t heapSize, int argc, char const* argv[]) {
+    return (Vshs_State*)State::tryCreate(heapSize, argc, argv);
 }
 
 extern "C" void freeState(Vshs_State* state) { freeState((State*)state); }

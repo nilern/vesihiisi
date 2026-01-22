@@ -103,7 +103,7 @@ struct State {
 
     Shadowstack shadowstack;
 
-    static State* tryCreate(size_t heapSize);
+    static State* tryCreate(size_t heapSize, int argc, char const* argv[]);
 
     ~State(); // Need a destructor (while we have `freeSymbolTable` etc.)
 
@@ -184,6 +184,8 @@ inline Array* tryAllocArray(State* state, Fixnum count) {
 inline Array* allocArrayOrDie(State* state, Fixnum count) {
     return (Array*)state->heap.tospace.allocFlexOrDie(state->types.array.ptr(), count);
 }
+
+HRef<Array> createArray(State* state, Fixnum count);
 
 inline ArrayMut* tryAllocArrayMut(State* state, Fixnum count) {
     return (ArrayMut*)state->heap.tospace.tryAllocFlex(state->types.arrayMut.ptr(), count);

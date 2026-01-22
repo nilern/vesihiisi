@@ -1195,6 +1195,11 @@
               (map (fn (form) (macroexpand-all env form)) form))) ; Function application
           form))))) ; Non-application
 
+(def eval ; TODO: Use `set!` when it becomes available
+  (let ((nonexpanding-eval eval))
+    (fn (expr loc debug)
+      (nonexpanding-eval (macroexpand-all () expr) loc debug))))
+
 ;; TODO: Reader macros (for both readers)
 ;; OPTIMIZE: Make output more efficient (there is a whole tradition about that):
 (def quasiquote

@@ -19,6 +19,7 @@ Yet another Lisp.
 But what we do have going on in various states of completeness:
 
 * NaN-tagged value representation
+* Last record slot can be indexed i.e. arrays are not special
 * Stop-and-copy GC using the elegant Cheney algorithm
 * Register-based bytecode VM
     - A bytecode compiler that actually tries to do good register allocation
@@ -28,6 +29,7 @@ But what we do have going on in various states of completeness:
 * First-class multi-shot continuations
 * Unhygienic macros
     - Including symbol/identifier macros
+* UTF-8 ports and strings
 * Self-hosting reader, macroexpander and CLI interface including the REPL
 
 ## Immediate Goals

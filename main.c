@@ -84,7 +84,7 @@ typedef struct CLIArgs {
     bool forceInteractive;
 } CLIArgs;
 
-static void freeCLIArgs(CLIArgs* args) { free((void*)args->filename); }
+//static void freeCLIArgs(CLIArgs* args) { free((void*)args->filename); }
 
 typedef struct CLIErr {
     int idx;
@@ -134,6 +134,7 @@ static char const* const flagDescriptions[] = {
 };
 static_assert(countof(flagDescriptions) == countof(longFlagNames));
 
+// TODO: Reduce this to only determining debug mode as the CLI is now in Lisp:
 static ParseArgvRes parseArgv(int argc, char const* argv[static argc]) {
     CLIArgs config = {
         .name = argv[0],
@@ -196,10 +197,6 @@ static ParseArgvRes parseArgv(int argc, char const* argv[static argc]) {
     return (ParseArgvRes){.val = config, RES_OK};
 }
 
-static const char stdinName[] = "STDIN";
-
-static const char prompt[] = "vesihiisi> ";
-
 static const char replFilename[] = "REPL";
 static Str const replFilenameStr = {
     (uint8_t const*)replFilename,
@@ -215,19 +212,7 @@ int main(int argc, char const* argv[static argc]) {
         return EXIT_FAILURE;
     }
     CLIArgs args = argvRes.val;
-
-    if (args.help) {
-        printf("Usage: %s [OPTION]... [FILE]\n", argv[0]);
-        puts("An uncommon Lisp. Runs FILE if given, else launches a REPL.\n");
-
-        for (size_t i = 0; i < countof(longFlagNames); ++i) {
-            printf("  -%c, --%s\t%s\n", shortFlagNames[i], longFlagNames[i], flagDescriptions[i]);
-        }
-
-        puts("  -\tread program from stdin (as if from FILE)");
-
-        return EXIT_SUCCESS;
-    }
+    args.filename = "base/bootstrap.lisp"; // HACK
 
     struct Vshs_State* state = tryCreateState(1024*1024, argc, argv);
     if (!state) {
@@ -236,164 +221,94 @@ int main(int argc, char const* argv[static argc]) {
     }
 
     bool loadFailed = false;
-    if (args.filename || args.fromStdin) {
-        if (args.filename && args.fromStdin) {
-            puts("Inconsistent CLI args: both '-' and filename given.");
+
+    char* fchars = nullptr;
+    size_t fsize = 0;
+    // OPTIMIZE: Use `mmap`:
+    FILE* const file = fopen(args.filename, "rb");
+    if (!file) {
+        fprintf(stderr, "Can't open %s: %s\n", args.filename, strerror(errno));
+        return EXIT_FAILURE;
+    }
+
+    fseek(file, 0, SEEK_END);
+    fsize = (size_t)ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    fchars = malloc(fsize + 1);
+    size_t nread /*HACK:*/ [[maybe_unused]] = fread(fchars, 1, fsize, file);
+    assert(nread == fsize);
+    fchars[fsize] = 0;
+    fclose(file);
+
+    Str filenameStr = (Str){(uint8_t*)args.filename, strlen(args.filename)};
+
+    Str const src = {(uint8_t*)fchars, fsize};
+    Parser* const parser = createParser(state, src, filenameStr);
+    pushFilenameRoot(state, parser);
+
+    while (!loadFailed) {
+        Vshs_MaybeRes const maybeRes = readEval(state, parser, args.debug);
+        if (!maybeRes.hasVal) { break; }
+        Vshs_Res const res = maybeRes.val;
+
+        switch (res.tag) {
+        case RES_OK: break;
+
+        case RES_ERR: {
+            switch (res.err.type) {
+            case VSHS_PARSE_ERR: { // TODO: DRY wrt. parse error in REPL
+                fputs("ParseError: ", stderr);
+                printParseError(stderr, src, &res.err.parseErr);
+                putc('\n', stderr);
+            }; break;
+
+            case VSHS_SYNTAX_ERRS: {
+                SyntaxErrors errs = res.err.syntaxErrs;
+
+                size_t const errorCount = errs.count;
+                for (size_t i = 0; i < errorCount; ++i) {
+                    fputs("SyntaxError: ", stderr);
+                    printSyntaxError(state, stderr, src, &errs.vals[i]);
+                    putc('\n', stderr);
+                }
+
+                freeSyntaxErrors(&errs);
+            }; break;
+
+            case VSHS_RUNTIME_ERR: break; // FIXME?
+            }
+
+            loadFailed = true;
+        }; break;
+        }
+    }
+
+    popStackRoots(state, 1);
+    freeParser(parser);
+    free(fchars);
+
+    {
+        uint8_t rawSrc[] = "(load \"base/interpreter.lisp\" #t)";
+        rawSrc[31] = args.debug ? 't' : 'f'; // HACK
+        Str src = {rawSrc, (sizeof rawSrc / sizeof *rawSrc) - 1};
+        Parser* parser = createParser(state, src, replFilenameStr);
+        pushFilenameRoot(state, parser);
+
+        Vshs_MaybeRes const maybeRes = readEval(state, parser, args.debug);
+        assert(maybeRes.hasVal);
+        Vshs_Res const res = maybeRes.val;
+        if (res.tag != RES_OK) {
+            fputs("Bad interpreter file\n", stderr);
             exit(EXIT_FAILURE);
         }
 
-        char* fchars = nullptr;
-        size_t fsize = 0;
-        Str filenameStr;
-        if (args.filename) {
-            // OPTIMIZE: Use `mmap`:
-            FILE* const file = fopen(args.filename, "rb");
-            if (!file) {
-                fprintf(stderr, "Can't open %s: %s\n", args.filename, strerror(errno));
-                return EXIT_FAILURE;
-            }
-
-            fseek(file, 0, SEEK_END);
-            fsize = (size_t)ftell(file);
-            fseek(file, 0, SEEK_SET);
-
-            fchars = malloc(fsize + 1);
-            size_t nread /*HACK:*/ [[maybe_unused]] = fread(fchars, 1, fsize, file);
-            assert(nread == fsize);
-            fchars[fsize] = 0;
-            fclose(file);
-
-            filenameStr = (Str){(uint8_t*)args.filename, strlen(args.filename)};
-        } else {
-            assert(args.fromStdin);
-
-            size_t cap = 4096; // A familiar size from paging. Also probably about 100 LOC.
-            fchars = malloc(cap);
-
-            for (size_t readCount;
-                 (readCount = fread(fchars + fsize, 1, cap - fsize, stdin)) > 0;
-            ) {
-                fsize += readCount;
-
-                if (fsize == cap) {
-                    cap = cap + cap / 2;
-                    fchars = realloc(fchars, cap);
-                }
-            }
-
-            filenameStr = (Str){(uint8_t*)stdinName, sizeof stdinName / sizeof *stdinName};
-        }
-
-        Str const src = {(uint8_t*)fchars, fsize};
-        Parser* const parser = createParser(state, src, filenameStr);
-        pushFilenameRoot(state, parser);
-
-        while (!loadFailed) {
-            Vshs_MaybeRes const maybeRes = readEval(state, parser, args.debug);
-            if (!maybeRes.hasVal) { break; }
-            Vshs_Res const res = maybeRes.val;
-
-            switch (res.tag) {
-            case RES_OK: break;
-
-            case RES_ERR: {
-                switch (res.err.type) {
-                case VSHS_PARSE_ERR: { // TODO: DRY wrt. parse error in REPL
-                    fputs("ParseError: ", stderr);
-                    printParseError(stderr, src, &res.err.parseErr);
-                    putc('\n', stderr);
-                }; break;
-
-                case VSHS_SYNTAX_ERRS: {
-                    SyntaxErrors errs = res.err.syntaxErrs;
-
-                    size_t const errorCount = errs.count;
-                    for (size_t i = 0; i < errorCount; ++i) {
-                        fputs("SyntaxError: ", stderr);
-                        printSyntaxError(state, stderr, src, &errs.vals[i]);
-                        putc('\n', stderr);
-                    }
-
-                    freeSyntaxErrors(&errs);
-                }; break;
-
-                case VSHS_RUNTIME_ERR: break; // FIXME?
-                }
-
-                loadFailed = true;
-            }; break;
-            }
-        }
-
-        popStackRoots(state, 1);
+        popStackRoots(state, 1); // Parser filename
         freeParser(parser);
-        free(fchars);
-    }
-
-    if (!(args.filename || args.fromStdin) || (args.forceInteractive && !loadFailed)) {
-        for (;/*ever*/;) {
-            printf("%s", prompt);
-
-            char* line = NULL;
-            size_t maxLen = 0;
-            ssize_t const len = getline(&line, &maxLen, stdin);
-            if (len != -1) {
-                Str const src = {(uint8_t*)line, (size_t)len};
-                Parser* parser = createParser(state, src, replFilenameStr);
-                pushFilenameRoot(state, parser);
-                Vshs_MaybeRes const maybeRes = readEval(state, parser, args.debug);
-                if (maybeRes.hasVal) {
-                    Vshs_Res const res = maybeRes.val;
-
-                    switch (res.tag) {
-                    case RES_OK: {
-                        print(state, stdout, res.val);
-                        putc('\n', stdout);
-                    }; break;
-
-                    case RES_ERR: {
-                        switch (res.err.type) {
-                        case VSHS_PARSE_ERR: { // TODO: DRY wrt. parse error on file load
-                            fputs("ParseError: ", stderr);
-                            printParseError(stderr, src, &res.err.parseErr);
-                            putc('\n', stderr);
-                        }; break;
-
-                        case VSHS_SYNTAX_ERRS: {
-                            SyntaxErrors errs = res.err.syntaxErrs;
-
-                            size_t const errorCount = errs.count;
-                            for (size_t i = 0; i < errorCount; ++i) {
-                                fputs("SyntaxError: ", stderr);
-                                printSyntaxError(state, stderr, src, &errs.vals[i]);
-                                putc('\n', stderr);
-                            }
-
-                            freeSyntaxErrors(&errs);
-                        }; break;
-
-                        case VSHS_RUNTIME_ERR: break; // FIXME?
-                        }
-                    }; break;
-                    }
-                }
-
-                popStackRoots(state, 1);
-                freeParser(parser);
-            } else {
-                puts("Error reading input");
-
-                free(line);
-                freeCLIArgs(&args);
-                freeState(state);
-                return EXIT_FAILURE;
-            }
-            free(line);
-        }
     }
 
     freeState(state);
-    freeCLIArgs(&args);
+    //freeCLIArgs(&args);
     return EXIT_SUCCESS;
 }
 

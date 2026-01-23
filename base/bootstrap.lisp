@@ -123,6 +123,17 @@
 
 (def array-get (fn ((: xs <array>) i) (flex-get xs i)))
 
+(def array-fold-left
+  (fn (f acc xs)
+    (let ((len (array-count xs)))
+      (letfn (((loop acc i)
+                 (if (fx< i len)
+                   (loop (f (array-get xs i) acc) (fx+ i 1))
+                   acc)))
+        (loop acc 0)))))
+
+(def array-fold (fn (f acc (: xs <array>)) (array-fold-left f acc xs)))
+
 (def array!->list (fn (arr) (array!-fold-right cons arr ())))
 
 (def list (fn xs (array!->list xs)))
@@ -418,6 +429,7 @@
 
 (def fold
   (make-multimethod 'fold
+    array-fold
     string-fold))
 
 (def index-of
@@ -1282,26 +1294,29 @@
 ;;; ================================================================================================
 
 (def load
-  (fn (filename debug)
-    (let ((input (open-input-file filename))
-          (start-byte-idx (skip-whitespace input))
-          (start-loc (make <source-location> filename start-byte-idx)))
-      (if (not (= (peek input) end))
-        (let ((loc&v&loc (read* input start-loc))
-              (_ (eval (array-get loc&v&loc 1) (array-get loc&v&loc 0) debug))
-              (ws-count (skip-whitespace input))
-              (byte-idx (+ (source-location-byte-index (array-get loc&v&loc 2)) ws-count)))
-          (letfn (((load-remaining byte-idx)
-                     (if (not (= (peek input) end))
-                       (let ((loc&v&loc (read* input (make <source-location> filename byte-idx)))
-                             (_ (eval (array-get loc&v&loc 1) (array-get loc&v&loc 0) debug))
-                             (ws-count (skip-whitespace input))
-                             (byte-idx (+ (source-location-byte-index (array-get loc&v&loc 2))
-                                          ws-count)))
-                         (load-remaining byte-idx))
-                       #t)))
-            (load-remaining byte-idx)))
-        #t))))
+  (make-multimethod 'load
+    (fn (input filename debug)
+      (let ((start-byte-idx (skip-whitespace input))
+            (start-loc (make <source-location> filename start-byte-idx)))
+        (if (not (= (peek input) end))
+          (let ((loc&v&loc (read* input start-loc))
+                (_ (eval (array-get loc&v&loc 1) (array-get loc&v&loc 0) debug))
+                (ws-count (skip-whitespace input))
+                (byte-idx (+ (source-location-byte-index (array-get loc&v&loc 2)) ws-count)))
+            (letfn (((load-remaining byte-idx)
+                      (if (not (= (peek input) end))
+                        (let ((loc&v&loc (read* input
+                                                (make <source-location> filename byte-idx)))
+                              (_ (eval (array-get loc&v&loc 1) (array-get loc&v&loc 0) debug))
+                              (ws-count (skip-whitespace input))
+                              (byte-idx (+ (source-location-byte-index (array-get loc&v&loc 2))
+                                            ws-count)))
+                          (load-remaining byte-idx))
+                        #t)))
+              (load-remaining byte-idx)))
+          #t)))
+    ;; TODO: Canonicalize `filename`:
+    (fn (filename debug) (load (open-input-file filename) filename debug))))
 
 ;;; Self-Hosting REPL
 ;;; ================================================================================================

@@ -22,6 +22,7 @@ But what we do have going on in various states of completeness:
 * Stop-and-copy GC using the elegant Cheney algorithm
 * Register-based bytecode VM
     - A bytecode compiler that actually tries to do good register allocation
+    - Compressed debug info on bytecode methods
 * Lisp-1
 * Full tail call optimization
 * First-class multi-shot continuations

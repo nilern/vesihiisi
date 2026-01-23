@@ -14,24 +14,28 @@ Yet another Lisp.
 
 ## Current State
 
-* Rudimentary REPL
-    - Simple literals (fixnums `23`, characters `#"c"`, booleans `#t` & `#f`, strings "foo")
-    - Special forms `(def foo 23)`, `(if #t then what)` `(let ((ans 42)) ans)` and
-      `(quote (quoth he))`
-    - Global variable references `foo`
-    - Functions `(def id (fn (x) x))` and calls `(id (quote ego))` including varargs
-      `(fn (x y . zs) zs)`.
-        * Full tail call optimization
-    - Also debug printing from compilation (with `-d`)
+! Highly experimental, not rounded out or even robust enough to be usable.
+
+But what we do have going on in various states of completeness:
+
+* NaN-tagged value representation
 * Stop-and-copy GC using the elegant Cheney algorithm
+* Register-based bytecode VM
+    - A bytecode compiler that actually tries to do good register allocation
+* Lisp-1
+* Full tail call optimization
+* First-class multi-shot continuations
+* Unhygienic macros
+    - Including symbol/identifier macros
+* Self-hosting reader, macroexpander and CLI interface including the REPL
 
 ## Immediate Goals
 
+* Exception handling (the REPL still crashes on your first mistake)
 * Stack traces
 * Standard library (roughly to par with R4RS Scheme)
 * Complete reader
-    - Missing `'`, negative and hex literals char escapes etc.
-* Macroexpansion and `quasiquote`
+    - Missing e.g. reader macros for `quasiquote` and `unquote(-splicing)`
 * Delimited continuations (with winders)
 * Safe for space
     - Seems like the only thing remaining is not tracing dead roots in VM
@@ -39,6 +43,7 @@ Yet another Lisp.
 
 ## Lofty ambitions
 
+* Namespace system
 * Non-blocking IO etc. (Concurrent ML)
 * Get to a JIT, even if it is just a simple method JIT.
 * Generational GC

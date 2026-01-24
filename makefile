@@ -26,7 +26,7 @@ dev: vesihiisi-dev
 
 .PHONY: run-dev
 run-dev: vesihiisi-dev
-	rlwrap ./vesihiisi-dev -di
+	VSHS_HOME=. rlwrap ./vesihiisi-dev -di
 
 .PHONY: test
 test: test/test_heap.out test/test_arena.out test/test_bitset.out test/test_sparsearray.out

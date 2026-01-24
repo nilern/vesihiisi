@@ -84,7 +84,7 @@ typedef struct CLIArgs {
     bool forceInteractive;
 } CLIArgs;
 
-//static void freeCLIArgs(CLIArgs* args) { free((void*)args->filename); }
+static void freeCLIArgs(CLIArgs* args) { free((void*)args->filename); }
 
 typedef struct CLIErr {
     int idx;
@@ -197,6 +197,9 @@ static ParseArgvRes parseArgv(int argc, char const* argv[static argc]) {
     return (ParseArgvRes){.val = config, RES_OK};
 }
 
+static const char bootstrapFilename[] = "base/bootstrap.lisp";
+static const char homeEnvVarName[] = "VSHS_HOME";
+
 static const char replFilename[] = "REPL";
 static Str const replFilenameStr = {
     (uint8_t const*)replFilename,
@@ -204,6 +207,12 @@ static Str const replFilenameStr = {
 };
 
 int main(int argc, char const* argv[static argc]) {
+    char const* const vshsHome = getenv(homeEnvVarName);
+    if (!vshsHome) {
+        fprintf(stderr, "Error: %s not set.\n", homeEnvVarName);
+        exit(EXIT_FAILURE);
+    }
+
     ParseArgvRes const argvRes = parseArgv(argc, argv);
     if (argvRes.tag == RES_ERR) {
         printCLIErr(stderr, argv, &argvRes.err);
@@ -212,7 +221,17 @@ int main(int argc, char const* argv[static argc]) {
         return EXIT_FAILURE;
     }
     CLIArgs args = argvRes.val;
-    args.filename = "base/bootstrap.lisp"; // HACK
+    {
+        size_t const vshsHomeCount = strlen(vshsHome);
+        size_t const bootstrapFilenameCount = sizeof bootstrapFilename / sizeof *bootstrapFilename;
+        size_t const fullbootstrapFilenameCount = vshsHomeCount + 1 + bootstrapFilenameCount;
+        char* const fullBootstrapFilename = malloc(fullbootstrapFilenameCount);
+        strcpy(fullBootstrapFilename, vshsHome);
+        fullBootstrapFilename[vshsHomeCount] = '/'; // TODO: Support non-POSIX filename separator
+        strcpy(fullBootstrapFilename + vshsHomeCount + 1, bootstrapFilename);
+        fullBootstrapFilename[fullbootstrapFilenameCount - 1] = '\0';
+        args.filename = fullBootstrapFilename; // HACK
+    }
 
     struct Vshs_State* state = tryCreateState(1024*1024, argc, argv);
     if (!state) {
@@ -308,7 +327,7 @@ int main(int argc, char const* argv[static argc]) {
     }
 
     freeState(state);
-    //freeCLIArgs(&args);
+    freeCLIArgs(&args);
     return EXIT_SUCCESS;
 }
 

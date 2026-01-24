@@ -26,6 +26,8 @@ But what we do have going on in various states of completeness:
     - Compressed debug info on bytecode methods
 * Lisp-1
 * Full tail call optimization
+* Multimethods
+	- But with no overriding whatsoever (methods must have zero overlap)
 * First-class multi-shot continuations
 * Unhygienic macros
     - Including symbol/identifier macros

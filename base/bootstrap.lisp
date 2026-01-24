@@ -42,6 +42,15 @@
       acc
       (fold-left f (f (car xs) acc) (cdr xs)))))
 
+;; Like `fold-left`, but if `xs` is improper folds the tail with one last `f` call.
+(def fold-left*
+  (fn (f acc xs)
+    (if (isa? <pair> xs)
+      (fold-left* f (f (car xs) acc) (cdr xs))
+      (if (identical? xs ())
+        acc
+        (f xs acc)))))
+
 (def fold-right
   (fn (f xs acc)
     (if (identical? xs ())
@@ -1116,8 +1125,8 @@
                          (cadr param)))) ; Param syntax already checked by `expand-params`
              (cons name (local-binding name #f))))
         ((bind-params env params)
-           (fold-left (fn (param env) (cons (param-binding param) env))
-                      env params))
+           (fold-left* (fn (param env) (cons (param-binding param) env))
+                       env params))
 
         ;; For `let`:
         ((expand-bindings env bindings)

@@ -229,7 +229,7 @@
             (meet-domains* method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2)))))))
 
 (def make-multimethod
-  (fn (name . methods) ; FIXME: `((: name <symbol>) . methods)` (breaks due to compiler bug)
+  (fn ((: name <symbol>) . methods)
     (let ((ensure-unambiguous
            (fn (f i)
              (array!-fold-left

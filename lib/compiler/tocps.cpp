@@ -377,13 +377,15 @@ IRName fnToCPSimpl(
 
     size_t arity = 0;
 
-    for (; !isEmptyList(pass.state, params); ++arity) {
+    while (!isEmptyList(pass.state, params)) {
         // TODO: Is this just bad syntax design?:
         // Has to be first because `(x y . (: zs <t>))` = `(x y : zs <t>)`:
         if (paramToCPS(pass, fn, env, block,
                        &innerFn, &fnEnv, entryBlock, arity, params)
             ) {
             innerFn.hasVarArg = true;
+
+            ++arity;
             break;
         }
 
@@ -396,6 +398,8 @@ IRName fnToCPSimpl(
                 pass.error({paramsPair->maybeLoc, INVALID_PARAM});
             }
             params = paramsPair->cdr;
+
+            ++arity;
             continue;
         }
 

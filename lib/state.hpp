@@ -103,7 +103,7 @@ struct State {
 
     Shadowstack shadowstack;
 
-    static State* tryCreate(size_t heapSize, int argc, char const* argv[]);
+    static State* tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* argv[]);
 
     ~State(); // Need a destructor (while we have `freeSymbolTable` etc.)
 

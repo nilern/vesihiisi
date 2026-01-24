@@ -763,7 +763,7 @@ State::State(
     shadowstack{newShadowstack()}
 {}
 
-State* State::tryCreate(size_t heapSize, int argc, char const* argv[]) {
+State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* argv[]) {
     Heap heap = Heap::tryCreate(heapSize);
     if (!heap.isValid()) { return nullptr; }
     
@@ -923,6 +923,9 @@ State* State::tryCreate(size_t heapSize, int argc, char const* argv[]) {
     popStackRoots(dest, 1); // abortClosure
     installPrimordial(dest, strLit("end"), dest->singletons.end);
     installPrimordial(dest, strLit("standard-input"), createInputFile(dest, UTF8InputFile{stdin}));
+    installPrimordial(dest, strLit("*vshs-home*"),
+                      createString(dest, Str{reinterpret_cast<uint8_t const*>(vshsHome),
+                                             strlen(vshsHome)}));
     installPrimordial(dest, strLit("*command-line*"), createCommandLine(dest, argc, argv));
 
     installPrimop(dest, strLit("apply-array"), (MethodCode)primopApplyArray,
@@ -1721,8 +1724,10 @@ HRef<FatalError> createDivByZeroError(
 
 } // namespace
 
-extern "C" Vshs_State* tryCreateState(size_t heapSize, int argc, char const* argv[]) {
-    return (Vshs_State*)State::tryCreate(heapSize, argc, argv);
+extern "C" Vshs_State* tryCreateState(
+    size_t heapSize, char const* vshsHome, int argc, char const* argv[]
+) {
+    return (Vshs_State*)State::tryCreate(heapSize, vshsHome, argc, argv);
 }
 
 extern "C" void freeState(Vshs_State* state) { freeState((State*)state); }

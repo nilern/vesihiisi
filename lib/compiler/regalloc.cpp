@@ -112,8 +112,6 @@ void regEnvAdd(RegEnv* env, IRName var, Reg reg) {
 }
 
 Reg allocVarReg(RegEnv* env, IRName var) {
-    assert(!env->varRegs[var.index].hasVal);
-
     for (size_t i = 0; i < REG_COUNT; ++i) {
         Reg const reg = Reg{(uint8_t)i};
 
@@ -133,6 +131,23 @@ struct Move {
     Reg dest;
     Reg src;
 };
+
+struct AllocStmtArgRegRes {
+    Reg reg;
+    Maybe<Move> maybeMove;
+};
+
+[[nodiscard]]
+AllocStmtArgRegRes allocStmtArgReg(RegEnv* env, IRName var) {
+    MaybeReg const maybeDest = env->varRegs[var.index];
+
+    Reg const reg = allocVarReg(env, var);
+
+    return AllocStmtArgRegRes{
+        reg,
+        maybeDest.hasVal ? Maybe{Move{.dest = maybeDest.val, .src = reg}} : Maybe<Move>{}
+    };
+}
 
 [[nodiscard]]
 Maybe<Move> allocTransferArgReg(RegEnv* env, IRName var, Reg reg, bool delayDupDeallocs) {
@@ -177,6 +192,11 @@ Reg deallocVarReg(RegEnv* env, IRName var) {
     shrinkRegEnvMaxVarCount(env);
 
     return reg;
+}
+
+void deallocDupReg(RegEnv* env, Reg reg) {
+    env->regVars[reg.index] = invalidIRName;
+    shrinkRegEnvMaxVarCount(env);
 }
 
 Reg getVarReg(RegEnv* env, IRName var) {
@@ -230,14 +250,9 @@ void regEnvSwap(RegEnv* env, IRName var1, Reg reg1, IRName var2, Reg reg2) {
 // Register Allocation Over IR
 // =================================================================================================
 
-void shuffleRegs(Compiler* compiler, RegEnv* current, RegEnv const* goal, IRBlock* block) {
-    ORef const maybeLoc = block->stmts.count > 0
-        ? block->stmts.vals[0].maybeLoc
-        : block->transfer.maybeLoc;
-
-    // Reversing the block retargets `pushIRStmt` to the start of the block:
-    reverse(block->stmts.vals, block->stmts.count, sizeof *block->stmts.vals, swapStmts);
-
+void shuffleRegs(
+    Compiler* compiler, RegEnv* current, Stmts* outputStmts, RegEnv const* goal, ORef const maybeLoc
+) {
     // Iterate until no line ends = `mov` all lines away:
     for (bool foundLineEnd = true; foundLineEnd;) {
         foundLineEnd = false;
@@ -254,7 +269,7 @@ void shuffleRegs(Compiler* compiler, RegEnv* current, RegEnv const* goal, IRBloc
             if (!regEq(reg, goalReg)) { // Needs move or swap
                 if (isRegFree(current, goalReg)) { // Can move now
                     regEnvMove(current, var, reg, goalReg);
-                    pushIRStmt(compiler, &block->stmts, moveToStmt(MoveStmt{
+                    pushIRStmt(compiler, outputStmts, moveToStmt(MoveStmt{
                         .dest = IRName{reg.index},
                         .src = IRName{goalReg.index}
                     }, maybeLoc));
@@ -281,7 +296,7 @@ void shuffleRegs(Compiler* compiler, RegEnv* current, RegEnv const* goal, IRBloc
 
             // Loop-breaking swap:
             regEnvSwap(current, var, reg, trader, goalReg);
-            pushIRStmt(compiler, &block->stmts, swapToStmt(SwapStmt{
+            pushIRStmt(compiler, outputStmts, swapToStmt(SwapStmt{
                 .reg1 = IRName{reg.index},
                 .reg2 = IRName{goalReg.index}
             }, maybeLoc));
@@ -298,7 +313,7 @@ void shuffleRegs(Compiler* compiler, RegEnv* current, RegEnv const* goal, IRBloc
                 Reg const takerReg = maybeTakerReg.val;
 
                 regEnvSwap(current, taker, takerReg, trader, traderReg);
-                pushIRStmt(compiler, &block->stmts, swapToStmt(SwapStmt{
+                pushIRStmt(compiler, outputStmts, swapToStmt(SwapStmt{
                     .reg1 = IRName{takerReg.index},
                     .reg2 = IRName{traderReg.index}
                 }, maybeLoc));
@@ -307,9 +322,6 @@ void shuffleRegs(Compiler* compiler, RegEnv* current, RegEnv const* goal, IRBloc
             }
         }
     }
-
-    // Undo the block reversal to restore the correct statement order:
-    reverse(block->stmts.vals, block->stmts.count, sizeof *block->stmts.vals, swapStmts);
 }
 
 RegEnv regAllocIfSuccession(
@@ -335,7 +347,12 @@ RegEnv regAllocIfSuccession(
 
     assert(altLabel.blockIndex < fn->blockCount);
     IRBlock* altBlock = fn->blocks[altLabel.blockIndex];
-    shuffleRegs(compiler, altEnv, &goal, altBlock);
+    ORef const maybeLoc = altBlock->stmts.count > 0
+        ? altBlock->stmts.vals[0].maybeLoc
+        : altBlock->transfer.maybeLoc;
+    reverse(altBlock->stmts.vals, altBlock->stmts.count, sizeof *altBlock->stmts.vals, swapStmts);
+    shuffleRegs(compiler, altEnv, &altBlock->stmts, &goal, maybeLoc);
+    reverse(altBlock->stmts.vals, altBlock->stmts.count, sizeof *altBlock->stmts.vals, swapStmts);
 
     return goal;
 }
@@ -525,46 +542,114 @@ RegEnv regAllocTransfer(
     }
 }
 
-void regAllocStmt(Compiler* compiler, RegEnv* env, IRStmt* stmt) {
+void regAllocStmt(Compiler* compiler, RegEnv* env, Stmts* outputStmts, IRStmt* stmt) {
     switch (stmt->type) {
     case IRStmt::GLOBAL_DEF: {
         GlobalDef* const globalDef = &stmt->globalDef;
         globalDef->val = IRName{getVarReg(env, globalDef->val).index};
+
+        pushIRStmt(compiler, outputStmts, *stmt);
     }; break;
 
     case IRStmt::GLOBAL: {
         IRGlobal* const global = &stmt->global;
         global->tmpName = IRName{deallocVarReg(env, global->tmpName).index};
+
+        pushIRStmt(compiler, outputStmts, *stmt);
     }; break;
 
     case IRStmt::CONST_DEF: {
         ConstDef* const constDef = &stmt->constDef;
         constDef->name = IRName{deallocVarReg(env, constDef->name).index};
+
+        pushIRStmt(compiler, outputStmts, *stmt);
     }; break;
 
     case IRStmt::CLOVER: {
         Clover* const clover = &stmt->clover;
         clover->name = IRName{deallocVarReg(env, clover->name).index};
         clover->closure = IRName{getVarReg(env, clover->closure).index};
+
+        pushIRStmt(compiler, outputStmts, *stmt);
     }; break;
 
     case IRStmt::METHOD_DEF: {
         MethodDef* const methodDef = &stmt->methodDef;
         IRFn* const fn = &methodDef->fn;
 
-        methodDef->name = IRName{deallocVarReg(env, methodDef->name).index};
+        RegEnv outEnv = cloneRegEnv(env); // After post-stmt shuffle
 
-        // FIXME: Specializers may not be in register order. Basically the same issue was solved
-        // for closures by adding the `cloverindexing` pass but this requires something else (which
-        // we might also use to replace `cloverindexing`:
+        // Clean out registers of live-out specializers and collect non-live-out specializers:
+        auto dyerTypes = AVec<IRName>{&compiler->arena};
         for (size_t i = fn->domain.count; i-- > 0;) {
             IRName const typeName = fn->domain.vals[i];
-            if (irNameIsValid(typeName)) {
-                fn->domain.vals[i] = IRName{getVarReg(env, typeName).index};
+            if (!irNameIsValid(typeName)) { continue; } // HACK
+
+            MaybeReg const maybeTypeReg = tryVarReg(env, typeName);
+            if (maybeTypeReg.hasVal) {
+                deallocVarReg(env, typeName);
+            } else {
+                dyerTypes.push(typeName);
             }
         }
 
+        // Target register (of `methodDef->name`) is not freed so that it does not clobber any
+        // live-out specializers.
+
+        // Allocate registers for specializers and collect duplicating moves:
+        auto dupMoves = AVec<Move>{&compiler->arena};
+        {
+            size_t const domainCount = fn->domain.count;
+            for (size_t i = 0; i < domainCount; ++i) {
+                IRName const typeName = fn->domain.vals[i];
+                if (!irNameIsValid(typeName)) { continue; } // HACK
+
+                AllocStmtArgRegRes const res = allocStmtArgReg(env, typeName);
+                fn->domain.vals[i] = IRName{res.reg.index};
+                if (res.maybeMove.hasVal) {
+                    dupMoves.push(res.maybeMove.val);
+                }
+            }
+        }
+
+        RegEnv goalOutEnv = cloneRegEnv(env); // Before post-stmt shuffle
+        {
+            // Remove move srcs so specializers do not exist in multiple registers at once:
+            size_t const dupMoveCount = dupMoves.count();
+            for (size_t i = 0; i < dupMoveCount; ++i) {
+                deallocDupReg(&goalOutEnv, dupMoves[i].src);
+            }
+
+            // Remove specializers that are not live-outs:
+            size_t const dyerTypeCount = dyerTypes.count();
+            for (size_t i = 0; i < dyerTypeCount; ++i) {
+                deallocVarReg(&goalOutEnv, dyerTypes[i]);
+            }
+        }
+
+        // Emit post-stmt shuffle:
+        shuffleRegs(compiler, &outEnv, outputStmts, &goalOutEnv, stmt->maybeLoc);
+        freeRegEnv(&goalOutEnv);
+        freeRegEnv(&outEnv);
+
+        // Deallocate target register and emit stmt itself:
+        methodDef->name = IRName{deallocVarReg(env, methodDef->name).index};
         regAllocFn(compiler, fn);
+        pushIRStmt(compiler, outputStmts, *stmt);
+
+        // Emit pre-stmt duplicating moves:
+        {
+            size_t const dupMoveCount = dupMoves.count();
+            for (size_t i = 0; i < dupMoveCount; ++i) {
+                Move const move = dupMoves[i];
+
+                pushIRStmt(compiler, outputStmts, moveToStmt(MoveStmt{
+                    .dest = IRName{move.dest.index},
+                    .src = IRName{move.src.index}
+                }, stmt->maybeLoc));
+            }
+            delayedDeallocTransferArgRegs(env, dupMoves.slice());
+        }
     }; break;
 
     case IRStmt::CLOSURE: {
@@ -577,30 +662,39 @@ void regAllocStmt(Compiler* compiler, RegEnv* env, IRStmt* stmt) {
         }
 
         closure->method = IRName{getVarReg(env, closure->method).index};
+
+        pushIRStmt(compiler, outputStmts, *stmt);
     }; break;
 
-    case IRStmt::MOVE: case IRStmt::SWAP: break; // Generated during this pass => no-op
+    // Generated during this pass, so only copy:
+    case IRStmt::MOVE: case IRStmt::SWAP: pushIRStmt(compiler, outputStmts, *stmt); break;
 
     case IRStmt::KNOT: {
         KnotStmt* const knot = &stmt->knot;
         knot->name = IRName{deallocVarReg(env, knot->name).index};
+
+        pushIRStmt(compiler, outputStmts, *stmt);
     }; break;
 
     case IRStmt::KNOT_INIT: {
         KnotInitStmt* const knotInit = &stmt->knotInit;
         knotInit->v = IRName{getVarReg(env, knotInit->v).index};
         knotInit->knot = IRName{getVarReg(env, knotInit->knot).index};
+
+        pushIRStmt(compiler, outputStmts, *stmt);
     }; break;
 
     case IRStmt::KNOT_GET: {
         KnotGetStmt* const knotGet = &stmt->knotGet;
         knotGet->name = IRName{deallocVarReg(env, knotGet->name).index};
         knotGet->knot = IRName{getVarReg(env, knotGet->knot).index};
+
+        pushIRStmt(compiler, outputStmts, *stmt);
     }; break;
     }
 }
 
-void regAllocParams(Compiler* compiler, RegEnv* env, IRBlock* block) {
+void regAllocParams(Compiler* compiler, RegEnv* env, Stmts* outputStmts, IRBlock* block) {
     if (block->callers.count == 0) { // Escaping block:
         RegEnv goal = newRegEnv(compiler);
 
@@ -632,7 +726,10 @@ void regAllocParams(Compiler* compiler, RegEnv* env, IRBlock* block) {
             *param = IRName{regIdx};
         }
 
-        shuffleRegs(compiler, env, &goal, block);
+        ORef const maybeLoc = block->stmts.count > 0
+            ? block->stmts.vals[0].maybeLoc
+            : block->transfer.maybeLoc;
+        shuffleRegs(compiler, env, outputStmts, &goal, maybeLoc);
 
         freeRegEnv(&goal);
     } else { // Non-escaping block:
@@ -655,11 +752,16 @@ void regAllocBlock(
 
     RegEnv env = regAllocTransfer(compiler, savedEnvs, visited, fn, block, &block->transfer);
 
+    Stmts outputStmts = newStmtsWithCap(compiler, block->stmts.count);
+
     for (size_t i = block->stmts.count; i-- > 0;) {
-        regAllocStmt(compiler, &env, &block->stmts.vals[i]);
+        regAllocStmt(compiler, &env, &outputStmts, &block->stmts.vals[i]);
     }
 
-    regAllocParams(compiler, &env, block);
+    regAllocParams(compiler, &env, &outputStmts, block);
+
+    reverse(outputStmts.vals, outputStmts.count, sizeof *outputStmts.vals, swapStmts);
+    block->stmts = outputStmts;
 
     if (block->callers.count == 0) {
         freeRegEnv(&env);

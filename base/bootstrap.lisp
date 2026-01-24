@@ -1258,8 +1258,7 @@
                                     (error 'overlong-unquote-splicing head)
                                     #f))
                                 (loc (pair-loc form))
-                                ;; FIXME: The conditional crashes register allocator:
-                                (tail-loc 0.)) ; (if (isa? <pair> tail) (pair-loc tail) loc)))
+                                (tail-loc (if (isa? <pair> tail) (pair-loc tail) loc)))
                             (if (identical? depth 0)
                               (cons* 'concat
                                      (cons* splicee
@@ -1274,8 +1273,7 @@
                           ;; `(x . ys)`:
                           (let ((loc (pair-loc form))
                                 (tail (cdr form))
-                                ;; FIXME: The conditional crashes register allocator:
-                                (tail-loc 0.)) ; (if (isa? <pair> tail) (pair-loc tail) loc)))
+                                (tail-loc (if (isa? <pair> tail) (pair-loc tail) loc)))
                             (cons* 'cons*
                                    (cons* (quasimodo depth head)
                                           (cons* (quasimodo depth tail)

@@ -134,6 +134,7 @@ struct Move {
     Reg src;
 };
 
+[[nodiscard]]
 Maybe<Move> allocTransferArgReg(RegEnv* env, IRName var, Reg reg, bool delayDupDeallocs) {
     assert(isRegFree(env, reg));
 
@@ -185,14 +186,25 @@ Reg getVarReg(RegEnv* env, IRName var) {
     return allocVarReg(env, var);
 }
 
-void regEnvParamToArg(RegEnv* env, Reg paramReg, IRName arg) {
+[[nodiscard]]
+Maybe<Move> regEnvParamToArg(RegEnv* env, Reg paramReg, IRName arg) {
     assert(!irNameEq(env->regVars[paramReg.index], invalidIRName));
     assert(!irNameEq(arg, invalidIRName));
+
+    MaybeReg const maybeDest = env->varRegs[arg.index];
+    if (maybeDest.hasVal) {
+        env->regVars[maybeDest.val.index] = invalidIRName;
+        shrinkRegEnvMaxVarCount(env);
+    }
 
     IRName const param = env->regVars[paramReg.index];
     env->varRegs[param.index] = MaybeReg{};
     env->varRegs[arg.index] = MaybeReg{.val = paramReg, .hasVal = true};
     env->regVars[paramReg.index] = arg;
+
+    return maybeDest.hasVal
+               ? Maybe{Move{.dest = maybeDest.val, .src = paramReg}}
+               : Maybe<Move>{};
 }
 
 void regEnvMove(RegEnv* env, IRName var, Reg src, Reg dest) {
@@ -475,7 +487,14 @@ RegEnv regAllocTransfer(
             Reg const paramReg = Reg{(uint8_t)destBlock->params[i].index};
             IRName* const arg = &gotoo->args.names[i];
 
-            regEnvParamToArg(&env, paramReg, *arg);
+            Maybe<Move> const maybeMove = regEnvParamToArg(&env, paramReg, *arg);
+            if (maybeMove.hasVal) {
+                pushIRStmt(compiler, &block->stmts, moveToStmt(MoveStmt{
+                    .dest = IRName{maybeMove.val.dest.index},
+                    .src = IRName{maybeMove.val.src.index}
+                }, transfer->maybeLoc));
+            }
+
             *arg = IRName{paramReg.index};
         }
 

@@ -36,7 +36,7 @@ typedef struct Vshs_MaybeRes {
 } Vshs_MaybeRes;
 
 static Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser, bool debug) {
-    ParseRes const readRes = read(state, parser);
+    ParseRes const readRes = Vshs_read(state, parser);
     if (!readRes.success) {
         return (Vshs_MaybeRes){{.err = {.parseErr = readRes.err, VSHS_PARSE_ERR}}, RES_OK};
     }

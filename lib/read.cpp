@@ -581,6 +581,6 @@ ParseRes read(State* state, Parser* parser) {
 
 } // namespace
 
-extern "C" ParseRes read(struct Vshs_State* state, Parser* parser) {
+extern "C" ParseRes Vshs_read(struct Vshs_State* state, Parser* parser) {
     return read((State*)state, parser);
 }

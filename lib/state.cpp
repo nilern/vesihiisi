@@ -1002,6 +1002,8 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
                   false, Fixnum{1l}, dest->types.stringIterator);
     installPrimop(dest, strLit("string->symbol"), (MethodCode)primopStringToSymbol,
                   false, Fixnum{1l}, dest->types.string);
+    installPrimop(dest, strLit("file-exists?"), (MethodCode)primopFileExists,
+                  false, Fixnum{1l}, dest->types.string);
     installPrimop(dest, strLit("open-input-file"), (MethodCode)primopOpenInputFile,
                   false, Fixnum{1l}, dest->types.string);
     installPrimop(dest, strLit("close-port"), (MethodCode)primopClosePort,

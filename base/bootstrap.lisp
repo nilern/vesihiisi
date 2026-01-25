@@ -408,6 +408,17 @@
   (make-multimethod 'push!
     string-builder-push!))
 
+;; OPTIMIZE: Should not be necessary to copy character by character:
+(def string-concat
+  (fn strings
+    (let ((builder (array!-fold-left (fn (s builder)
+                                        (string-fold (fn (c builder)
+                                                       (string-builder-push! builder c)
+                                                       builder)
+                                                     builder s))
+                                     (string-builder) strings)))
+      (build-string builder))))
+
 (def newline (fn () (write-char #"\n")))
 
 (def <box> (make-slots-type (quote <box>) 1 #f))
@@ -1300,6 +1311,22 @@
 ;;; Load
 ;;; ================================================================================================
 
+(def *vshs-path* (array "" *vshs-home*))
+
+(def resolve-path
+  (fn (filename)
+    (call-with-current-continuation
+      (fn (return)
+        (fold (fn (dir filename)
+                (let ((fullname (if (not (= (peek (make <string-iterator> dir 0)) end))
+                                  (string-concat dir "/" filename) ; TODO: Non-POSIX separators
+                                  filename)))
+                  (if (file-exists? fullname)
+                    (continue return fullname)
+                    filename)))
+              filename *vshs-path*)
+        #f))))
+
 (def load
   (make-multimethod 'load
     (fn (input filename debug)
@@ -1323,7 +1350,9 @@
               (load-remaining byte-idx)))
           #t)))
     ;; TODO: Canonicalize `filename`:
-    (fn (filename debug) (load (open-input-file filename) filename debug))))
+    (fn (filename debug)
+      (let ((filename (resolve-path filename))) ; FIXME: Handle error
+        (load (open-input-file filename) filename debug)))))
 
 ;;; Self-Hosting REPL
 ;;; ================================================================================================

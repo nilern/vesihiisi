@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h> // TODO: Avoid POSIX requirement
 
 #include "../deps/utf8proc/utf8proc.h"
 
@@ -1060,6 +1061,24 @@ PrimopRes primopStringToSymbol(State* state) {
 
     state->regs[retReg] = internHeaped(state, str);
 
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes primopFileExists(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    auto const filename = HRef<String>::fromUnchecked(state->regs[firstArgReg]);
+
+    // TODO: Avoid copy (with null termination of String?):
+    size_t const byteCount = filename.ptr()->str().len;
+    char* const cFilename = static_cast<char*>(malloc(byteCount + 1));
+    memcpy(cFilename, filename.ptr()->str().data, byteCount);
+    cFilename[byteCount] = '\0';
+
+    state->regs[retReg] = Bool{access(cFilename, F_OK) == 0};
+
+    free(cFilename);
     return PrimopRes::CONTINUE;
 }
 

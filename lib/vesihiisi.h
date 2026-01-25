@@ -73,7 +73,7 @@ typedef struct ParseRes {
 
 void printParseError(FILE* dest, Str src, ParseError const* err);
 
-ParseRes read(struct Vshs_State* state, Parser* parser);
+ParseRes Vshs_read(struct Vshs_State* state, Parser* parser);
 
 typedef enum SyntaxErrorType {
     INVALID_DEFINIEND,

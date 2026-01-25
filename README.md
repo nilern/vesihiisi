@@ -40,7 +40,6 @@ But what we do have going on in various states of completeness:
 * Stack traces
 * Standard library (roughly to par with R4RS Scheme)
 * Complete reader
-    - Missing e.g. reader macros for `quasiquote` and `unquote(-splicing)`
 * Delimited continuations (with winders)
 * Safe for space
     - Seems like the only thing remaining is not tracing dead roots in VM

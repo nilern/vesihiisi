@@ -30,6 +30,7 @@
 (define cdr (fn ((: xs <pair>)) (slot-get xs 1)))
 (define set-cdr! (fn ((: xs <pair>) v) (slot-set! xs 1 v)))
 (define pair-loc (fn ((: p <pair>)) (slot-get p 2)))
+(define set-pair-loc! (fn ((: p <pair>) loc) (slot-set! p 2 loc)))
 
 (define caar (fn (xs) (car (car xs))))
 (define cadr (fn (xs) (car (cdr xs))))
@@ -858,13 +859,40 @@
                       #"\""
                       (fn (builder _) (build-string builder))))
 
-      (quotation (seq-> loc
-                        #"'"
-                        expr-box
-                        (fn (quote-loc _ loc&v)
-                          (cons* 'quote
-                                 (cons* (array-get loc&v 1) () (array-get loc&v 0))
-                                 quote-loc))))
+      (quotation (alt "['`]"
+                      (seq-> loc
+                             #"'"
+                             expr-box
+                             (fn (quote-loc _ loc&v)
+                               (cons* 'quote
+                                     (cons* (array-get loc&v 1) () (array-get loc&v 0))
+                                     quote-loc)))
+                      (seq-> loc
+                             #"`"
+                             expr-box
+                             (fn (quote-loc _ loc&v)
+                               (cons* 'quasiquote
+                                      (cons* (array-get loc&v 1) () (array-get loc&v 0))
+                                      quote-loc)))
+                      (seq-> loc
+                             #","
+                             (alt "@ or S-expr"
+                                  (seq-> #"@"
+                                         expr-box
+                                         (fn (_ loc&v)
+                                           (cons 'unquote-splicing
+                                                 (cons* (array-get loc&v 1)
+                                                        ()
+                                                        (array-get loc&v 0)))))
+                                  (seq-> expr-box
+                                         (fn (loc&v)
+                                           (cons 'unquote
+                                                 (cons* (array-get loc&v 1)
+                                                        ()
+                                                        (array-get loc&v 0))))))
+                             (fn (unquote-loc _ v)
+                               (set-pair-loc! v unquote-loc)
+                               v))))
 
       (decimal-digit? (fn (c) (if (isa? <char> c) (if (>= c #"0") (<= c #"9") #f) #f)))
       (decimal-digit-value (fn (c)

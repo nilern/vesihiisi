@@ -8,12 +8,9 @@
           (params (cdr interface))
           (body (cddr form)))
       ;; TODO: Use the quasiquote reader macros when they become available:
-      (quasiquote
-        (let ()
-          (define (unquote name)
-            (fn (unquote params)
-              (unquote-splicing body)))
-          (var-set-macro-category! (resolve (quote (unquote name))) 'fn-macro))))))
+      `(let ()
+         (define ,name  (fn ,params ,@body))
+         (var-set-macro-category! (resolve (quote ,name)) 'fn-macro)))))
 (var-set-macro-category! (resolve 'define-macro) 'fn-macro)
 
 (define-macro (define-symbol-macro _ form)
@@ -22,12 +19,9 @@
         (params (cdr interface))
         (body (cddr form)))
     ;; TODO: Use the quasiquote reader macros when they become available:
-    (quasiquote
-      (let ()
-        (define (unquote name)
-          (fn (unquote params)
-            (unquote-splicing body)))
-        (var-set-macro-category! (resolve (quote (unquote name))) 'symbol-macro)))))
+    `(let ()
+       (define ,name (fn ,params ,@body))
+       (var-set-macro-category! (resolve (quote ,name)) 'symbol-macro))))
 
 ;;; Self-Hosting REPL
 ;;; ================================================================================================

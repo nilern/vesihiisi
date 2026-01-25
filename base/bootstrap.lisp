@@ -1175,8 +1175,11 @@
                             (params (cdr binders))
                             (params* (expand-params env params))
                             (env (bind-params env params*))
-                            (body (map (fn (form) (macroexpand-all env form)) (cdr binding))))
-                        (cons* (cons* self params* (pair-loc params))
+                            (body (map (fn (form) (macroexpand-all env form)) (cdr binding)))
+                            (params-loc (if (isa? <pair> params)
+                                          (pair-loc params)
+                                          (pair-loc binders))))
+                        (cons* (cons* self params* params-loc)
                                body
                                (pair-loc binding)))))
              (map expand-letfn bindings))))
@@ -1327,6 +1330,7 @@
               filename *vshs-path*)
         #f))))
 
+;; TODO: Run last form in tail position and return its result?
 (define load
   (make-multimethod 'load
     (fn (input filename debug)
@@ -1354,22 +1358,4 @@
       (let ((filename (resolve-path filename))) ; FIXME: Handle error
         (load (open-input-file filename) filename debug)))))
 
-;;; Self-Hosting REPL
-;;; ================================================================================================
-
-(define repl
-  (fn (input debug)
-    (let ((prompt "vesihiisi> "))
-      (letfn (((loop)
-                 (write-string prompt)
-                 (flush-output-port)
-                 (let ((line (read-line input)))
-                   (if (not (identical? line end))
-                     (let ((loc&expr (read* (make <string-iterator> line 0)
-                                            (make <source-location> "REPL" 0)))
-                           (v (eval (array-get loc&expr 1) (array-get loc&expr 0) debug)))
-                       (write v)
-                       (newline)
-                       (loop))
-                     end))))
-        (loop)))))
+(load "base/base.lisp" #t) ;; FIXME: `*vm-debug*` global here (and elsewhere)

@@ -1193,7 +1193,7 @@
                 form
                 (if (if (identical? callee 'if)
                       #t
-                      (if (identical? callee 'def)
+                      (if (identical? callee 'define)
                         #t
                         (identical? callee 'set!)))
                   (cons* (car form)

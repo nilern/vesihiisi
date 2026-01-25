@@ -24,7 +24,7 @@ typedef enum Opcode : uint8_t {
     OP_MOVE,        // rx = mov ry
     OP_SWAP,        // swap rx ry
     OP_DEF,         // def c rx
-    // TODO: OP_GLOBAL_SET
+    OP_GLOBAL_SET,  // set! c rx
     OP_GLOBAL,      // rx = global c
     OP_CONST,       // rx = const c ; TODO: Encode as specialize with 0 types
     OP_SPECIALIZE,  // rx = specialize c #bi*

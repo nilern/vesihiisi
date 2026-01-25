@@ -61,6 +61,11 @@ typedef struct GlobalDef {
     IRName val;
 } GlobalDef;
 
+typedef struct GlobalSet {
+    HRef<Symbol> name;
+    IRName val;
+} GlobalSet;
+
 typedef struct IRGlobal {
     IRName tmpName;
     HRef<Symbol> name;
@@ -118,6 +123,7 @@ typedef struct IRStmt {
     ORef maybeLoc;
     union {
         GlobalDef globalDef;
+        GlobalSet globalSet;
         IRGlobal global;
         ConstDef constDef;
         Clover clover;
@@ -131,6 +137,7 @@ typedef struct IRStmt {
     };
     enum IRStmtType {
         GLOBAL_DEF,
+        GLOBAL_SET,
         GLOBAL,
         CONST_DEF,
         CLOVER,
@@ -259,6 +266,10 @@ void pushIRStmt(Compiler* compiler, Stmts* stmts, IRStmt stmt);
 
 inline IRStmt globalDefToStmt(GlobalDef globalDef, ORef maybeLoc) {
     return IRStmt{maybeLoc, {.globalDef = globalDef}, IRStmt::GLOBAL_DEF};
+}
+
+inline IRStmt globalSetToStmt(GlobalSet globalSet, ORef maybeLoc) {
+    return IRStmt{maybeLoc, {.globalSet = globalSet}, IRStmt::GLOBAL_SET};
 }
 
 inline IRStmt globalToStmt(IRGlobal global, ORef maybeLoc) {

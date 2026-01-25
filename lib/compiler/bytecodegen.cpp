@@ -435,6 +435,14 @@ void emitStmt(
         pushOp(*state, compiler, builder, OP_DEF, stmt->maybeLoc);
     }; break;
 
+    case IRStmt::GLOBAL_SET: {
+        GlobalSet const* const globalSet = &stmt->globalSet;
+
+        pushReg(compiler, builder, globalSet->val);
+        emitConstArg(compiler, builder, globalSet->name.oref());
+        pushOp(*state, compiler, builder, OP_GLOBAL_SET, stmt->maybeLoc);
+    }; break;
+
     case IRStmt::GLOBAL: {
         IRGlobal const* const global = &stmt->global;
 

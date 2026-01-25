@@ -83,7 +83,8 @@ void indexFnClovers(Compiler* compiler, CloverIdxs const* fnEnv, IRFn* fn);
 
 void indexStmtClovers(Compiler* compiler, CloverIdxs const* env, IRStmt* stmt) {
     switch (stmt->type) {
-    case IRStmt::GLOBAL_DEF: case IRStmt::GLOBAL: case IRStmt::CONST_DEF: break; // Not closure-related
+    case IRStmt::GLOBAL_DEF: case IRStmt::GLOBAL_SET: case IRStmt::GLOBAL:
+    case IRStmt::CONST_DEF: break; // Not closure-related
 
     case IRStmt::CLOVER: {
         Clover* const clover = &stmt->clover;

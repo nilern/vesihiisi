@@ -268,6 +268,12 @@ IRStmt stmtWithPureLoads(
         globalDef->val = deepLexicalUse(compiler, env, newStmts, globalDef->val, stmt.maybeLoc);
     }; break;
 
+    case IRStmt::GLOBAL_SET: {
+        GlobalSet* const globalSet = &stmt.globalSet;
+
+        globalSet->val = deepLexicalUse(compiler, env, newStmts, globalSet->val, stmt.maybeLoc);
+    }; break;
+
     case IRStmt::GLOBAL: case IRStmt::CONST_DEF: break; // These do not contain any uses
 
     case IRStmt::CLOVER: assert(false); break; // Should not exist yet

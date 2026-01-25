@@ -211,6 +211,15 @@ void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t co
         print(state, dest, consts[constIdx]); // FIXME: Bounds check
     }; break;
 
+    case OP_GLOBAL_SET: {
+        fprintf(dest, "set! ");
+        uint8_t const constIdx = next().val.codeByte;
+        fprintf(dest, "%u ", constIdx);
+        disassembleReg(dest, next().val.codeByte);
+        fprintf(dest, "\t; ");
+        print(state, dest, consts[constIdx]); // FIXME: Bounds check
+    }; break;
+
     case OP_GLOBAL: {
         disassembleReg(dest, next().val.codeByte);
         fprintf(dest, " = global ");

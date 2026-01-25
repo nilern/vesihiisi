@@ -86,6 +86,11 @@ void enlivenStmt(Compiler* compiler, BitSet* liveOuts, IRStmt* stmt) {
         requireLive(compiler, liveOuts, globalDef->val);
     }; break;
 
+    case IRStmt::GLOBAL_SET: {
+        GlobalSet const* const globalSet = &stmt->globalSet;
+        requireLive(compiler, liveOuts, globalSet->val);
+    }; break;
+
     case IRStmt::GLOBAL: {
         IRGlobal const* const global = &stmt->global;
         rangeStart(liveOuts, global->tmpName);

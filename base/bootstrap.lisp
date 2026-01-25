@@ -1229,7 +1229,7 @@
               (map (fn (form) (macroexpand-all env form)) form))) ; Function application
           form))))) ; Non-application
 
-(def eval ; TODO: Use `set!` when it becomes available
+(set! eval
   (let ((nonexpanding-eval eval))
     (fn (expr loc debug)
       (nonexpanding-eval (macroexpand-all () expr) loc debug))))

@@ -551,6 +551,13 @@ void regAllocStmt(Compiler* compiler, RegEnv* env, Stmts* outputStmts, IRStmt* s
         pushIRStmt(compiler, outputStmts, *stmt);
     }; break;
 
+    case IRStmt::GLOBAL_SET: {
+        GlobalSet* const globalSet = &stmt->globalSet;
+        globalSet->val = IRName{getVarReg(env, globalSet->val).index};
+
+        pushIRStmt(compiler, outputStmts, *stmt);
+    }; break;
+
     case IRStmt::GLOBAL: {
         IRGlobal* const global = &stmt->global;
         global->tmpName = IRName{deallocVarReg(env, global->tmpName).index};

@@ -82,6 +82,11 @@ void markIRStmt(State* state, IRStmt* stmt) {
             HRef<Symbol>::fromUnchecked(state->heap.mark(stmt->globalDef.name.oref()));
     }; break;
 
+    case IRStmt::GLOBAL_SET: {
+        stmt->globalSet.name =
+            HRef<Symbol>::fromUnchecked(state->heap.mark(stmt->globalSet.name.oref()));
+    }; break;
+
     case IRStmt::GLOBAL: {
         stmt->global.name = HRef<Symbol>::fromUnchecked(state->heap.mark(stmt->global.name.oref()));
     }; break;
@@ -103,6 +108,10 @@ void assertIRStmtInTospace(State const* state, IRStmt const* stmt) {
     switch (stmt->type) {
     case IRStmt::GLOBAL_DEF: {
         assert(allocatedInSemispace(&state->heap.tospace, stmt->globalDef.name.ptr()));
+    }; break;
+
+    case IRStmt::GLOBAL_SET: {
+        assert(allocatedInSemispace(&state->heap.tospace, stmt->globalSet.name.ptr()));
     }; break;
 
     case IRStmt::GLOBAL: {
@@ -373,6 +382,15 @@ void printStmt(
         print(state, dest, globalDef.name.oref());
         fputc(' ', dest);
         printName(state, dest, compiler, globalDef.val);
+        fputc(')', dest);
+    }; break;
+
+    case IRStmt::GLOBAL_SET: {
+        GlobalSet const globalSet = stmt->globalSet;
+        fprintf(dest, "(set! ");
+        print(state, dest, globalSet.name.oref());
+        fputc(' ', dest);
+        printName(state, dest, compiler, globalSet.val);
         fputc(')', dest);
     }; break;
 

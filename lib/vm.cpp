@@ -66,6 +66,35 @@ VMRes run(State* state, HRef<Closure> selfRef) {
             var.ptr()->val = state->regs[srcReg];
         }; continue;
 
+        case OP_GLOBAL_SET: {
+            uint8_t const constIdx = state->code[state->pc++];
+            uint8_t const srcReg = state->code[state->pc++];
+
+            ORef const c = state->consts[constIdx];
+            if (!isSymbol(state, c)) {
+                assert(false); // TODO: Lazily linked Var
+            }
+
+            HRef<Symbol> const name = HRef<Symbol>::fromUnchecked(c);
+            FindVarRes const findRes = findVar(state->ns, name);
+            if (findRes.type != FindVarRes::NS_FOUND_VAR) {
+                // FIXME: Signal that this is a "fatal" (i.e. noncontinuable) error as
+                // constructing a working continuation at an arbitrary instruction like this
+                // would take a lot of effort while actually using that to recover from this
+                // would be a terrible idea. Currently `retContReg` probably holds the return
+                // continuation of the current function; to support stack traces we probably
+                // have to ensure that it does. But that continuation is definitely not a
+                // correct current continuation.
+                state->regs[calleeReg] = getErrorHandler(state);
+                state->regs[firstArgReg] = createUnboundError(state, name).oref();
+                state->entryRegc = firstArgReg + 1;
+                goto apply;
+            }
+            HRef<Var> var = findRes.var;
+
+            var.ptr()->val = state->regs[srcReg];
+        }; continue;
+
         case OP_GLOBAL: {
             uint8_t const destReg = state->code[state->pc++];
             uint8_t const constIdx = state->code[state->pc++];
@@ -90,7 +119,6 @@ VMRes run(State* state, HRef<Closure> selfRef) {
                 state->entryRegc = firstArgReg + 1;
                 goto apply;
             }
-
             HRef<Var> var = findRes.var;
 
             ORef const v = var.ptr()->val;

@@ -205,6 +205,7 @@ typedef struct ToCpsCont {
         VAL,
         BIND,
         DEF,
+        SET,
         JOIN,
         RETURN
     } type;
@@ -213,7 +214,7 @@ typedef struct ToCpsCont {
 IRName toCpsContDestName(Compiler* compiler, ToCpsCont k) {
     switch (k.type) {
     case ToCpsCont::BIND: // fallthrough
-    case ToCpsCont::DEF: return k.def.name;
+    case ToCpsCont::DEF: case ToCpsCont::SET: return k.def.name;
 
     case ToCpsCont::EFF: // fallthrough
     case ToCpsCont::VAL: // fallthrough
@@ -227,7 +228,7 @@ IRName toCpsContDestName(Compiler* compiler, ToCpsCont k) {
 ORef toCpsContDestSymbol(ToCpsCont k) {
     switch (k.type) {
     case ToCpsCont::BIND: // fallthrough
-    case ToCpsCont::DEF: return k.def.sym.oref();
+    case ToCpsCont::DEF: case ToCpsCont::SET: return k.def.sym.oref();
 
     case ToCpsCont::EFF: // fallthrough
     case ToCpsCont::VAL: // fallthrough
@@ -565,6 +566,47 @@ IRName defToCPS(
     return resName;
 }
 
+IRName setToCPS(
+    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef args, ORef maybeLoc,
+    ToCpsCont k
+) {
+    if (!isPair(pass.state, args)) {
+        assert(false); // TODO
+    }
+    Pair const* argsPair = HRef<Pair>::fromUnchecked(args).ptr();
+
+    ORef const pat = argsPair->car;
+    if (!isSymbol(pass.state, pat)) {
+        pass.error({argsPair->maybeLoc, INVALID_DEFINIEND});
+    }
+    HRef<Symbol> const name = HRef<Symbol>::fromUnchecked(pat);
+    args = argsPair->cdr;
+    if (!isPair(pass.state, args)) {
+        assert(false); // TODO
+    }
+    argsPair = HRef<Pair>::fromUnchecked(args).ptr();
+
+    ORef const val = argsPair->car;
+    ORef const valLoc = argsPair->maybeLoc;
+    if (!isEmptyList(pass.state, argsPair->cdr)) {
+        assert(false); // TODO
+    }
+
+    IRName const nameHint = renameSymbol(pass.compiler, name);
+    ToCpsCont const setK =
+        ToCpsCont{.def = {.name = nameHint, .sym = name}, .type = ToCpsCont::SET};
+    IRName const valName = exprToIR(pass, fn, env, block, val, valLoc, setK);
+    pushIRStmt(pass.compiler, &(*block)->stmts,
+               globalSetToStmt(GlobalSet{name, valName}, maybeLoc));
+    // FIXME: Return e.g. nil/undefined/unspecified instead of new val:
+    IRName const resName = valName;
+    if (k.type == ToCpsCont::RETURN) {
+        createIRReturn(*block, k.ret.cont, resName, maybeLoc);
+    }
+
+    return resName;
+}
+
 IRName letToCPS(
     CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef args, ToCpsCont k
 ) {
@@ -850,7 +892,8 @@ IRName exprToIR(
                     return quoteToCPS(pass, block, args, k);
                 } else if (strEq(calleeSym.ptr()->name(), strLit("def"))) {
                     return defToCPS(pass, fn, env, block, args, maybeLoc, k);
-                // TODO: `set!`
+                } else if (strEq(calleeSym.ptr()->name(), strLit("set!"))) {
+                    return setToCPS(pass, fn, env, block, args, maybeLoc, k);
                 } else if (strEq(calleeSym.ptr()->name(), strLit("let"))) {
                     return letToCPS(pass, fn, env, block, args, k);
                 } else if (strEq(calleeSym.ptr()->name(), strLit("letfn"))) {

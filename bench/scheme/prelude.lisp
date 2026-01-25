@@ -1,6 +1,6 @@
 ;;; Adapted from Gambit Scheme and R7RS benchmarks
 
-(def time*
+(define time*
   (fn (thunk)
     (let ((fl-j/s (inexact (jiffies-per-second)))
 
@@ -21,7 +21,7 @@
 
       result)))
 
-(def run-bench
+(define run-bench
   (fn (name count run)
     (letfn (((loop i result)
                (if (< i count)
@@ -29,7 +29,7 @@
                  result)))
       (loop 0 (quote (undefined))))))
 
-(def run-benchmark
+(define run-benchmark
   (fn (name count ok? make-run . args)
     (write-string "Running ")
     (write-string name)

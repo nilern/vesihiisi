@@ -78,8 +78,8 @@ void pushArg(Compiler* compiler, Args* args, IRName arg) {
 void markIRStmt(State* state, IRStmt* stmt) {
     switch (stmt->type) {
     case IRStmt::GLOBAL_DEF: {
-        stmt->globalDef.name =
-            HRef<Symbol>::fromUnchecked(state->heap.mark(stmt->globalDef.name.oref()));
+        stmt->define.name =
+            HRef<Symbol>::fromUnchecked(state->heap.mark(stmt->define.name.oref()));
     }; break;
 
     case IRStmt::GLOBAL_SET: {
@@ -107,7 +107,7 @@ void markIRStmt(State* state, IRStmt* stmt) {
 void assertIRStmtInTospace(State const* state, IRStmt const* stmt) {
     switch (stmt->type) {
     case IRStmt::GLOBAL_DEF: {
-        assert(allocatedInSemispace(&state->heap.tospace, stmt->globalDef.name.ptr()));
+        assert(allocatedInSemispace(&state->heap.tospace, stmt->define.name.ptr()));
     }; break;
 
     case IRStmt::GLOBAL_SET: {
@@ -377,11 +377,11 @@ void printStmt(
 
     switch (stmt->type) {
     case IRStmt::GLOBAL_DEF: {
-        GlobalDef const globalDef = stmt->globalDef;
+        Define const define = stmt->define;
         fprintf(dest, "(def ");
-        print(state, dest, globalDef.name.oref());
+        print(state, dest, define.name.oref());
         fputc(' ', dest);
-        printName(state, dest, compiler, globalDef.val);
+        printName(state, dest, compiler, define.val);
         fputc(')', dest);
     }; break;
 

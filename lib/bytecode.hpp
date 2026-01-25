@@ -23,7 +23,7 @@ constexpr uint8_t bytecodeVarIntTerminalBit = 1 << bytecodeVarIntPayloadWidth;
 typedef enum Opcode : uint8_t {
     OP_MOVE,        // rx = mov ry
     OP_SWAP,        // swap rx ry
-    OP_DEF,         // def c rx
+    OP_DEFINE,      // define c rx
     OP_GLOBAL_SET,  // set! c rx
     OP_GLOBAL,      // rx = global c
     OP_CONST,       // rx = const c ; TODO: Encode as specialize with 0 types

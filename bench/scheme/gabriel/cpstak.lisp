@@ -1,7 +1,7 @@
 ;;; CPSTAK -- A continuation-passing version of the TAK benchmark.
 ;;; A good test of first class procedures and tail recursion.
 
-(def cpstak
+(define cpstak
   (fn (x y z)
     (letfn (((tak x y z k)
               (if (not (< y x))
@@ -21,7 +21,7 @@
                                      (tak v1 v2 v3 k))))))))))
       (tak x y z (fn (a) a)))))
 
-(def main
+(define main
   (fn args
     (run-benchmark
       "cpstak"

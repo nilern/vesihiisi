@@ -1,49 +1,49 @@
-(def isa?
+(define isa?
   (fn (t v)
     (if (identical? t <any>)
       #t
       (identical? (type-of v) t))))
 
-(def not (fn (x) (if x #f #t)))
+(define not (fn (x) (if x #f #t)))
 
 ;; OPTIMIZE: separate primops?:
-(def fx> (fn (x y) (fx< y x)))
-(def fx<= (fn (x y) (not (fx< y x))))
-(def fx>= (fn (x y) (not (fx< x y))))
+(define fx> (fn (x y) (fx< y x)))
+(define fx<= (fn (x y) (not (fx< y x))))
+(define fx>= (fn (x y) (not (fx< x y))))
 
 ;; OPTIMIZE: separate primops?:
-(def char> (fn (x y) (char< y x)))
-(def char<= (fn (x y) (not (char< y x))))
-(def char>= (fn (x y) (not (char< x y))))
+(define char> (fn (x y) (char< y x)))
+(define char<= (fn (x y) (not (char< y x))))
+(define char>= (fn (x y) (not (char< x y))))
 
-(def symbol->string
+(define symbol->string
   (fn ((: sym <symbol>))
     (let ((len (flex-count sym))
           (str (make-flex <string> len)))
       (flex-copy! str 0 sym 0 len))))
 
-(def cons* (fn (x xs loc) (make <pair> x xs loc)))
-(def cons (fn (x xs) (cons* x xs 0.)))
+(define cons* (fn (x xs loc) (make <pair> x xs loc)))
+(define cons (fn (x xs) (cons* x xs 0.)))
 
-(def car (fn ((: xs <pair>)) (slot-get xs 0)))
-(def set-car! (fn ((: xs <pair>) v) (slot-set! xs 0 v)))
-(def cdr (fn ((: xs <pair>)) (slot-get xs 1)))
-(def set-cdr! (fn ((: xs <pair>) v) (slot-set! xs 1 v)))
-(def pair-loc (fn ((: p <pair>)) (slot-get p 2)))
+(define car (fn ((: xs <pair>)) (slot-get xs 0)))
+(define set-car! (fn ((: xs <pair>) v) (slot-set! xs 0 v)))
+(define cdr (fn ((: xs <pair>)) (slot-get xs 1)))
+(define set-cdr! (fn ((: xs <pair>) v) (slot-set! xs 1 v)))
+(define pair-loc (fn ((: p <pair>)) (slot-get p 2)))
 
-(def caar (fn (xs) (car (car xs))))
-(def cadr (fn (xs) (car (cdr xs))))
-(def cdar (fn (xs) (cdr (car xs))))
-(def cddr (fn (xs) (cdr (cdr xs))))
+(define caar (fn (xs) (car (car xs))))
+(define cadr (fn (xs) (car (cdr xs))))
+(define cdar (fn (xs) (cdr (car xs))))
+(define cddr (fn (xs) (cdr (cdr xs))))
 
-(def fold-left
+(define fold-left
   (fn (f acc xs)
     (if (identical? xs ())
       acc
       (fold-left f (f (car xs) acc) (cdr xs)))))
 
 ;; Like `fold-left`, but if `xs` is improper folds the tail with one last `f` call.
-(def fold-left*
+(define fold-left*
   (fn (f acc xs)
     (if (isa? <pair> xs)
       (fold-left* f (f (car xs) acc) (cdr xs))
@@ -51,13 +51,13 @@
         acc
         (f xs acc)))))
 
-(def fold-right
+(define fold-right
   (fn (f xs acc)
     (if (identical? xs ())
       acc
       (f (car xs) (fold-right f (cdr xs) acc)))))
 
-(def map
+(define map
   (fn (f xs)
     (letfn (((map* xs*)
                (if (isa? <pair> xs*)
@@ -69,7 +69,7 @@
 
 ;; Like `map`, but if `xs` is improper maps the tail with `f` instead of error e.g.
 ;; `(map* (fn (x) (+ x 1)) '(1 2 . 3))` => `(2 3 . 4)
-(def map*
+(define map*
   (fn (f xs)
     (letfn (((map* xs)
                (if (isa? <pair> xs)
@@ -79,30 +79,30 @@
                    (f xs)))))
       (map* xs))))
 
-(def filter
+(define filter
   (fn (pred? xs)
     (fold-right (fn (x acc) (if (pred? x) (cons x acc) acc))
                 xs ())))
 
-(def count (fn (xs) (fold-left (fn (x acc) (fx+ 1 acc)) 0 xs)))
+(define count (fn (xs) (fold-left (fn (x acc) (fx+ 1 acc)) 0 xs)))
 
-(def reverse (fn (xs) (fold-left cons () xs)))
+(define reverse (fn (xs) (fold-left cons () xs)))
 
-(def drop
+(define drop
   (fn (n xs)
     (if (identical? n 0)
       xs
       (drop (fx- n 1) (cdr xs)))))
 
-(def nth (fn (xs i) (car (drop i xs))))
+(define nth (fn (xs i) (car (drop i xs))))
 
-(def array! (fn xs xs))
+(define array! (fn xs xs))
 
-(def array!-count (fn ((: xs <array!>)) (flex-count xs)))
+(define array!-count (fn ((: xs <array!>)) (flex-count xs)))
 
-(def array!-get (fn ((: xs <array!>) i) (flex-get xs i)))
+(define array!-get (fn ((: xs <array!>) i) (flex-get xs i)))
 
-(def array!-fold-left
+(define array!-fold-left
   (fn (f acc xs)
     (let ((len (array!-count xs)))
       (letfn (((loop acc i)
@@ -111,7 +111,7 @@
                    acc)))
         (loop acc 0)))))
 
-(def array!-fold-right
+(define array!-fold-right
   (fn (f xs acc)
     (letfn (((loop acc i)
                (if (fx> i 0)
@@ -120,19 +120,19 @@
                  acc)))
       (loop acc (array!-count xs)))))
 
-(def array!->array
+(define array!->array
   (fn (arr)
     (let ((len (array!-count arr))
           (imm-arr (make-flex <array> len)))
       (flex-copy! imm-arr 0 arr 0 len))))
 
-(def array (fn xs (array!->array xs)))
+(define array (fn xs (array!->array xs)))
 
-(def array-count (fn ((: xs <array>)) (flex-count xs)))
+(define array-count (fn ((: xs <array>)) (flex-count xs)))
 
-(def array-get (fn ((: xs <array>) i) (flex-get xs i)))
+(define array-get (fn ((: xs <array>) i) (flex-get xs i)))
 
-(def array-fold-left
+(define array-fold-left
   (fn (f acc xs)
     (let ((len (array-count xs)))
       (letfn (((loop acc i)
@@ -141,28 +141,28 @@
                    acc)))
         (loop acc 0)))))
 
-(def array-fold (fn (f acc (: xs <array>)) (array-fold-left f acc xs)))
+(define array-fold (fn (f acc (: xs <array>)) (array-fold-left f acc xs)))
 
-(def array!->list (fn (arr) (array!-fold-right cons arr ())))
+(define array!->list (fn (arr) (array!-fold-right cons arr ())))
 
-(def list (fn xs (array!->list xs)))
+(define list (fn xs (array!->list xs)))
 
-(def error
+(define error
   (fn (name . irritants)
     (abort (cons name (array!->list irritants))))) ; HACK: Using a list as error
 
-(def fn-method (fn ((: f <fn>)) (slot-get f 0)))
+(define fn-method (fn ((: f <fn>)) (slot-get f 0)))
 
-(def has-vararg? (fn ((: method <method>)) (slot-get method 3)))
+(define has-vararg? (fn ((: method <method>)) (slot-get method 3)))
 
-(def min-arity
+(define min-arity
   (fn ((: method <method>) has-vararg)
     (let ((arity (flex-count method)))
       (if (not has-vararg)
         arity
         (fx- arity 1)))))
 
-(def meet
+(define meet
   (fn (type1 type2)
     (if (not (identical? type1 <any>))
       (if (not (identical? type2 <any>))
@@ -172,7 +172,7 @@
         type1)
       type2)))
 
-(def meet-domains
+(define meet-domains
   (let ((meet-domains*
          (fn (method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2)
            (call-with-current-continuation
@@ -228,7 +228,7 @@
               (meet-domains* method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2))
             (meet-domains* method1 min-arity1 has-vararg1 method2 min-arity2 has-vararg2)))))))
 
-(def make-multimethod
+(define make-multimethod
   (fn ((: name <symbol>) . methods)
     (let ((ensure-unambiguous
            (fn (f i)
@@ -251,14 +251,14 @@
 
 ;; TODO: Support `(apply f x y zs)` (needs to be done in native code to be efficient for
 ;; `apply-array(!)`:
-(def apply
+(define apply
   (make-multimethod 'apply
     apply-array
     apply-array!
     (fn (f (: xs <pair>)) (apply-list f xs))
     (fn (f (: xs <empty-list>)) (f))))
 
-(def +
+(define +
   (make-multimethod '+
     (fn () 0) ; Additive identity
     (fn ((: x <fixnum>)) x)
@@ -269,7 +269,7 @@
     (fn ((: x <fixnum>) (: y <flonum>)) (fl+ (fixnum->flonum x) y))
     (fn (x y z . ns) (array!-fold-left (fn (v acc) (+ acc v)) (+ (+ x y) z) ns))))
 
-(def -
+(define -
   (make-multimethod '-
     (fn ((: x <fixnum>)) (fx- 0 x)) ; OPTIMIZE: `fx-neg`?
     (fn ((: x <flonum>)) (fl- 0.0 x)) ; OPTIMIZE: `fl-neg`?
@@ -279,7 +279,7 @@
     (fn ((: x <fixnum>) (: y <flonum>)) (fl- (fixnum->flonum x) y))
     (fn (x y z . ns) (array!-fold-left (fn (v acc) (- acc v)) (- (- x y) z) ns))))
 
-(def *
+(define *
   (make-multimethod '*
     (fn () 1) ; Multiplicative identity
     (fn ((: x <fixnum>)) x)
@@ -290,39 +290,39 @@
     (fn ((: x <fixnum>) (: y <flonum>)) (fl* (fixnum->flonum x) y))
     (fn (x y z . ns) (array!-fold-left (fn (v acc) (* acc v)) (* (* x y) z) ns))))
 
-(def /
+(define /
   (make-multimethod '/
     (fn ((: x <flonum>)) (fl/ 1.0 x))
     fl/))
 
-(def <
+(define <
   (make-multimethod '<
     (fn ((: x <fixnum>) (: y <fixnum>)) (fx< x y))
     (fn ((: x <char>) (: y <char>)) (char< x y))))
 
-(def >
+(define >
   (make-multimethod '>
     (fn ((: x <fixnum>) (: y <fixnum>)) (fx> x y))
     (fn ((: x <char>) (: y <char>)) (char> x y))))
 
-(def <=
+(define <=
   (make-multimethod '<=
     (fn ((: x <fixnum>) (: y <fixnum>)) (fx<= x y))
     (fn ((: x <char>) (: y <char>)) (char<= x y))))
 
-(def >=
+(define >=
   (make-multimethod '>=
     (fn ((: x <fixnum>) (: y <fixnum>)) (fx>= x y))
     (fn ((: x <char>) (: y <char>)) (char>= x y))))
 
-(def > (fn (x y) (< y x)))
+(define > (fn (x y) (< y x)))
 
-(def inexact
+(define inexact
   (make-multimethod 'inexact
     (fn ((: n <fixnum>)) (fixnum->flonum n))
     (fn ((: n <flonum>)) n)))
 
-(def concat
+(define concat
   (make-multimethod 'concat
     (fn () ())
     (fn (xs) xs)
@@ -347,7 +347,7 @@
           (concat xs (concat ys zs))
           (concat xs (concat ys (concat zs (concat-nonempty-array! xss)))))))))
 
-(def =-impl
+(define =-impl
   (make-multimethod '=-impl
     (fn ((: x <fixnum>) (: y <fixnum>)) (identical? x y))
     (fn ((: x <char>) (: y <char>)) (identical? x y))
@@ -373,7 +373,7 @@
 
     (fn ((: x <symbol>) (: y <symbol>)) (identical? x y))))
 
-(def =
+(define =
   (fn (x y)
     (if (identical? x y)
       #t
@@ -381,10 +381,10 @@
         (=-impl x y)
         #f))))
 
-(def <string-builder> (make-slots-type '<string-builder> 2 #f))
-(def string-builder (fn () (make <string-builder> (make-flex <array!> 2) 0)))
+(define <string-builder> (make-slots-type '<string-builder> 2 #f))
+(define string-builder (fn () (make <string-builder> (make-flex <array!> 2) 0)))
 
-(def string-builder-push!
+(define string-builder-push!
    (fn ((: builder <string-builder>) v)
      (let ((vs (slot-get builder 0))
            (len (slot-get builder 1))
@@ -399,17 +399,17 @@
        (slot-set! builder 1 (+ len 1))
        v)))
 
-(def build-string
+(define build-string
   (fn ((: builder <string-builder>))
     (let ((cs (flex-copy (slot-get builder 0) 0 (slot-get builder 1))))
       (array!->string cs))))
 
-(def push!
+(define push!
   (make-multimethod 'push!
     string-builder-push!))
 
 ;; OPTIMIZE: Should not be necessary to copy character by character:
-(def string-concat
+(define string-concat
   (fn strings
     (let ((builder (array!-fold-left (fn (s builder)
                                         (string-fold (fn (c builder)
@@ -419,24 +419,24 @@
                                      (string-builder) strings)))
       (build-string builder))))
 
-(def newline (fn () (write-char #"\n")))
+(define newline (fn () (write-char #"\n")))
 
-(def <box> (make-slots-type (quote <box>) 1 #f))
-(def box (fn (v) (make <box> v)))
-(def box-get (fn (bx) (slot-get bx 0)))
-(def box-set! (fn (bx v) (slot-set! bx 0 v)))
+(define <box> (make-slots-type (quote <box>) 1 #f))
+(define box (fn (v) (make <box> v)))
+(define box-get (fn (bx) (slot-get bx 0)))
+(define box-set! (fn (bx v) (slot-set! bx 0 v)))
 
-(def next!
+(define next!
   (make-multimethod 'next!
     string-iterator-next!
     read-char))
 
-(def peek
+(define peek
   (make-multimethod 'peek
     string-iterator-peek
     peek-char))
 
-(def iter-fold!
+(define iter-fold!
   (fn (f acc it)
     (letfn (((loop acc)
                (let ((miv (next! it)))
@@ -445,14 +445,14 @@
                    acc))))
       (loop acc))))
 
-(def string-fold (fn (f acc (: s <string>)) (iter-fold! f acc (make <string-iterator> s 0))))
+(define string-fold (fn (f acc (: s <string>)) (iter-fold! f acc (make <string-iterator> s 0))))
 
-(def fold
+(define fold
   (make-multimethod 'fold
     array-fold
     string-fold))
 
-(def index-of
+(define index-of
   (fn (vs v)
     (call-with-current-continuation
       (fn (return)
@@ -463,13 +463,13 @@
               0 vs)
         #f))))
 
-(def source-location-filename (fn ((: loc <source-location>)) (slot-get loc 0)))
-(def source-location-byte-index (fn ((: loc <source-location>)) (slot-get loc 1)))
+(define source-location-filename (fn ((: loc <source-location>)) (slot-get loc 0)))
+(define source-location-byte-index (fn ((: loc <source-location>)) (slot-get loc 1)))
 
 ;;; Self-Hosting Reader
 ;;; ================================================================================================
 
-(def build-symbol (fn (builder) (string->symbol (build-string builder))))
+(define build-symbol (fn (builder) (string->symbol (build-string builder))))
 
 ;;; Let over Lambda to the max!:
 
@@ -956,13 +956,13 @@
                    (fn (loc v) (array loc v)))))
   (box-set! expr-box expr)
 
-  (def skip-whitespace
+  (define skip-whitespace
     (fn (input)
       (let ((byte-idx (box 0)))
         (parse ws input "" byte-idx)
         (box-get byte-idx))))
 
-  (def do-read*
+  (define do-read*
     (fn (input loc)
       (let ((filename (source-location-filename loc))
             (ws-count (skip-whitespace input))
@@ -973,17 +973,17 @@
                (array-get loc&v 1)
                (make <source-location> filename (box-get byte-idx)))))))
 
-(def read*
+(define read*
   (make-multimethod 'read*
     (fn (input (: loc <source-location>)) (do-read* input loc))
     (fn (input (: filename <string>)) (read* input (make <source-location> filename 0)))))
 
-(def read
+(define read
   (make-multimethod 'read
     (fn (input) (array-get (read* input "???") 1))
     (fn () (read standard-input))))
 
-(def read*-all
+(define read*-all
   (make-multimethod 'read*-all
     (fn (input (: loc <source-location>))
       (let ((ws-count (skip-whitespace input))
@@ -1009,7 +1009,7 @@
               (read*-remaining pair byte-idx)))
           (array start-loc ()))))))
 
-(def read-line
+(define read-line
   (fn (input)
     (let ((builder (string-builder)))
       (letfn (((loop)
@@ -1029,7 +1029,7 @@
 ;;; Macroexpander
 ;;; ================================================================================================
 
-(def alist-get
+(define alist-get
   (fn (alist k)
     (letfn (((get alist)
                (if (isa? <pair> alist)
@@ -1040,16 +1040,16 @@
                  #f)))
       (get alist))))
 
-(def var-val (fn ((: var <var>)) (slot-get var 0)))
-(def var-macro-category (fn ((: var <var>)) (slot-get var 1)))
-(def var-set-macro-category! (fn ((: var <var>) category) (slot-set! var 1 category)))
+(define var-val (fn ((: var <var>)) (slot-get var 0)))
+(define var-macro-category (fn ((: var <var>)) (slot-get var 1)))
+(define var-set-macro-category! (fn ((: var <var>) category) (slot-set! var 1 category)))
 
-(def <local-binding> (make-slots-type '<local-binding> 2 #f))
-(def local-binding (fn (val category) (make <local-binding> val category)))
-(def local-binding-val (fn ((: local <local-binding>)) (slot-get local 0)))
-(def local-binding-macro-category (fn ((: local <local-binding>)) (slot-get local 1)))
+(define <local-binding> (make-slots-type '<local-binding> 2 #f))
+(define local-binding (fn (val category) (make <local-binding> val category)))
+(define local-binding-val (fn ((: local <local-binding>)) (slot-get local 0)))
+(define local-binding-macro-category (fn ((: local <local-binding>)) (slot-get local 1)))
 
-(def macroexpand-1
+(define macroexpand-1
   (fn (env form)
     (let ((call (isa? <pair> form))
           (name (if call
@@ -1092,7 +1092,7 @@
                 form)))) ; Unbound (not an error at this point)
         form)))) ; Non-expanding form
 
-(def macroexpand
+(define macroexpand
   (fn (env form)
     (letfn (((macroexpand form)
                (let ((form* (macroexpand-1 env form)))
@@ -1180,7 +1180,7 @@
                                body
                                (pair-loc binding)))))
              (map expand-letfn bindings))))
-  (def macroexpand-all
+  (define macroexpand-all
     (fn (env form)
       (let ((form (macroexpand env form)))
         (if (isa? <pair> form)
@@ -1236,7 +1236,7 @@
 
 ;; TODO: Reader macros (for both readers)
 ;; OPTIMIZE: Make output more efficient (there is a whole tradition about that):
-(def quasiquote
+(define quasiquote
   (fn (_ form)
     (let ((args (cdr form)))
       (if (not (identical? (cdr args) ())) (error 'arity quasiquote (count args)) #f)
@@ -1311,9 +1311,9 @@
 ;;; Load
 ;;; ================================================================================================
 
-(def *vshs-path* (array "" *vshs-home*))
+(define *vshs-path* (array "" *vshs-home*))
 
-(def resolve-path
+(define resolve-path
   (fn (filename)
     (call-with-current-continuation
       (fn (return)
@@ -1327,7 +1327,7 @@
               filename *vshs-path*)
         #f))))
 
-(def load
+(define load
   (make-multimethod 'load
     (fn (input filename debug)
       (let ((start-byte-idx (skip-whitespace input))
@@ -1357,7 +1357,7 @@
 ;;; Self-Hosting REPL
 ;;; ================================================================================================
 
-(def repl
+(define repl
   (fn (input debug)
     (let ((prompt "vesihiisi> "))
       (letfn (((loop)

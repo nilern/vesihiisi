@@ -556,7 +556,7 @@ IRName defToCPS(
         ToCpsCont{.def = {.name = nameHint, .sym = name}, .type = ToCpsCont::DEF};
     IRName const valName = exprToIR(pass, fn, env, block, val, valLoc, defK);
     pushIRStmt(pass.compiler, &(*block)->stmts,
-               globalDefToStmt(GlobalDef{name, valName}, maybeLoc));
+               defineToStmt(Define{name, valName}, maybeLoc));
     // FIXME: Return e.g. nil/undefined/unspecified instead of new val:
     IRName const resName = valName;
     if (k.type == ToCpsCont::RETURN) {
@@ -890,7 +890,7 @@ IRName exprToIR(
                     return ifToCPS(pass, fn, env, block, args, maybeLoc, k);
                 } else if (strEq(calleeSym.ptr()->name(), strLit("quote"))) {
                     return quoteToCPS(pass, block, args, k);
-                } else if (strEq(calleeSym.ptr()->name(), strLit("def"))) {
+                } else if (strEq(calleeSym.ptr()->name(), strLit("define"))) {
                     return defToCPS(pass, fn, env, block, args, maybeLoc, k);
                 } else if (strEq(calleeSym.ptr()->name(), strLit("set!"))) {
                     return setToCPS(pass, fn, env, block, args, maybeLoc, k);

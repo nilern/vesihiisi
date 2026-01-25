@@ -82,8 +82,8 @@ void enlivenTransfer(Compiler* compiler, BitSet* liveOuts, IRTransfer const* tra
 void enlivenStmt(Compiler* compiler, BitSet* liveOuts, IRStmt* stmt) {
     switch (stmt->type) {
     case IRStmt::GLOBAL_DEF: {
-        GlobalDef const* const globalDef = &stmt->globalDef;
-        requireLive(compiler, liveOuts, globalDef->val);
+        Define const* const define = &stmt->define;
+        requireLive(compiler, liveOuts, define->val);
     }; break;
 
     case IRStmt::GLOBAL_SET: {

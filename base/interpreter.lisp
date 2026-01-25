@@ -1,29 +1,29 @@
-(def <config> (make-slots-type '<config> 6 #f))
-(def config-name (fn ((: config <config>)) (slot-get config 0)))
-(def config-from-stdin (fn ((: config <config>)) (slot-get config 1)))
-(def set-config-from-stdin! (fn ((: config <config>) v) (slot-set! config 1 v)))
-(def config-filename (fn ((: config <config>)) (slot-get config 2)))
-(def set-config-filename! (fn ((: config <config>) v) (slot-set! config 2 v)))
-(def config-debug (fn ((: config <config>)) (slot-get config 3)))
-(def set-config-debug! (fn ((: config <config>) v) (slot-set! config 3 v)))
-(def config-help (fn ((: config <config>)) (slot-get config 4)))
-(def set-config-help! (fn ((: config <config>) v) (slot-set! config 4 v)))
-(def config-force-interactive (fn ((: config <config>)) (slot-get config 5)))
-(def set-config-force-interactive! (fn ((: config <config>) v) (slot-set! config 5 v)))
+(define <config> (make-slots-type '<config> 6 #f))
+(define config-name (fn ((: config <config>)) (slot-get config 0)))
+(define config-from-stdin (fn ((: config <config>)) (slot-get config 1)))
+(define set-config-from-stdin! (fn ((: config <config>) v) (slot-set! config 1 v)))
+(define config-filename (fn ((: config <config>)) (slot-get config 2)))
+(define set-config-filename! (fn ((: config <config>) v) (slot-set! config 2 v)))
+(define config-debug (fn ((: config <config>)) (slot-get config 3)))
+(define set-config-debug! (fn ((: config <config>) v) (slot-set! config 3 v)))
+(define config-help (fn ((: config <config>)) (slot-get config 4)))
+(define set-config-help! (fn ((: config <config>) v) (slot-set! config 4 v)))
+(define config-force-interactive (fn ((: config <config>)) (slot-get config 5)))
+(define set-config-force-interactive! (fn ((: config <config>) v) (slot-set! config 5 v)))
 
-(def long-flag-names (array "debug" "help" "interactive"))
-(def short-flag-names (array #"d" #"h" #"i"))
-(def flag-descriptions
+(define long-flag-names (array "debug" "help" "interactive"))
+(define short-flag-names (array #"d" #"h" #"i"))
+(define flag-descriptions
   (array "turn on debug output (for developing the VM)"
          "display this help and exit"
          "force interactive i.e. if FILE is given launch repl after loading it"))
-(def flag-inits
+(define flag-inits
   (array (fn (config) (set-config-debug! config #t))
          (fn (config) (set-config-help! config #t))
          (fn (config) (set-config-force-interactive! config #t))))
 
 
-(def parse-argv
+(define parse-argv
   (fn ()
     (let ((config (make <config>
                         (array-get *command-line* 0)
@@ -72,7 +72,7 @@
             (error 'extra-cli-args *command-line*)
             config))))))
 
-(def print-help
+(define print-help
   (fn (config)
     (write-string "Usage: ")
     (write-string (config-name config)) (write-string " [OPTION]... [FILE]\n")
@@ -91,7 +91,7 @@
     (write-string "  -\tread program from stdin (as if from FILE)\n")
     #f))
 
-(def main
+(define main
   (fn ()
     (let ((config (parse-argv))
           (filename (config-filename config)))

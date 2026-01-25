@@ -56,10 +56,10 @@ typedef struct Args {
     size_t cap;
 } Args;
 
-typedef struct GlobalDef {
+struct Define {
     HRef<Symbol> name;
     IRName val;
-} GlobalDef;
+};
 
 typedef struct GlobalSet {
     HRef<Symbol> name;
@@ -122,7 +122,7 @@ typedef struct KnotGetStmt {
 typedef struct IRStmt {
     ORef maybeLoc;
     union {
-        GlobalDef globalDef;
+        Define define;
         GlobalSet globalSet;
         IRGlobal global;
         ConstDef constDef;
@@ -264,8 +264,8 @@ Stmts newStmtsWithCap(Compiler* compiler, size_t cap);
 
 void pushIRStmt(Compiler* compiler, Stmts* stmts, IRStmt stmt);
 
-inline IRStmt globalDefToStmt(GlobalDef globalDef, ORef maybeLoc) {
-    return IRStmt{maybeLoc, {.globalDef = globalDef}, IRStmt::GLOBAL_DEF};
+inline IRStmt defineToStmt(Define Define, ORef maybeLoc) {
+    return IRStmt{maybeLoc, {.define = Define}, IRStmt::GLOBAL_DEF};
 }
 
 inline IRStmt globalSetToStmt(GlobalSet globalSet, ORef maybeLoc) {

@@ -545,8 +545,8 @@ RegEnv regAllocTransfer(
 void regAllocStmt(Compiler* compiler, RegEnv* env, Stmts* outputStmts, IRStmt* stmt) {
     switch (stmt->type) {
     case IRStmt::GLOBAL_DEF: {
-        GlobalDef* const globalDef = &stmt->globalDef;
-        globalDef->val = IRName{getVarReg(env, globalDef->val).index};
+        Define* const define = &stmt->define;
+        define->val = IRName{getVarReg(env, define->val).index};
 
         pushIRStmt(compiler, outputStmts, *stmt);
     }; break;

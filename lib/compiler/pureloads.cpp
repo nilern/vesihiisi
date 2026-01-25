@@ -263,9 +263,9 @@ IRStmt stmtWithPureLoads(
 ) {
     switch (stmt.type) {
     case IRStmt::GLOBAL_DEF: {
-        GlobalDef* const globalDef = &stmt.globalDef;
+        Define* const define = &stmt.define;
 
-        globalDef->val = deepLexicalUse(compiler, env, newStmts, globalDef->val, stmt.maybeLoc);
+        define->val = deepLexicalUse(compiler, env, newStmts, define->val, stmt.maybeLoc);
     }; break;
 
     case IRStmt::GLOBAL_SET: {

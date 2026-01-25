@@ -1,6 +1,6 @@
 ;;; TAK -- A vanilla version of the TAKeuchi function.
 
-(def tak
+(define tak
   (fn (x y z)
     (if (not (< y x))
       z
@@ -8,7 +8,7 @@
            (tak (- y 1) z x)
            (tak (- z 1) x y)))))
 
-(def main
+(define main
   (fn args
     (run-benchmark
       "tak"

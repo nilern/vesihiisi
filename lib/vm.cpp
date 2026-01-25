@@ -51,7 +51,7 @@ VMRes run(State* state, HRef<Closure> selfRef) {
             state->regs[reg2] = tmp;
         }; continue;
 
-        case OP_DEF: {
+        case OP_DEFINE: {
             uint8_t const constIdx = state->code[state->pc++];
             uint8_t const srcReg = state->code[state->pc++];
 

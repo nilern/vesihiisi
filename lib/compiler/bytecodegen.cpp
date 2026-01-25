@@ -428,11 +428,11 @@ void emitStmt(
 ) {
     switch (stmt->type) {
     case IRStmt::GLOBAL_DEF: {
-        GlobalDef const* const globalDef = &stmt->globalDef;
+        Define const* const define = &stmt->define;
 
-        pushReg(compiler, builder, globalDef->val);
-        emitConstArg(compiler, builder, globalDef->name.oref());
-        pushOp(*state, compiler, builder, OP_DEF, stmt->maybeLoc);
+        pushReg(compiler, builder, define->val);
+        emitConstArg(compiler, builder, define->name.oref());
+        pushOp(*state, compiler, builder, OP_DEFINE, stmt->maybeLoc);
     }; break;
 
     case IRStmt::GLOBAL_SET: {

@@ -202,8 +202,8 @@ void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t co
         disassembleReg(dest, next().val.codeByte);
     }; break;
 
-    case OP_DEF: {
-        fprintf(dest, "def ");
+    case OP_DEFINE: {
+        fprintf(dest, "define ");
         uint8_t const constIdx = next().val.codeByte;
         fprintf(dest, "%u ", constIdx);
         disassembleReg(dest, next().val.codeByte);

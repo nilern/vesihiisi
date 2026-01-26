@@ -23,7 +23,8 @@
                (try-yield* (fn () thr)
                            (fn (v k)
                              (body v)
-                             (loop (k #f))))))
+                             (loop (k #f)))
+                           (fn (v) v))))
       (loop (reset* (fn () (generator)))))))
 
 (define ex7

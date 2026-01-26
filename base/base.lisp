@@ -73,11 +73,11 @@
   (define yield (fn (v) (shift* (fn (k) (make <yield> v k)))))
 
   (define try-yield*
-    (fn (thunk on-yield)
+    (fn (thunk on-yield finish)
       (let ((v (thunk)))
         (if (isa? <yield> v)
           (on-yield (yield-value v) (yield-continuation v))
-          v))))
+          (finish v)))))
 
   (define dynamic-wind
     (fn (initially thunk finally)
@@ -88,7 +88,8 @@
                    (try-yield* (fn () v)
                                (fn (v k)
                                  (let ((v* (yield v)))
-                                   (loop (fn () (k v*)))))))))
+                                   (loop (fn () (k v*)))))
+                               (fn (v) v)))))
         (loop (fn () (reset* thunk)))))))
 
 ;;; Self-Hosting REPL

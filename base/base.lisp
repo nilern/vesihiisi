@@ -66,18 +66,33 @@
                                (box-set! stash (cons k* (box-get stash)))
                                (continue k v)))))))))))
 
-  (define <yield> (make-slots-type '<yield> 2 #f))
-  (define yield-value (fn ((: y <yield>)) (slot-get y 0)))
-  (define yield-continuation (fn ((: y <yield>)) (slot-get y 1)))
+  (define <yield> (make-slots-type '<yield> 3 #f))
+  (define yield-prompt (fn ((: y <yield>)) (slot-get y 0)))
+  (define yield-value (fn ((: y <yield>)) (slot-get y 1)))
+  (define yield-continuation (fn ((: y <yield>)) (slot-get y 2)))
 
-  (define yield (fn (v) (shift* (fn (k) (make <yield> v k)))))
+  (define yield-to (fn (prompt v) (shift* (fn (k) (make <yield> prompt v k)))))
+  (define yield (fn (v) (yield-to (box #f) v)))
 
   (define try-yield*
     (fn (thunk on-yield finish)
       (let ((v (thunk)))
         (if (isa? <yield> v)
-          (on-yield (yield-value v) (yield-continuation v))
+          (on-yield (yield-prompt v) (yield-value v) (yield-continuation v))
           (finish v)))))
+
+  (define try-yield-at*
+    (fn (prompt thunk on-yield finish)
+      (letfn (((loop thunk)
+                 (let ((v (thunk)))
+                   (try-yield* (fn () v)
+                               (fn (yield-prompt v k)
+                                 (if (identical? yield-prompt prompt)
+                                   (on-yield yield-prompt v k)
+                                   (let ((v* (yield-to yield-prompt v)))
+                                     (loop (fn () (k v*))))))
+                               (fn (v) v)))))
+        (loop (fn () (reset* thunk))))))
 
   (define dynamic-wind
     (fn (initially thunk finally)
@@ -86,8 +101,8 @@
                  (let ((v (thunk)))
                    (finally)
                    (try-yield* (fn () v)
-                               (fn (v k)
-                                 (let ((v* (yield v)))
+                               (fn (p v k)
+                                 (let ((v* (yield-to p v)))
                                    (loop (fn () (k v*)))))
                                (fn (v) v)))))
         (loop (fn () (reset* thunk)))))))

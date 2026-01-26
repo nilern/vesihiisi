@@ -21,7 +21,7 @@
   (fn (generator body)
     (letfn (((loop thr)
                (try-yield* (fn () thr)
-                           (fn (v k)
+                           (fn (_ v k)
                              (body v)
                              (loop (k #f)))
                            (fn (v) v))))

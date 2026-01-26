@@ -566,6 +566,7 @@ IRName defToCPS(
     return resName;
 }
 
+// FIXME: Complain if target is locally bound:
 IRName setToCPS(
     CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef args, ORef maybeLoc,
     ToCpsCont k

@@ -1223,7 +1223,7 @@
                       #t
                       (if (identical? callee 'define)
                         #t
-                        (identical? callee 'set!)))
+                        (identical? callee 'set!))) ; FIXME: Complain if target locally bound
                   (cons* (car form)
                         (map (fn (form) (macroexpand-all env form)) (cdr form))
                         (pair-loc form))

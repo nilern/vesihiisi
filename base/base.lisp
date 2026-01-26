@@ -1,5 +1,4 @@
 ;;; Macros for Defining Macros
-;;; ================================================================================================
 
 (define define-macro
   (fn (_ form)
@@ -22,6 +21,75 @@
     `(let ()
        (define ,name (fn ,params ,@body))
        (var-set-macro-category! (resolve (quote ,name)) 'symbol-macro))))
+
+;;; Utility Macros
+;;; ================================================================================================
+
+(define-macro (do _ form)
+  (let ((stmts (cdr form)))
+    `(let () ,@stmts)))
+
+(define-macro (when _ form)
+  (let ((condition (cadr form))
+        (body (cddr form)))
+    `(if ,condition (do ,@body) #f)))
+
+;;; Delimited Continuations
+;;; ================================================================================================
+
+;;; OPTIMIZE
+
+(let ((stash (box ()))
+      (trampoline (box #f))
+      (maybe-thunk (call-with-current-continuation (fn (k) (box-set! trampoline k) #f)))
+      (_ (when maybe-thunk
+           (let ((v (maybe-thunk))
+                 (ks (box-get stash)))
+             (box-set! stash (cdr ks))
+             (continue (car ks) v)))))
+  (define reset*
+    (fn (thunk)
+      (call-with-current-continuation
+        (fn (k)
+          (box-set! stash (cons k (box-get stash)))
+          (continue (box-get trampoline) thunk)))))
+
+  (define shift*
+    (fn (f)
+      (call-with-current-continuation
+        (fn (k)
+          (continue (box-get trampoline)
+                    (fn ()
+                      (f (fn (v)
+                           (call-with-current-continuation
+                             (fn (k*)
+                               (box-set! stash (cons k* (box-get stash)))
+                               (continue k v)))))))))))
+
+  (define <yield> (make-slots-type '<yield> 2 #f))
+  (define yield-value (fn ((: y <yield>)) (slot-get y 0)))
+  (define yield-continuation (fn ((: y <yield>)) (slot-get y 1)))
+
+  (define yield (fn (v) (shift* (fn (k) (make <yield> v k)))))
+
+  (define try-yield*
+    (fn (thunk on-yield)
+      (let ((v (thunk)))
+        (if (isa? <yield> v)
+          (on-yield (yield-value v) (yield-continuation v))
+          v))))
+
+  (define dynamic-wind
+    (fn (initially thunk finally)
+      (letfn (((loop thunk)
+                 (initially)
+                 (let ((v (thunk)))
+                   (finally)
+                   (try-yield* (fn () v)
+                               (fn (v k)
+                                 (let ((v* (yield v)))
+                                   (loop (fn () (k v*)))))))))
+        (loop (fn () (reset* thunk)))))))
 
 ;;; Self-Hosting REPL
 ;;; ================================================================================================

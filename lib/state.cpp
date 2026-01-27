@@ -5,6 +5,7 @@
 #include <stdarg.h>
 #include <new>
 #include <algorithm>
+#include <vector>
 
 #include "util/util.hpp"
 #include "object.hpp"
@@ -49,6 +50,19 @@ char const* const typeNames[] = {
 };
 static_assert(sizeof(typeNames) / sizeof(*typeNames) == BOOTSTRAP_TYPE_COUNT);
 
+RootGuard::RootGuard(State* t_state, ORef* handle) : state{t_state} {
+    if (state->shadowstack.count == state->shadowstack.cap) {
+        size_t const newCap = state->shadowstack.cap + state->shadowstack.cap / 2;
+        state->shadowstack.vals =
+            (ORef**)realloc(state->shadowstack.vals, newCap * sizeof * state->shadowstack.vals);
+        state->shadowstack.cap = newCap;
+    }
+
+    state->shadowstack.vals[state->shadowstack.count++] = handle;
+}
+
+RootGuard::~RootGuard() { if (state) { --state->shadowstack.count; } }
+
 bool tryCreateNamespace(
     Semispace* semispace, HRef<Namespace>* dest, Type const* nsType, Type const* arrayType
 ) {
@@ -87,17 +101,6 @@ State::~State() {
 }
 
 void freeState(State* state) { delete(state); }
-
-void pushStackRoot(State* state, ORef* stackLoc) {
-    if (state->shadowstack.count == state->shadowstack.cap) {
-        size_t const newCap = state->shadowstack.cap + state->shadowstack.cap / 2;
-        state->shadowstack.vals =
-            (ORef**)realloc(state->shadowstack.vals, newCap * sizeof * state->shadowstack.vals);
-        state->shadowstack.cap = newCap;
-    }
-
-    state->shadowstack.vals[state->shadowstack.count++] = stackLoc;
-}
 
 void markRoots(State* state) {
     state->method = state->heap.mark(state->method);
@@ -397,14 +400,12 @@ HRef<Symbol> intern(State* state, Str name);
 HRef<Var> getVar(State* state, HRef<Namespace> nsRef, HRef<Symbol> name);
 
 void installPrimordial(State* state, Str name, ORef v) {
-    pushStackRoot(state, &v);
+    auto const vG = state->pushRoot(&v);
 
     HRef<Symbol> const symbol = intern(state, name);
     HRef<Var> const var = getVar(state, state->ns, symbol);
 
     var.ptr()->val =v;
-
-    popStackRoots(state, 1);
 }
 
 void installPrimop(
@@ -423,9 +424,8 @@ Var* tryCreateUnboundVar(
     Semispace* semispace, Type const* unboundType, HRef<Unbound> unbound);
 
 void nameType(State* state, HRef<Type> typeRef, Str name) {
-    pushStackRoot(state, (ORef*)&typeRef);
+    auto const typeRefG = state->pushRoot(&typeRef);
     HRef<Symbol> const nameSym = intern(state, name);
-    popStackRoots(state, 1);
 
     Type* const type = typeRef.ptr();
     type->hash = nameSym.ptr()->hash;
@@ -434,7 +434,7 @@ void nameType(State* state, HRef<Type> typeRef, Str name) {
 
 HRef<Array> createCommandLine(State* state, int argc, char const* argv[]) {
     HRef<Array> commandLine = createArray(state, Fixnum{int64_t(argc)});
-    pushStackRoot(state, &commandLine);
+    auto const commandLineG = state->pushRoot(&commandLine);
 
     for (size_t i = 0; i < size_t(argc); ++i) {
         char const* const segCStr = argv[i];
@@ -443,7 +443,6 @@ HRef<Array> createCommandLine(State* state, int argc, char const* argv[]) {
         const_cast<ORef*>(commandLine.ptr()->flexData())[i] = seg; // Initializing store
     }
 
-    popStackRoots(state, 1);
     return commandLine;
 }
 
@@ -626,11 +625,10 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
         createPrimopMethod(dest, strLit("abort"), (MethodCode)primopAbort,
                            false, Fixnum{1l}, dest->types.any);
     HRef<Closure> abortClosure = allocClosure(dest, abortMethod, Fixnum{0l});
-    pushStackRoot(dest, (ORef*)&abortClosure);
+    auto const abortClosureG = dest->pushRoot(&abortClosure);
     dest->errorHandler.ptr()->val = abortClosure.oref();
 
     installPrimordial(dest, strLit("abort"), abortClosure.oref());
-    popStackRoots(dest, 1); // abortClosure
     installPrimordial(dest, strLit("end"), dest->singletons.end);
     installPrimordial(dest, strLit("standard-input"), createInputFile(dest, UTF8InputFile{stdin}));
     installPrimordial(dest, strLit("*vshs-home*"),
@@ -860,9 +858,8 @@ void collectTracingIR(State* state, struct IRFn* fn, struct MethodBuilder* build
 HRef<Type> createSlotsType(State* state, HRef<Symbol> name, Fixnum slotCount, Bool isFlex) {
     Type* ptr = static_cast<decltype(ptr)>(state->heap.tospace.tryAlloc(state->types.type.ptr()));
     if (mustCollect(ptr)) {
-        pushStackRoot(state, &name);
+        auto const nameG = state->pushRoot(&name);
         collect(state);
-        popStackRoots(state, 1);
         ptr = static_cast<decltype(ptr)>(state->heap.tospace.allocOrDie(state->types.type.ptr()));
     }
 
@@ -939,9 +936,8 @@ HRef<ByteArrayMut> createByteArrayMut(State* state, Fixnum count) {
 HRef<Loc> createLoc(State* state, HRef<String> filename, Fixnum byteIdx) {
     Loc* ptr = static_cast<Loc*>(state->heap.tospace.tryAlloc(state->types.loc.ptr()));
     if (mustCollect(ptr)) {
-        pushStackRoot(state, &filename);
+        auto const filenameG = state->pushRoot(&filename);
         collect(state);
-        popStackRoots(state, 1);
         ptr = static_cast<Loc*>(state->heap.tospace.allocOrDie(state->types.loc.ptr()));
     }
 
@@ -966,11 +962,10 @@ HRef<Pair> allocPair(State* state) {
 HRef<Pair> createPair(State *state, ORef car, ORef cdr, ORef maybeLoc) {
     Pair* ptr = (Pair*)state->heap.tospace.tryAlloc(state->types.pair.ptr());
     if (mustCollect(ptr)) {
-        pushStackRoot(state, &car);
-        pushStackRoot(state, &cdr);
-        pushStackRoot(state, &maybeLoc);
+        auto const carG = state->pushRoot(&car);
+        auto const cdrG = state->pushRoot(&cdr);
+        auto const maybeLocG = state->pushRoot(&maybeLoc);
         collect(state);
-        popStackRoots(state, 3);
         ptr = (Pair*)state->heap.tospace.allocOrDie(state->types.pair.ptr());
     }
 
@@ -1026,13 +1021,12 @@ HRef<Method> allocBytecodeMethod(
 ) {
     Method* ptr = (Method*)state->heap.tospace.tryAllocFlex(state->types.method.ptr(), arity);
     if (mustCollect(ptr)) {
-        pushStackRoot(state, (ORef*)&code);
-        pushStackRoot(state, (ORef*)&consts);
-        pushStackRoot(state, &maybeName);
-        pushStackRoot(state, &maybeFilenames);
-        pushStackRoot(state, &maybeSrcByteIdxs);
+        auto const codeG = state->pushRoot(&code);
+        auto const constsG = state->pushRoot(&consts);
+        auto const maybeNameG = state->pushRoot(&maybeName);
+        auto const maybeFilenamesG = state->pushRoot(&maybeFilenames);
+        auto const maybeSrcByteIdxsG = state->pushRoot(&maybeSrcByteIdxs);
         collect(state);
-        popStackRoots(state, 5);
         ptr = (Method*)state->heap.tospace.allocFlexOrDie(state->types.method.ptr(), arity);
     }
 
@@ -1065,11 +1059,12 @@ HRef<Method> vcreatePrimopMethod(
 
     Method* ptr = (Method*)state->heap.tospace.tryAllocFlex(state->types.method.ptr(), fxArity);
     if (mustCollect(ptr)) {
+        auto domainRoots = std::vector<RootGuard>{};
+        domainRoots.reserve(arity);
         for (size_t i = 0; i < arity; ++i) {
-            pushStackRoot(state, (ORef*)&domain[i]); // Not on stack but will not move either
+            domainRoots.push_back(state->pushRoot(domain + i));
         }
         collect(state);
-        popStackRoots(state, arity);
         ptr = (Method*)state->heap.tospace.allocFlexOrDie(state->types.method.ptr(), fxArity);
     }
 
@@ -1088,9 +1083,8 @@ HRef<Method> vcreatePrimopMethod(
     memcpy(ptr->flexDataMut(), domain, arity * sizeof *domain); // Side benefit of the array: `memcpy`
 
     HRef<Method> method = HRef(ptr);
-    pushStackRoot(state, (ORef*)&method);
+    auto const methodG = state->pushRoot(&method);
     HRef<Symbol> const nameSym = intern(state, name);
-    popStackRoots(state, 1);
     ptr = method.ptr(); // Post-GC reload
     ptr->maybeName = nameSym.oref();
 
@@ -1113,9 +1107,8 @@ HRef<Closure> allocClosure(State* state, HRef<Method> method, Fixnum cloverCount
     Closure* ptr =
         (Closure*)state->heap.tospace.tryAllocFlex(state->types.closure.ptr(), cloverCount);
     if (mustCollect(ptr)) {
-        pushStackRoot(state, (ORef*)&method);
+        auto const methodG = state->pushRoot(&method);
         collect(state);
-        popStackRoots(state, 1);
         ptr = (Closure*)state->heap.tospace.allocFlexOrDie(state->types.closure.ptr(), cloverCount);
     }
 
@@ -1130,9 +1123,8 @@ HRef<Continuation> allocContinuation(
     Continuation* ptr = (Continuation*)state->heap.tospace.tryAllocFlex(
         state->types.continuation.ptr(), cloverCount);
     if (mustCollect(ptr)) {
-        pushStackRoot(state, (ORef*)&method);
+        auto const methodG = state->pushRoot(&method);
         collect(state);
-        popStackRoots(state, 1);
         ptr =(Continuation*)state->heap.tospace.allocFlexOrDie(
             state->types.continuation.ptr(), cloverCount);
     }
@@ -1170,9 +1162,8 @@ HRef<InputFile> createInputFile(State* state, UTF8InputFile&& file) {
 HRef<UnboundError> createUnboundError(State* state, HRef<Symbol> name) {
     UnboundError* ptr = (UnboundError*)state->heap.tospace.tryAlloc(state->types.unboundError.ptr());
     if (mustCollect(ptr)) {
-        pushStackRoot(state, (ORef*)&name);
+        auto const nameG = state->pushRoot(&name);
         collect(state);
-        popStackRoots(state, 1);
         ptr = (UnboundError*)state->heap.tospace.allocOrDie(state->types.unboundError.ptr());
     }
 
@@ -1184,10 +1175,9 @@ HRef<UnboundError> createUnboundError(State* state, HRef<Symbol> name) {
 HRef<TypeError> createTypeError(State* state, HRef<Type> type, ORef val) {
     TypeError* ptr = (TypeError*)state->heap.tospace.tryAlloc(state->types.typeError.ptr());
     if (mustCollect(ptr)) {
-        pushStackRoot(state, (ORef*)&type);
-        pushStackRoot(state, &val);
+        auto const typeG = state->pushRoot(&type);
+        auto const valG = state->pushRoot(&val);
         collect(state);
-        popStackRoots(state, 2);
         ptr = (TypeError*)state->heap.tospace.allocOrDie(state->types.typeError.ptr());
     }
 
@@ -1199,9 +1189,8 @@ HRef<TypeError> createTypeError(State* state, HRef<Type> type, ORef val) {
 HRef<ArityError> createArityError(State* state, HRef<Closure> callee, Fixnum callArgc) {
     ArityError* ptr = (ArityError*)state->heap.tospace.tryAlloc(state->types.arityError.ptr());
     if (mustCollect(ptr)) {
-        pushStackRoot(state, (ORef*)&callee);
+        auto const calleeG = state->pushRoot(&callee);
         collect(state);
-        popStackRoots(state, 1);
         ptr = (ArityError*)state->heap.tospace.allocOrDie(state->types.arityError.ptr());
     }
 
@@ -1214,9 +1203,8 @@ HRef<InapplicableError> createInapplicableError(State* state, HRef<Multimethod> 
     InapplicableError* ptr =
         (InapplicableError*)state->heap.tospace.tryAlloc(state->types.inapplicableError.ptr());
     if (mustCollect(ptr)) {
-        pushStackRoot(state, (ORef*)&callee);
+        auto const calleeG = state->pushRoot(&callee);
         collect(state);
-        popStackRoots(state, 1);
         ptr = (InapplicableError*)state->heap.tospace.allocOrDie(
             state->types.inapplicableError.ptr());
     }
@@ -1234,17 +1222,15 @@ HRef<FatalError> createOverflowError(
     FatalError* ptr =
         (FatalError*)state->heap.tospace.tryAllocFlex(state->types.fatalError.ptr(), count);
     if (mustCollect(ptr)) {
-        pushStackRoot(state, (ORef*)&callee);
+        auto const calleeG = state->pushRoot(&callee);
         collect(state);
-        popStackRoots(state, 1);
         ptr = (FatalError*)state->heap.tospace.allocFlexOrDie(state->types.fatalError.ptr(), count);
     }
     HRef<FatalError> res = HRef(ptr);
 
-    pushStackRoot(state, (ORef*)&callee);
-    pushStackRoot(state, (ORef*)&res);
+    auto const calleeG = state->pushRoot(&callee);
+    auto const resG = state->pushRoot(&res);
     HRef<Symbol> const name = intern(state, strLit("overflow"));
-    popStackRoots(state, 2);
     ptr = res.ptr();
 
     *ptr = FatalError{.name = name};
@@ -1264,17 +1250,15 @@ HRef<FatalError> createDivByZeroError(
     FatalError* ptr =
         (FatalError*)state->heap.tospace.tryAllocFlex(state->types.fatalError.ptr(), count);
     if (mustCollect(ptr)) {
-        pushStackRoot(state, (ORef*)&callee);
+        auto const calleeG = state->pushRoot(&callee);
         collect(state);
-        popStackRoots(state, 1);
         ptr = (FatalError*)state->heap.tospace.allocFlexOrDie(state->types.fatalError.ptr(), count);
     }
     HRef<FatalError> res = HRef(ptr);
 
-    pushStackRoot(state, (ORef*)&callee);
-    pushStackRoot(state, (ORef*)&res);
+    auto const calleeG = state->pushRoot(&callee);
+    auto const resG = state->pushRoot(&res);
     HRef<Symbol> const name = intern(state, strLit("divide-by-zero"));
-    popStackRoots(state, 2);
     ptr = res.ptr();
 
     *ptr = FatalError{.name = name};

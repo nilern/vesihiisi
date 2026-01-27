@@ -215,16 +215,13 @@ ReadExprTailRes readListTail(State* state, Parser* parser) {
     }
 
     HRef<Pair> firstPair = allocPair(state);
-    pushStackRoot(state, (ORef*)&firstPair);
+    auto const firstPairG = state->pushRoot(&firstPair);
     HRef<Pair> pair = firstPair;
-    pushStackRoot(state, (ORef*)&pair);
+    auto const pairG = state->pushRoot(&pair);
 
     // <expr>
     ReadExprRes const carRes = readExpr(state, parser);
-    if (!carRes.success) {
-        popStackRoots(state, 2);
-        return ReadExprTailRes{carRes.err};
-    }
+    if (!carRes.success) { return ReadExprTailRes{carRes.err}; }
     {
         Vshs_LocatedORef const locVal = carRes.val;
         Pair* const pairPtr = pair.ptr();
@@ -242,10 +239,7 @@ ReadExprTailRes readListTail(State* state, Parser* parser) {
 
         // <expr>
         ReadExprRes const carRes = readExpr(state, parser);
-        if (!carRes.success) {
-            popStackRoots(state, 2);
-            return ReadExprTailRes{carRes.err};
-        }
+        if (!carRes.success) { return ReadExprTailRes{carRes.err}; }
         {
             Vshs_LocatedORef const locVal = carRes.val;
             Pair* const pairPtr = pair.ptr();
@@ -268,27 +262,19 @@ ReadExprTailRes readListTail(State* state, Parser* parser) {
 
         // <expr>
         ReadExprRes const improperRes = readExpr(state, parser);
-        if (!improperRes.success) {
-            popStackRoots(state, 2);
-            return ReadExprTailRes{carRes.err};
-        }
+        if (!improperRes.success) { return ReadExprTailRes{carRes.err}; }
         pair.ptr()->cdr = improperRes.val.val;
 
         TRY(ReadExprTailRes, skipWhitespace(parser)); // <ws>
 
         if (!TRY(ReadExprTailRes, parser->match(')'))) {
-            popStackRoots(state, 2);
             return ReadExprTailRes{parser->error(')')};
         }
     }; break;
 
-    default: {
-        popStackRoots(state, 2);
-        return ReadExprTailRes{parser->error("')' or '.'")};
-    }; break;
+    default: return ReadExprTailRes{parser->error("')' or '.'")};
     }
 
-    popStackRoots(state, 2);
     return ReadExprTailRes{firstPair};
 }
 
@@ -455,10 +441,9 @@ ReadExprRes readExpr(State* state, Parser* parser) {
         ReadExprTailRes tailRes = readListTail(state, parser);
         if (!tailRes.success) { return ReadExprRes{tailRes.err}; }
 
-        pushStackRoot(state, &tailRes.val);
+        auto const tailResValG = state->pushRoot(&tailRes.val);
         HRef<Loc> const loc = createLoc(state, HRef<String>::fromUnchecked(parser->filename),
                                         Fixnum{(int64_t)byteIdx});
-        popStackRoots(state, 1);
         return ReadExprRes{{tailRes.val, loc}};
     }; break;
 
@@ -481,10 +466,9 @@ ReadExprRes readExpr(State* state, Parser* parser) {
         ReadExprTailRes tailRes = readStringTail(state, parser);
         if (!tailRes.success) { return ReadExprRes{tailRes.err}; }
 
-        pushStackRoot(state, &tailRes.val);
+        auto const tailResValG = state->pushRoot(&tailRes.val);
         HRef<Loc> const loc = createLoc(state, HRef<String>::fromUnchecked(parser->filename),
                                         Fixnum{(int64_t)byteIdx});
-        popStackRoots(state, 1);
         return ReadExprRes{{tailRes.val, loc}};
     }; break;
 
@@ -493,13 +477,12 @@ ReadExprRes readExpr(State* state, Parser* parser) {
 
         HRef<Loc> loc = createLoc(state, HRef<String>::fromUnchecked(parser->filename),
                                   Fixnum{(int64_t)byteIdx});
-        pushStackRoot(state, &loc);
+        auto const locG = state->pushRoot(&loc);
 
         auto const quotee = TRY(ReadExprRes, readExpr(state, parser));
         auto quotation = createPair(state, quotee.val, state->singletons.emptyList, quotee.loc);
         quotation = createPair(state, state->singletons.quote, quotation, loc);
 
-        popStackRoots(state, 1);
         return ReadExprRes{{quotation, loc}};
     }; break;
     }
@@ -511,10 +494,9 @@ ReadExprRes readExpr(State* state, Parser* parser) {
         ReadExprTailRes tailRes =  readSymbolTail(state, parser, start);
         if (!tailRes.success) { return ReadExprRes{tailRes.err}; }
 
-        pushStackRoot(state, &tailRes.val);
+        auto const tailResValG = state->pushRoot(&tailRes.val);
         HRef<Loc> const loc = createLoc(state, HRef<String>::fromUnchecked(parser->filename),
                                         Fixnum{(int64_t)byteIdx});
-        popStackRoots(state, 1);
         return ReadExprRes{{tailRes.val, loc}};
     } else if (isDigit[10](c)) {
         ReadExprTailRes const tailRes = readNumber(parser, 10); // OPTIMIZE: Rechecks `c`

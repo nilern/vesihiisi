@@ -264,7 +264,7 @@ int main(int argc, char const* argv[static argc]) {
 
     Str const src = {(uint8_t*)fchars, fsize};
     Parser* const parser = createParser(state, src, filenameStr);
-    pushFilenameRoot(state, parser);
+    Vshs_RootGuard* filenameG = pushFilenameRoot(state, parser);
 
     while (!loadFailed) {
         Vshs_MaybeRes const maybeRes = readEval(state, parser, args.debug);
@@ -303,7 +303,7 @@ int main(int argc, char const* argv[static argc]) {
         }
     }
 
-    popStackRoots(state, 1);
+    popRoot(filenameG);
     freeParser(parser);
     free(fchars);
 
@@ -322,7 +322,7 @@ int main(int argc, char const* argv[static argc]) {
             exit(EXIT_FAILURE);
         }
 
-        popStackRoots(state, 1); // Parser filename
+        popRoot(filenameG);
         freeParser(parser);
     }
 

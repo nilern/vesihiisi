@@ -81,7 +81,7 @@ PrimopRes primopApplyArray(State* state) {
     ORef const callee = state->regs[firstArgReg];
     // Could also be an `<array!>`, but we "illegally" cast that here to avoid duplicating this
     // function for no actual benefit:
-    HRef<Array> const argsRef = HRef<Array>::fromUnchecked(state->regs[firstArgReg + 1]);
+    HRef<Array> argsRef = HRef<Array>::fromUnchecked(state->regs[firstArgReg + 1]);
     ORef const* args = argsRef.ptr()->flexData();
     size_t argc = (uint64_t)argsRef.ptr()->flexCount().val();
 
@@ -116,9 +116,8 @@ PrimopRes primopApplyArray(State* state) {
         memcpy(state->regs + firstArgReg, args, minArity * sizeof(ORef));
 
         // Varargs:
-        pushStackRoot(state, (ORef*)&argsRef);
+        auto const argsRefG = state->pushRoot(&argsRef);
         HRef<ArrayMut> const varargsRef = createArrayMut(state, Fixnum((intptr_t)varargCount));
-        popStackRoots(state, 1);
         args = argsRef.ptr()->flexData(); // Post-GC reload
         memcpy((void*)varargsRef.ptr()->flexData(), args + minArity, varargCount * sizeof(ORef));
 
@@ -225,14 +224,14 @@ PrimopRes primopApplyList(State* state) {
                 }
             }
         } else { // Non-primop varargs:
-            pushStackRoot(state, &args);
+            auto const argsG = state->pushRoot(&args);
 
             assert(isa(state, state->types.type, methodPtr->domain()[minArity]));
             HRef<Type> type = HRef<Type>::fromUnchecked(methodPtr->domain()[minArity]);
-            pushStackRoot(state, (ORef*)&type);
+            auto const typeG = state->pushRoot(&type);
             size_t bufCap = 10;
             HRef<ArrayMut> varargsBufRef = createArrayMut(state, Fixnum((intptr_t)bufCap));
-            pushStackRoot(state, (ORef*)&varargsBufRef);
+            auto const varargsBufRefG = state->pushRoot(&varargsBufRef);
             ORef* varargsBuf = varargsBufRef.ptr()->flexDataMut();
             size_t varargCount = 0;
             for (size_t i = 0; true; ++i, ++varargCount) {
@@ -244,17 +243,15 @@ PrimopRes primopApplyList(State* state) {
                     // OPTIMIZE: Skip type check if no typed params (= not a specialization):
                     if (!isa(state, type, arg)) {
                         ORef const err = createTypeError(state, type, arg).oref();
-                        popStackRoots(state, 3); // `&type`, `&args` & `&varargsBufRef`
                         return primopError(state, err);
                     }
 
                     if (i == bufCap) {
                         size_t const newBufCap = bufCap + bufCap * 2;
 
-                        pushStackRoot(state, &arg);
+                        auto const argG = state->pushRoot(&arg);
                         HRef<ArrayMut> const newVarargsBufRef =
                             createArrayMut(state, Fixnum((intptr_t)newBufCap));
-                        popStackRoots(state, 1);
                         argsPair = HRef<Pair>::fromUnchecked(args).ptr(); // Post-GC reload
                         varargsBuf = varargsBufRef.ptr()->flexDataMut(); // Post-GC reload
                         ORef* const newVarargsBuf = newVarargsBufRef.ptr()->flexDataMut();
@@ -287,8 +284,6 @@ PrimopRes primopApplyList(State* state) {
                 }
             }();
 
-            popStackRoots(state, 3); // `&type, `&args` & `&varargsBufRef`
-
             state->regs[firstArgReg + minArity] = varargsRef.oref();
 
             argc = minArity + varargCount;
@@ -319,11 +314,11 @@ PrimopRes primopApplyList(State* state) {
                     args = argsPair->cdr;
                 }
             } else { // Non-primop:
-                pushStackRoot(state, &args);
+                auto const argsG = state->pushRoot(&args);
 
                 size_t bufCap = 10;
                 HRef<ArrayMut> varargsBufRef = createArrayMut(state, Fixnum((intptr_t)bufCap));
-                pushStackRoot(state, (ORef*)&varargsBufRef);
+                auto const varargsBufRefG = state->pushRoot(&varargsBufRef);
                 ORef* varargsBuf = varargsBufRef.ptr()->flexDataMut();
                 size_t varargCount = 0;
                 for (size_t i = 0; true; ++i, ++varargCount) {
@@ -366,8 +361,6 @@ PrimopRes primopApplyList(State* state) {
                         return varargsBufRef;
                     }
                 }();
-
-                popStackRoots(state, 2); // `&args` & `&varargsBufRef`
 
                 state->regs[firstArgReg + minArity] = varargsRef.oref();
 
@@ -691,10 +684,9 @@ PrimopRes primopFlexClone(State* state) {
 
     Object* dest = state->heap.tospace.tryAllocFlex(type, Fixnum{int64_t(copyCount)});
     if (mustCollect(dest)) {
-        pushStackRoot(state, &src);
-        pushStackRoot(state, &typeRef);
+        auto const srcG = state->pushRoot(&src);
+        auto const typeRefG = state->pushRoot(&typeRef);
         collect(state);
-        popStackRoots(state, 2);
         type = typeRef.ptr();
         dest = state->heap.tospace.allocFlexOrDie(type, Fixnum{int64_t(copyCount)});
     }
@@ -954,11 +946,11 @@ PrimopRes primopArrayMutToString(State* state) {
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
 
     auto vs = HRef<ArrayMut>::fromUnchecked(state->regs[firstArgReg]);
-    pushStackRoot(state, &vs);
+    auto const vsG = state->pushRoot(&vs);
 
     auto const cpCount = size_t(vs.ptr()->flexCount().val());
     auto tmpRef = createByteArrayMut(state, Fixnum{int64_t(cpCount * 4)});
-    pushStackRoot(state, &tmpRef);
+    auto const tmpRefG = state->pushRoot(&tmpRef);
     auto tmp = tmpRef.ptr();
     auto const cps = vs.ptr()->flexData();
     auto const tmpData = tmp->flexDataMut();
@@ -979,7 +971,6 @@ PrimopRes primopArrayMutToString(State* state) {
 
     state->regs[retReg] = HRef{res};
 
-    popStackRoots(state, 2);
     return PrimopRes::CONTINUE;
 }
 

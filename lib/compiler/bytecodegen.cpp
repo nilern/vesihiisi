@@ -120,7 +120,7 @@ HRef<Method> buildMethod(
         maybeCode = allocByteArrayOrDie(state, codeCount);
     }
     HRef<ByteArray> code = HRef<ByteArray>(maybeCode);
-    pushStackRoot(state, (ORef*)&code);
+    auto const codeG = state->pushRoot(&code);
 
     { // Initialize method:
         uint8_t* codePtr = (uint8_t*)maybeCode->flexData();
@@ -137,7 +137,7 @@ HRef<Method> buildMethod(
         maybeConsts = allocArrayMutOrDie(state, constCount);
     }
     HRef<ArrayMut> consts = HRef<ArrayMut>{maybeConsts};
-    pushStackRoot(state, (ORef*)&consts);
+    auto const constsG = state->pushRoot(&consts);
     memcpy(maybeConsts, builder.consts, builder.constCount * sizeof *builder.consts); // Initialize
 
     // Copy `revFilenameRuns` to GC heap:
@@ -149,7 +149,7 @@ HRef<Method> buildMethod(
         maybeFilenames = allocArrayOrDie(state, fxFilenamesSlotCount);
     }
     auto filenames = HRef<Array>{maybeFilenames};
-    pushStackRoot(state, &filenames);
+    auto const filenamesG = state->pushRoot(&filenames);
     // Part of initialization, so `const_cast`:
     ORef* const filenamesData = const_cast<ORef*>(filenames.ptr()->flexData());
     for (size_t i = 0; i < filenamesSlotCount; ++i) { // Reversing copy
@@ -172,7 +172,7 @@ HRef<Method> buildMethod(
         maybeSrcByteIdxs = allocByteArrayOrDie(state, fxByteIdxsSize);
     }
     HRef<ByteArray> srcByteIdxs = HRef<ByteArray>(maybeSrcByteIdxs);
-    pushStackRoot(state, &srcByteIdxs);
+    auto const srcByteIdxsG = state->pushRoot(&srcByteIdxs);
     {
         // Part of initialization, so `const_cast`:
         uint8_t* const srcByteIdxsData = const_cast<uint8_t*>(srcByteIdxs.ptr()->flexData());
@@ -222,7 +222,6 @@ HRef<Method> buildMethod(
     }
     HRef<Method> const method = HRef<Method>{maybeMethod};
 
-    popStackRoots(state, 4);
     return method;
 }
 

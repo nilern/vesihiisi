@@ -36,9 +36,8 @@ HRef<Symbol> createUninternedSymbolFromHeaped(State* state, Fixnum hash, HRef<St
     Symbol* ptr = (Symbol*)state->heap.tospace.tryAllocFlex(
         state->types.symbol.ptr(), name.ptr()->flexCount());
     if (mustCollect(ptr)) {
-        pushStackRoot(state, &name);
+        auto const nameG = state->pushRoot(&name);
         collect(state);
-        popStackRoots(state, 1);
         ptr = (Symbol*)state->heap.tospace.allocFlexOrDie(
             state->types.symbol.ptr(), name.ptr()->flexCount());
     }
@@ -218,14 +217,13 @@ HRef<Method> createSpecialization(
 ) {
     Method const* generic = genericRef.ptr();
     Fixnum const fxArity = generic->flexCount();
-    pushStackRoot(state, (ORef*)&genericRef);
-    pushStackRoot(state, (ORef*)&typesRef);
+    auto const genericRefG = state->pushRoot(&genericRef);
+    auto const typesRefG = state->pushRoot(&typesRef);
     HRef<Method> const specializationRef =
         allocBytecodeMethod(state, HRef<ByteArray>::fromUnchecked(generic->code),
                             HRef<ArrayMut>::fromUnchecked(generic->consts), fxArity,
                             generic->hasVarArg, hash, generic->maybeName, generic->maybeFilenames,
                             generic->maybeSrcByteIdxs);
-    popStackRoots(state, 2);
     Method* const specialization = specializationRef.ptr();
 
     generic = genericRef.ptr(); // Reload after potential GC

@@ -31,12 +31,16 @@ extern "C" Vshs_State* tryCreateState(
 
 extern "C" void freeState(Vshs_State* state) { freeState((State*)state); }
 
-extern "C" void pushStackRoot(Vshs_State* state, ORef* stackLoc) {
-    pushStackRoot((State*)state, stackLoc);
+extern "C" Vshs_RootGuard* pushRoot(Vshs_State* state, ORef* stackLoc) {
+    auto const guard = static_cast<RootGuard*>(malloc(sizeof(RootGuard)));
+    *guard = ((State*)state)->pushRoot(stackLoc);
+    return (Vshs_RootGuard*)guard;
 }
 
-extern "C" void popStackRoots(Vshs_State* state, size_t count) {
-    popStackRoots((State*)state, count);
+extern "C" void popRoot(Vshs_RootGuard* guard) {
+    auto const guardImpl = (RootGuard*)guard;
+    guardImpl->~RootGuard();
+    free(guardImpl);
 }
 
 extern "C" Parser* createParser(Vshs_State* state, Str src, Str filename) {
@@ -50,8 +54,8 @@ extern "C" void freeParser(Parser* parser) {
     return free(parser);
 }
 
-extern "C" void pushFilenameRoot(struct Vshs_State* state, Parser* parser) {
-    pushStackRoot((State*)state, &parser->filename);
+extern "C" Vshs_RootGuard* pushFilenameRoot(struct Vshs_State* state, Parser* parser) {
+    return pushRoot(state, &parser->filename);
 }
 
 extern "C" ParseRes Vshs_read(struct Vshs_State* state, Parser* parser) {

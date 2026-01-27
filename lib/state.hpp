@@ -74,6 +74,27 @@ struct NamedSingletons {
 };
 static_assert(sizeof(NamedSingletons) / sizeof(ORef) == BOOTSTRAP_SINGLETON_COUNT);
 
+class RootGuard {
+    State* state;
+
+    RootGuard(State* state, ORef* handle);
+
+    friend State;
+public:
+    ~RootGuard();
+
+    RootGuard(RootGuard&& that) { *this = std::move(that); }
+    RootGuard& operator=(RootGuard&& that) {
+        state = that.state;
+        that.state = nullptr;
+
+        return *this;
+    }
+
+    RootGuard(RootGuard const&) = delete;
+    RootGuard& operator=(RootGuard const&) = delete;
+};
+
 struct State {
     ORef method;
     uint8_t const* code;
@@ -110,14 +131,13 @@ struct State {
     State(State&&) = default;
     State& operator=(State&&) = default;
 
+    [[nodiscard]]
+    RootGuard pushRoot(ORef* handle) { return RootGuard{this, handle}; } // RVO => not even move
+
 private:
     State(Heap heap, NamedTypes types, NamedSingletons singletons, HRef<Namespace> ns,
           HRef<Var> errorHandler);
 };
-
-void pushStackRoot(State* state, ORef* stackLoc);
-
-inline void popStackRoots(State* state, size_t count) { state->shadowstack.count -= count; }
 
 // OPTIMIZE: If we already know that `isHeaped(v)`, the calls to `isa` -> `typeOf` recheck that
 // redundantly:

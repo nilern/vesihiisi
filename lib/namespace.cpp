@@ -46,9 +46,8 @@ void rehashNamespace(State* state, HRef<Namespace> const* nsHandle) {
     size_t const oldCap = (uint64_t)nsHandle->ptr()->keys.ptr()->flexCount().val();
     size_t const newCap = oldCap << 1;
     HRef<ArrayMut> newKeysRef = createArrayMut(state, Fixnum((intptr_t)newCap)); // May GC
-    pushStackRoot(state, (ORef*)&newKeysRef);
+    auto const newKeysRefG = state->pushRoot(&newKeysRef);
     HRef<ArrayMut> const newValsRef = createArrayMut(state, Fixnum((intptr_t)newCap)); // May GC
-    popStackRoots(state, 1);
 
     Namespace* const ns = nsHandle->ptr();
     ORef* const oldKeys = ns->keys.ptr()->flexDataMut();
@@ -88,16 +87,14 @@ HRef<Var> getVar(State* state, HRef<Namespace> nsRef, HRef<Symbol> name) {
         size_t const newCount = (uintptr_t)ns->count.val() + 1;
         size_t const cap = (uint64_t)ns->keys.ptr()->flexCount().val();
 
-        pushStackRoot(state, (ORef*)&nsRef);
-        pushStackRoot(state, (ORef*)&name);
+        auto const nsRefG = state->pushRoot(&nsRef);
+        auto const nameG = state->pushRoot(&name);
 
         if (newCount > cap >> 1) {
             rehashNamespace(state, &nsRef); // May GC
         }
 
         HRef<Var> const var = createUnboundVar(state); // May GC
-
-        popStackRoots(state, 2);
 
         ns = nsRef.ptr();
         findRes = findVar(nsRef, name);

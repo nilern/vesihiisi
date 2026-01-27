@@ -27,8 +27,12 @@ struct Vshs_State* tryCreateState(
     size_t heapSize, char const* vshsHome, int argc, char const* argv[]);
 void freeState(struct Vshs_State* state);
 
-void pushStackRoot(struct Vshs_State* state, ORef* stackLoc);
-void popStackRoots(struct Vshs_State* state, size_t count);
+typedef struct Vshs_RootGuard {
+    struct Vshs_State* state;
+} Vshs_RootGuard;
+
+Vshs_RootGuard* pushRoot(struct Vshs_State* state, ORef* stackLoc);
+void popRoot(Vshs_RootGuard* guard);
 
 typedef struct Parser Parser;
 
@@ -41,7 +45,7 @@ typedef enum ParseErrorType {
 Parser* createParser(struct Vshs_State* state, Str src, Str filename);
 void freeParser(Parser* parser);
 
-void pushFilenameRoot(struct Vshs_State* state, Parser* parser); // HACK
+Vshs_RootGuard* pushFilenameRoot(struct Vshs_State* state, Parser* parser); // HACK
 
 typedef struct Vshs_LocatedORef {
     ORef val;

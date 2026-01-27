@@ -51,17 +51,10 @@ char const* const typeNames[] = {
 static_assert(sizeof(typeNames) / sizeof(*typeNames) == BOOTSTRAP_TYPE_COUNT);
 
 RootGuard::RootGuard(State* t_state, ORef* handle) : state{t_state} {
-    if (state->shadowstack.count == state->shadowstack.cap) {
-        size_t const newCap = state->shadowstack.cap + state->shadowstack.cap / 2;
-        state->shadowstack.vals =
-            (ORef**)realloc(state->shadowstack.vals, newCap * sizeof * state->shadowstack.vals);
-        state->shadowstack.cap = newCap;
-    }
-
-    state->shadowstack.vals[state->shadowstack.count++] = handle;
+    state->shadowstack.push_back(handle);
 }
 
-RootGuard::~RootGuard() { if (state) { --state->shadowstack.count; } }
+RootGuard::~RootGuard() { if (state) { state->shadowstack.pop_back(); } }
 
 bool tryCreateNamespace(
     Semispace* semispace, HRef<Namespace>* dest, Type const* nsType, Type const* arrayType
@@ -84,20 +77,9 @@ bool tryCreateNamespace(
     return true;
 }
 
-inline void freeShadowstack(Shadowstack* shadowstack) {
-    free(shadowstack->vals);
-}
-
-Shadowstack newShadowstack(void) {
-    size_t const cap = 2;
-    ORef** const vals = (ORef**)malloc(cap * sizeof *vals);
-    return Shadowstack{.vals = vals, .count = 0, .cap = cap};
-}
-
 State::~State() {
     freeSymbols(&symbols);
     freeSpecializations(&specializations);
-    freeShadowstack(&shadowstack);
 }
 
 void freeState(State* state) { delete(state); }
@@ -124,11 +106,8 @@ void markRoots(State* state) {
 
     state->errorHandler = HRef<Var>::fromUnchecked(state->heap.mark(state->errorHandler.oref()));
 
-    {
-        size_t const stackRootCount = state->shadowstack.count;
-        for (size_t i = 0; i < stackRootCount; ++i) {
-            *state->shadowstack.vals[i] = state->heap.mark(*state->shadowstack.vals[i]);
-        }
+    for (ORef* const rootHandle : state->shadowstack) {
+        *rootHandle = state->heap.mark(*rootHandle);
     }
 }
 
@@ -468,7 +447,7 @@ State::State(
     singletons{singletons},
     errorHandler{errorHandler},
 
-    shadowstack{newShadowstack()}
+    shadowstack{}
 {}
 
 State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* argv[]) {
@@ -802,13 +781,9 @@ void assertStateInTospace(State const* state) {
 
     assert(allocatedInSemispace(&state->heap.tospace, state->errorHandler.ptr()));
 
-    {
-        size_t const stackRootCount = state->shadowstack.count;
-        for (size_t i = 0; i < stackRootCount; ++i) {
-            ORef const v = *state->shadowstack.vals[i];
-            if (isHeaped(v)) {
-                assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(v)));
-            }
+    for (ORef* const v : state->shadowstack) {
+        if (isHeaped(*v)) {
+            assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(*v)));
         }
     }
 }

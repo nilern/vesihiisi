@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "object.hpp"
 #include "heap.hpp"
 
@@ -16,12 +18,6 @@ typedef struct Specializations {
     size_t count;
     size_t cap;
 } Specializations;
-
-typedef struct Shadowstack {
-    ORef** vals;
-    size_t count;
-    size_t cap;
-} Shadowstack;
 
 #define REG_COUNT 256
 
@@ -122,7 +118,7 @@ struct State {
 
     HRef<Var> errorHandler;
 
-    Shadowstack shadowstack;
+    std::vector<ORef*> shadowstack;
 
     static State* tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* argv[]);
 

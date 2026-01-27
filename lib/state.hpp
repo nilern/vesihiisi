@@ -66,15 +66,12 @@ class RootGuard {
 
     friend State;
 public:
+    RootGuard() : state{nullptr} {}
+
     ~RootGuard();
 
     RootGuard(RootGuard&& that) { *this = std::move(that); }
-    RootGuard& operator=(RootGuard&& that) {
-        state = that.state;
-        that.state = nullptr;
-
-        return *this;
-    }
+    RootGuard& operator=(RootGuard&& that);
 
     RootGuard(RootGuard const&) = delete;
     RootGuard& operator=(RootGuard const&) = delete;

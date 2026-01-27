@@ -54,6 +54,14 @@ RootGuard::RootGuard(State* t_state, ORef* handle) : state{t_state} {
     state->shadowstack.push_back(handle);
 }
 
+RootGuard& RootGuard::operator=(RootGuard&& that) {
+    if (state) { state->shadowstack.pop_back(); }
+    state = that.state;
+    that.state = nullptr;
+
+    return *this;
+}
+
 RootGuard::~RootGuard() { if (state) { state->shadowstack.pop_back(); } }
 
 bool tryCreateNamespace(

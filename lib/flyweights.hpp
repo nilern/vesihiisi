@@ -1,11 +1,17 @@
 #pragma once
 
-#include "state.hpp"
+#include "object.hpp"
 
 namespace {
 
 // Symbols
 // =================================================================================================
+
+typedef struct SymbolTable {
+    ORef* entries;
+    size_t count;
+    size_t cap;
+} SymbolTable;
 
 SymbolTable newSymbolTable();
 
@@ -15,6 +21,12 @@ void pruneSymbols(SymbolTable* symbols);
 
 // Specializations
 // =================================================================================================
+
+typedef struct Specializations {
+    ORef* entries;
+    size_t count;
+    size_t cap;
+} Specializations;
 
 Specializations newSpecializations();
 

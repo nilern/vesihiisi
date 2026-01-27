@@ -4,20 +4,9 @@
 
 #include "object.hpp"
 #include "heap.hpp"
+#include "flyweights.hpp"
 
 namespace {
-
-typedef struct SymbolTable {
-    ORef* entries;
-    size_t count;
-    size_t cap;
-} SymbolTable;
-
-typedef struct Specializations {
-    ORef* entries;
-    size_t count;
-    size_t cap;
-} Specializations;
 
 #define REG_COUNT 256
 

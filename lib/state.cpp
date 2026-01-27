@@ -142,7 +142,6 @@ void initSpecialPurposeRegs(State* state) {
     }
 }
 
-// TODO: Extend this and expand its use:
 template<typename T, bool isBytes>
 Type* tryCreateFixedType(Semispace* semispace, Type const* typeType) {
     Type* const type = reinterpret_cast<Type*>(semispace->tryAlloc(typeType));
@@ -218,24 +217,6 @@ Type* tryCreateStringType(Semispace* semispace, Type const* typeType) {
     return stringType;
 }
 
-Type* tryCreateStringIteratorType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
-
-    Type* const type = (Type*)maybeType;
-    *type = Type{
-        .minSize = Fixnum((intptr_t)sizeof(StringIterator)),
-        .align = Fixnum((intptr_t)alignof(StringIterator)),
-        .isBytes = False,
-        .hasCodePtr = False,
-        .isFlex = False,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
-    };
-
-    return type;
-}
-
 Type* tryCreateSymbolType(Semispace* semispace, Type const* typeType) {
     void* const maybeType = semispace->tryAlloc(typeType);
     if (!maybeType) { return nullptr; }
@@ -245,24 +226,6 @@ Type* tryCreateSymbolType(Semispace* semispace, Type const* typeType) {
         .minSize = Fixnum((intptr_t)sizeof(Symbol)),
         .align = Fixnum((intptr_t)alignof(Symbol)),
         .isBytes = True,
-        .hasCodePtr = False,
-        .isFlex = True,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
-    };
-    
-    return type;
-}
-
-Type* tryCreateArrayType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
-    
-    Type* const type = (Type*)maybeType;
-    *type = Type{
-        .minSize = Fixnum{0l},
-        .align = Fixnum((intptr_t)alignof(ORef)),
-        .isBytes = False,
         .hasCodePtr = False,
         .isFlex = True,
         .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
@@ -323,24 +286,6 @@ Type* tryCreateByteArrayMutType(Semispace* semispace, Type const* typeType) {
         .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
 
-    return type;
-}
-
-Type* tryCreatePairType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
-    
-    Type* const type = (Type*)maybeType;
-    *type = Type{
-        .minSize = Fixnum((int64_t)sizeof(Pair)),
-        .align = Fixnum((int64_t)alignof(Pair)),
-        .isBytes = False,
-        .hasCodePtr = False,
-        .isFlex = False,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
-    };
-    
     return type;
 }
 
@@ -416,24 +361,6 @@ Type* tryCreateClosureType(Semispace* semispace, Type const* typeType) {
     return type;
 }
 
-Type* tryCreateMultimethodType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
-
-    Type* const type = (Type*)maybeType;
-    *type = Type{
-        .minSize = Fixnum((int64_t)sizeof(Multimethod)),
-        .align = Fixnum((int64_t)alignof(Multimethod)),
-        .isBytes = False,
-        .hasCodePtr = False,
-        .isFlex = False,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
-    };
-
-    return type;
-}
-
 Type* tryCreateContinuationType(Semispace* semispace, Type const* typeType) {
     void* const maybeType = semispace->tryAlloc(typeType);
     if (!maybeType) { return nullptr; }
@@ -445,78 +372,6 @@ Type* tryCreateContinuationType(Semispace* semispace, Type const* typeType) {
         .isBytes = False,
         .hasCodePtr = False,
         .isFlex = True,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
-    };
-
-    return type;
-}
-
-Type* tryCreateVarType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
-
-    Type* const type = (Type*)maybeType;
-    *type = Type{
-        .minSize = Fixnum((int64_t)sizeof(Var)),
-        .align = Fixnum((int64_t)alignof(Var)),
-        .isBytes = False,
-        .hasCodePtr = False,
-        .isFlex = False,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
-    };
-
-    return type;
-}
-
-Type* tryCreateKnotType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
-
-    Type* const type = (Type*)maybeType;
-    *type = Type{
-        .minSize = Fixnum((int64_t)sizeof(Knot)),
-        .align = Fixnum((int64_t)alignof(Knot)),
-        .isBytes = False,
-        .hasCodePtr = False,
-        .isFlex = False,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
-    };
-
-    return type;
-}
-
-Type* tryCreateNamespaceType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
-
-    Type* const type = (Type*)maybeType;
-    *type = Type{
-        .minSize = Fixnum((int64_t)sizeof(Namespace)),
-        .align = Fixnum((int64_t)alignof(Namespace)),
-        .isBytes = False,
-        .hasCodePtr = False,
-        .isFlex = False,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
-    };
-
-    return type;
-}
-
-Type* tryCreateInputFileType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
-
-    Type* const type = (Type*)maybeType;
-    *type = Type{
-        .minSize = Fixnum((int64_t)sizeof(InputFile)),
-        .align = Fixnum((int64_t)alignof(InputFile)),
-        .isBytes = True,
-        .hasCodePtr = False,
-        .isFlex = False,
         .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
         .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
@@ -560,78 +415,6 @@ Type* tryCreateFatalErrorType(Semispace* semispace, Type const* typeType) {
     return type;
 }
 
-Type* tryCreateUnboundErrorType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
-
-    Type* const type = (Type*)maybeType;
-    *type = Type{
-        .minSize = Fixnum((int64_t)sizeof(UnboundError)),
-        .align = Fixnum((int64_t)alignof(UnboundError)),
-        .isBytes = False,
-        .hasCodePtr = False,
-        .isFlex = False,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
-    };
-
-    return type;
-}
-
-Type* tryCreateTypeErrorType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
-
-    Type* const type = (Type*)maybeType;
-    *type = Type{
-        .minSize = Fixnum((int64_t)sizeof(TypeError)),
-        .align = Fixnum((int64_t)alignof(TypeError)),
-        .isBytes = False,
-        .hasCodePtr = False,
-        .isFlex = False,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
-    };
-
-    return type;
-}
-
-Type* tryCreateArityErrorType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
-
-    Type* const type = (Type*)maybeType;
-    *type = Type{
-        .minSize = Fixnum((int64_t)sizeof(ArityError)),
-        .align = Fixnum((int64_t)alignof(ArityError)),
-        .isBytes = False,
-        .hasCodePtr = False,
-        .isFlex = False,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
-    };
-
-    return type;
-}
-
-Type* tryCreateInapplicableErrorType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
-
-    Type* const type = (Type*)maybeType;
-    *type = Type{
-        .minSize = Fixnum((int64_t)sizeof(InapplicableError)),
-        .align = Fixnum((int64_t)alignof(InapplicableError)),
-        .isBytes = False,
-        .hasCodePtr = False,
-        .isFlex = False,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
-    };
-
-    return type;
-}
-
 Type* tryCreateImmType(Semispace* semispace, Type const* typeType) {
     void* const maybeType = semispace->tryAlloc(typeType);
     if (!maybeType) { return nullptr; }
@@ -648,22 +431,6 @@ Type* tryCreateImmType(Semispace* semispace, Type const* typeType) {
     };
     
     return type;
-}
-
-inline Type* tryCreateFixnumType(Semispace* semispace, Type const* typeType) {
-    return tryCreateImmType(semispace, typeType);
-}
-
-inline Type* tryCreateFlonumType(Semispace* semispace, Type const* typeType) {
-    return tryCreateImmType(semispace, typeType);
-}
-
-inline Type* tryCreateCharType(Semispace* semispace, Type const* typeType) {
-    return tryCreateImmType(semispace, typeType);
-}
-
-inline Type* tryCreateBoolType(Semispace* semispace, Type const* typeType) {
-    return tryCreateImmType(semispace, typeType);
 }
 
 HRef<Method> vcreatePrimopMethod(
@@ -763,7 +530,8 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
     if (!anyType) { return nullptr; }
     Type* const stringType = tryCreateStringType(&heap.tospace, typeType);
     if (!stringType) { return nullptr; }
-    Type* const stringIteratorType = tryCreateStringIteratorType(&heap.tospace, typeType);
+    Type* const stringIteratorType =
+        tryCreateFixedType<StringIterator, false>(&heap.tospace, typeType);
     if (!stringIteratorType) { return nullptr; }
     Type* const arrayType = tryCreateArrayType(&heap.tospace, typeType);
     if (!arrayType) { return nullptr; }
@@ -777,7 +545,7 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
     if (!symbolType) { return nullptr; }
     Type* const locType = tryCreateFixedType<Loc, false>(&heap.tospace, typeType);
     if (!locType) { return nullptr; }
-    Type* const pairType = tryCreatePairType(&heap.tospace, typeType);
+    Type* const pairType = tryCreateFixedType<Pair, false>(&heap.tospace, typeType);
     if (!pairType) { return nullptr; }
     Type* const emptyListType = tryCreateEmptyListType(&heap.tospace, typeType);
     if (!emptyListType) { return nullptr; }
@@ -785,41 +553,41 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
     if (!methodType) { return nullptr; }
     Type* const closureType = tryCreateClosureType(&heap.tospace, typeType);
     if (!closureType) { return nullptr; }
-    Type* const multimethodType = tryCreateMultimethodType(&heap.tospace, typeType);
+    Type* const multimethodType = tryCreateFixedType<Multimethod, false>(&heap.tospace, typeType);
     if (!multimethodType) { return nullptr; }
     Type* const continuationType = tryCreateContinuationType(&heap.tospace, typeType);
     if (!continuationType) { return nullptr; }
     Type* const unboundType = tryCreateUnboundType(&heap.tospace, typeType);
     if (!unboundType) { return nullptr; }
-    Type* const varType = tryCreateVarType(&heap.tospace, typeType);
+    Type* const varType = tryCreateFixedType<Var, false>(&heap.tospace, typeType);
     if (!varType) { return nullptr; }
-    Type* const knotType = tryCreateKnotType(&heap.tospace, typeType);
+    Type* const knotType = tryCreateFixedType<Knot, false>(&heap.tospace, typeType);
     if (!knotType) { return nullptr; }
-    Type* const nsType = tryCreateNamespaceType(&heap.tospace, typeType);
+    Type* const nsType = tryCreateFixedType<Namespace, false>(&heap.tospace, typeType);
     if (!nsType) { return nullptr; }
-    Type* const inputFileType = tryCreateInputFileType(&heap.tospace, typeType);
+    Type* const inputFileType = tryCreateFixedType<InputFile, true>(&heap.tospace, typeType);
     if (!inputFileType) { return nullptr; }
     Type* const endType = tryCreateEndType(&heap.tospace, typeType);
     if (!endType) { return nullptr; }
     Type* const fatalErrorType = tryCreateFatalErrorType(&heap.tospace, typeType);
     if (!fatalErrorType) { return nullptr; }
-    Type* const unboundErrorType = tryCreateUnboundErrorType(&heap.tospace, typeType);
+    Type* const unboundErrorType = tryCreateFixedType<UnboundError, false>(&heap.tospace, typeType);
     if (!unboundType) { return nullptr; }
-    Type* const typeErrorType = tryCreateTypeErrorType(&heap.tospace, typeType);
+    Type* const typeErrorType = tryCreateFixedType<TypeError, false>(&heap.tospace, typeType);
     if (!typeErrorType) { return nullptr; }
-    Type* const arityErrorType = tryCreateArityErrorType(&heap.tospace, typeType);
+    Type* const arityErrorType = tryCreateFixedType<ArityError, false>(&heap.tospace, typeType);
     if (!arityErrorType) { return nullptr; }
     Type* const inapplicableErrorType =
-        tryCreateInapplicableErrorType(&heap.tospace, typeType);
+        tryCreateFixedType<InapplicableError, false>(&heap.tospace, typeType);
     if (!inapplicableErrorType) { return nullptr; }
     
-    Type* const fixnumType = tryCreateFixnumType(&heap.tospace, typeType);
+    Type* const fixnumType = tryCreateImmType(&heap.tospace, typeType);
     if (!fixnumType) { return nullptr; }
-    Type* const charType = tryCreateCharType(&heap.tospace, typeType);
+    Type* const charType = tryCreateImmType(&heap.tospace, typeType);
     if (!charType) { return nullptr; }
-    Type* const flonumType = tryCreateFlonumType(&heap.tospace, typeType);
+    Type* const flonumType = tryCreateImmType(&heap.tospace, typeType);
     if (!flonumType) { return nullptr; }
-    Type* const boolType = tryCreateBoolType(&heap.tospace, typeType);
+    Type* const boolType = tryCreateImmType(&heap.tospace, typeType);
     if (!boolType) { return nullptr; }
 
     End* const end = (End*)heap.tospace.tryAlloc(endType);

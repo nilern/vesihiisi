@@ -8,7 +8,7 @@ Var* tryCreateUnboundVar(Semispace* semispace, Type const* varType, HRef<Unbound
     Var* ptr = (Var*)semispace->tryAlloc(varType);
     if (!ptr) { return ptr; }
 
-    *ptr = Var{.val = unbound.oref(), .macroCategory = False};
+    *ptr = Var{.val = unbound, .macroCategory = False};
 
     return ptr;
 }
@@ -20,7 +20,7 @@ HRef<Var> createUnboundVar(State* state) {
         ptr = (Var*)state->heap.tospace.allocOrDie(state->types.var.ptr());
     }
 
-    *ptr = Var{.val = state->singletons.unbound.oref(), .macroCategory = False};
+    *ptr = Var{.val = state->singletons.unbound, .macroCategory = False};
 
     return HRef<Var>(ptr);
 }
@@ -33,7 +33,7 @@ FindVarRes findVar(HRef<Namespace> nsRef, HRef<Symbol> name) {
     size_t const maxIdx = (uint64_t)ns->keys.ptr()->flexCount().val() - 1;
     for (size_t collisions = 0, i = h & maxIdx;; ++collisions, i = (i + collisions) & maxIdx) {
         ORef const k = keys[i];
-        if (eq(k, name.oref())) {
+        if (eq(k, name)) {
             HRef<Var> const var = HRef<Var>::fromUnchecked(ns->vals.ptr()->flexDataMut()[i]);
             return FindVarRes{.type = FindVarRes::NS_FOUND_VAR, .var = var};
         } else if (eq(k, Default)) {
@@ -99,8 +99,8 @@ HRef<Var> getVar(State* state, HRef<Namespace> nsRef, HRef<Symbol> name) {
         ns = nsRef.ptr();
         findRes = findVar(nsRef, name);
         assert(findRes.type == FindVarRes::NS_FOUND_VAR_DEST_IDX);
-        ns->keys.ptr()->flexDataMut()[findRes.destIndex] = name.oref();
-        ns->vals.ptr()->flexDataMut()[findRes.destIndex] = var.oref();
+        ns->keys.ptr()->flexDataMut()[findRes.destIndex] = name;
+        ns->vals.ptr()->flexDataMut()[findRes.destIndex] = var;
         ns->count = Fixnum((intptr_t)newCount);
 
         return var;

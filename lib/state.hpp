@@ -136,7 +136,7 @@ inline bool isPair(State const* state, ORef v) {
 }
 
 inline bool isEmptyList(State const* state, ORef v) {
-    return eq(v, state->singletons.emptyList.oref());
+    return eq(v, state->singletons.emptyList);
 }
 
 inline bool isMethod(State const* state, ORef v) {

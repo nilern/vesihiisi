@@ -17,7 +17,7 @@ ORef doCheckDomain(
 
     if (argc != arity) {
         if (!(method->hasVarArg.val() && argc >= arity - 1)) {
-            return createArityError(state, calleeRef, Fixnum((intptr_t)argc)).oref();
+            return createArityError(state, calleeRef, Fixnum((intptr_t)argc));
         }
     }
 
@@ -31,7 +31,7 @@ ORef doCheckDomain(
         HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[i]);
         ORef const v = args[i];
         if (!isa(state, type, v)) {
-            return createTypeError(state, type, v).oref();
+            return createTypeError(state, type, v);
         }
     }
 
@@ -41,7 +41,7 @@ ORef doCheckDomain(
         for (size_t i = minArity; i < argc; ++i) {
             ORef const v = args[i];
             if (!isa(state, type, v)) {
-                return createTypeError(state, type, v).oref();
+                return createTypeError(state, type, v);
             }
         }
     }
@@ -193,7 +193,7 @@ ORef applicableClosureForArgs(
 
         if (closureIsApplicable(state, methodRef.ptr(), args, argc)) {
             state->checkDomain = false;
-            return methodRef.oref();
+            return methodRef;
         }
     }
 
@@ -213,7 +213,7 @@ ORef applicableClosureForArglist(State* state, Multimethod const* callee, ORef a
 
         if (closureIsApplicableToList(state, methodRef.ptr(), args)) {
             state->checkDomain = false;
-            return methodRef.oref();
+            return methodRef;
         }
     }
 
@@ -237,7 +237,7 @@ bool calleeClosureForArgs(State* state, ORef callee, ORef const* args, size_t ar
             return true;
         } else {
             state->regs[calleeReg] = getErrorHandler(state);
-            state->regs[firstArgReg] = createInapplicableError(state, multiCalleeRef).oref();
+            state->regs[firstArgReg] = createInapplicableError(state, multiCalleeRef);
             state->entryRegc = firstArgReg + 1;
 
             assert(isClosure(state, state->regs[calleeReg]));
@@ -246,7 +246,7 @@ bool calleeClosureForArgs(State* state, ORef callee, ORef const* args, size_t ar
     } else { // TODO: DRY with "inapplicable" directly above:
         state->regs[calleeReg] = getErrorHandler(state);
         // TODO: `UncallableError` as closure is no longer the only callable type:
-        state->regs[firstArgReg] = createTypeError(state, state->types.closure, callee).oref();
+        state->regs[firstArgReg] = createTypeError(state, state->types.closure, callee);
         state->entryRegc = firstArgReg + 1;
 
         assert(isClosure(state, state->regs[calleeReg]));
@@ -272,7 +272,7 @@ bool calleeClosureForArglist(State* state, ORef callee, ORef args) {
             return true;
         } else {
             state->regs[calleeReg] = getErrorHandler(state);
-            state->regs[firstArgReg] = createInapplicableError(state, multiCalleeRef).oref();
+            state->regs[firstArgReg] = createInapplicableError(state, multiCalleeRef);
             state->entryRegc = firstArgReg + 1;
 
             assert(isClosure(state, state->regs[calleeReg]));
@@ -281,7 +281,7 @@ bool calleeClosureForArglist(State* state, ORef callee, ORef args) {
     } else { // TODO: DRY with "inapplicable" directly above:
         state->regs[calleeReg] = getErrorHandler(state);
         // TODO: `UncallableError` as closure is no longer the only callable type:
-        state->regs[firstArgReg] = createTypeError(state, state->types.closure, callee).oref();
+        state->regs[firstArgReg] = createTypeError(state, state->types.closure, callee);
         state->entryRegc = firstArgReg + 1;
 
         assert(isClosure(state, state->regs[calleeReg]));

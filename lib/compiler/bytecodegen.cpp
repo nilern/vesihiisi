@@ -210,13 +210,13 @@ HRef<Method> buildMethod(
     }
     if (fn->domain.count == 0) {
         for (size_t i = 0; i < arity; ++i) {
-            maybeMethod->domain()[i] = state->types.any.oref();
+            maybeMethod->domain()[i] = state->types.any;
         }
     } else {
         for (size_t i = 0; i < arity; ++i) {
             IRName const typeName = fn->domain.vals[i];
             if (!irNameIsValid(typeName)) {
-                maybeMethod->domain()[i] = state->types.any.oref();
+                maybeMethod->domain()[i] = state->types.any;
             } // else leave zeroed for specialization to fill in
         }
     }
@@ -430,7 +430,7 @@ void emitStmt(
         Define const* const define = &stmt->define;
 
         pushReg(compiler, builder, define->val);
-        emitConstArg(compiler, builder, define->name.oref());
+        emitConstArg(compiler, builder, define->name);
         pushOp(*state, compiler, builder, OP_DEFINE, stmt->maybeLoc);
     }; break;
 
@@ -438,14 +438,14 @@ void emitStmt(
         GlobalSet const* const globalSet = &stmt->globalSet;
 
         pushReg(compiler, builder, globalSet->val);
-        emitConstArg(compiler, builder, globalSet->name.oref());
+        emitConstArg(compiler, builder, globalSet->name);
         pushOp(*state, compiler, builder, OP_GLOBAL_SET, stmt->maybeLoc);
     }; break;
 
     case IRStmt::GLOBAL: {
         IRGlobal const* const global = &stmt->global;
 
-        emitConstArg(compiler, builder, global->name.oref());
+        emitConstArg(compiler, builder, global->name);
         pushReg(compiler, builder, global->tmpName);
         pushOp(*state, compiler, builder, OP_GLOBAL, stmt->maybeLoc);
     }; break;
@@ -462,10 +462,10 @@ void emitStmt(
         HRef<Method> const method = emitMethod(state, compiler, toplevelFn, builder, fn);
 
         if (fn->domain.count == 0) {
-            emitConstDef(*state, compiler, builder, methodDef->name, method.oref(), stmt->maybeLoc);
+            emitConstDef(*state, compiler, builder, methodDef->name, method, stmt->maybeLoc);
         } else {
             emitRegBits(compiler, builder, fn->domain.vals, fn->domain.count, true);
-            emitConstArg(compiler, builder, method.oref());
+            emitConstArg(compiler, builder, method);
             pushReg(compiler, builder, methodDef->name);
             pushOp(*state, compiler, builder, OP_SPECIALIZE, stmt->maybeLoc);
         }

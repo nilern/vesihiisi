@@ -19,7 +19,7 @@ namespace {
 
 ORef getErrorHandler(State const* state) {
     ORef const v = state->errorHandler.ptr()->val;
-    if (eq(v, state->singletons.unbound.oref())) {
+    if (eq(v, state->singletons.unbound)) {
         exit(EXIT_FAILURE); // FIXME
     }
 
@@ -122,7 +122,7 @@ PrimopRes primopApplyArray(State* state) {
         args = argsRef.ptr()->flexData(); // Post-GC reload
         memcpy((void*)varargsRef.ptr()->flexData(), args + minArity, varargCount * sizeof(ORef));
 
-        state->regs[firstArgReg + minArity] = varargsRef.oref();
+        state->regs[firstArgReg + minArity] = varargsRef;
 
         argc = arity;
     }
@@ -167,7 +167,7 @@ PrimopRes primopApplyList(State* state) {
                 assert(isa(state, state->types.type, methodPtr->domain()[argc]));
                 HRef<Type> const type = HRef<Type>::fromUnchecked(methodPtr->domain()[argc]);
                 if (!isa(state, type, arg)) {
-                    ORef const err = createTypeError(state, type, arg).oref();
+                    ORef const err = createTypeError(state, type, arg);
                     return primopError(state, err);
                 }
 
@@ -176,7 +176,7 @@ PrimopRes primopApplyList(State* state) {
                 args = argsPair->cdr;
             } else if (isEmptyList(state, args)) {
                 ORef const err = // Insufficient args
-                    createArityError(state, closure, Fixnum((intptr_t)argc)).oref();
+                    createArityError(state, closure, Fixnum((intptr_t)argc));
                 return primopError(state, err);
             } else {
                 assert(false); // TODO: Proper improper args error
@@ -197,7 +197,7 @@ PrimopRes primopApplyList(State* state) {
                 }
 
                 ORef const err = // Excessive args
-                    createArityError(state, closure, Fixnum((intptr_t)argc)).oref();
+                    createArityError(state, closure, Fixnum((intptr_t)argc));
                 return primopError(state, err);
             }
         } else if (!isHeaped(methodPtr->code)) { // Primop varargs:
@@ -211,7 +211,7 @@ PrimopRes primopApplyList(State* state) {
 
                     // OPTIMIZE: Skip type check if no typed params (= not a specialization):
                     if (!isa(state, type, arg)) {
-                        ORef const err = createTypeError(state, type, arg).oref();
+                        ORef const err = createTypeError(state, type, arg);
                         return primopError(state, err);
                     }
 
@@ -243,7 +243,7 @@ PrimopRes primopApplyList(State* state) {
 
                     // OPTIMIZE: Skip type check if no typed params (= not a specialization):
                     if (!isa(state, type, arg)) {
-                        ORef const err = createTypeError(state, type, arg).oref();
+                        ORef const err = createTypeError(state, type, arg);
                         return primopError(state, err);
                     }
 
@@ -285,7 +285,7 @@ PrimopRes primopApplyList(State* state) {
                 }
             }();
 
-            state->regs[firstArgReg + minArity] = varargsRef.oref();
+            state->regs[firstArgReg + minArity] = varargsRef;
 
             argc = minArity + varargCount;
         }
@@ -363,7 +363,7 @@ PrimopRes primopApplyList(State* state) {
                     }
                 }();
 
-                state->regs[firstArgReg + minArity] = varargsRef.oref();
+                state->regs[firstArgReg + minArity] = varargsRef;
 
                 argc = minArity + varargCount;
             }
@@ -401,7 +401,7 @@ PrimopRes primopIdentical(State* state) {
     ORef const x = state->regs[firstArgReg];
     ORef const y = state->regs[firstArgReg + 1];
 
-    state->regs[retReg] = Bool(eq(x, y)).oref();
+    state->regs[retReg] = Bool(eq(x, y));
 
     return PrimopRes::CONTINUE;
 }
@@ -463,7 +463,7 @@ PrimopRes primopMake(State* state) {
             exit(EXIT_FAILURE); // TODO:
         }
 
-        state->regs[retReg] = HRef<Object>(ptr).oref();
+        state->regs[retReg] = HRef<Object>(ptr);
 
         return PrimopRes::CONTINUE;
     } else {
@@ -537,7 +537,7 @@ PrimopRes primopMakeFlex(State* state) {
             ptr = state->heap.tospace.allocFlexOrDie(type, count);
         }
 
-        state->regs[retReg] = HRef<Object>(ptr).oref();
+        state->regs[retReg] = HRef<Object>(ptr);
 
         return PrimopRes::CONTINUE;
     } else {
@@ -556,7 +556,7 @@ PrimopRes primopFlexCount(State* state) {
         assert(false); // TODO: Proper nonflex error
     }
 
-    state->regs[retReg] = ((FlexHeader const*)uncheckedORefToPtr(v) - 1)->count.oref();
+    state->regs[retReg] = ((FlexHeader const*)uncheckedORefToPtr(v) - 1)->count;
 
     return PrimopRes::CONTINUE;
 }
@@ -632,7 +632,7 @@ PrimopRes primopFlexCopy(State* state) {
     if (!destType->isFlex.val()) { exit(EXIT_FAILURE); } // TODO: Proper nonflex error
     Bool const isBytesRef = destType->isBytes;
     if (!srcType->isFlex.val()) { exit(EXIT_FAILURE); } // TODO: Proper nonflex error
-    if (!eq(srcType->isBytes.oref(), isBytesRef.oref())) {
+    if (!eq(srcType->isBytes, isBytesRef)) {
         exit(EXIT_FAILURE); // TODO: Proper bytes-vs-slots error
     }
 
@@ -718,10 +718,10 @@ PrimopRes primopFxAdd(State* state) {
         HRef<Closure> const f = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
         Fixnum const xRef = Fixnum::fromUnchecked(state->regs[firstArgReg]);
         Fixnum const yRef = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]);
-        return primopError(state, createOverflowError(state, f, xRef, yRef).oref());
+        return primopError(state, createOverflowError(state, f, xRef, yRef));
     }
 
-    state->regs[retReg] = Fixnum{res}.oref();
+    state->regs[retReg] = Fixnum{res};
 
     return PrimopRes::CONTINUE;
 }
@@ -742,10 +742,10 @@ PrimopRes primopFxSub(State* state) {
         HRef<Closure> const f = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
         Fixnum const xRef = Fixnum::fromUnchecked(state->regs[firstArgReg]);
         Fixnum const yRef = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]);
-        return primopError(state, createOverflowError(state, f, xRef, yRef).oref());
+        return primopError(state, createOverflowError(state, f, xRef, yRef));
     }
 
-    state->regs[retReg] = Fixnum{res}.oref();
+    state->regs[retReg] = Fixnum{res};
 
     return PrimopRes::CONTINUE;
 }
@@ -770,12 +770,12 @@ PrimopRes primopFxMul(State* state) {
         HRef<Closure> const f = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
         Fixnum const xRef = Fixnum::fromUnchecked(state->regs[firstArgReg]);
         Fixnum const yRef = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]);
-        return primopError(state, createOverflowError(state, f, xRef, yRef).oref());
+        return primopError(state, createOverflowError(state, f, xRef, yRef));
     }
 #endif
 // else should not compile due to missing `res`
 
-    state->regs[retReg] = Fixnum{res}.oref();
+    state->regs[retReg] = Fixnum{res};
 
     return PrimopRes::CONTINUE;
 }
@@ -791,7 +791,7 @@ PrimopRes primopFxQuot(State* state) {
         HRef<Closure> const f = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
         Fixnum const xRef = Fixnum::fromUnchecked(state->regs[firstArgReg]);
         Fixnum const yRef = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]);
-        return primopError(state, createDivByZeroError(state, f, xRef, yRef).oref());
+        return primopError(state, createDivByZeroError(state, f, xRef, yRef));
     }
 
     if (x == Fixnum::min && y == -1) {
@@ -801,10 +801,10 @@ PrimopRes primopFxQuot(State* state) {
         HRef<Closure> const f = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
         Fixnum const xRef = Fixnum::fromUnchecked(state->regs[firstArgReg]);
         Fixnum const yRef = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]);
-        return primopError(state, createOverflowError(state, f, xRef, yRef).oref());
+        return primopError(state, createOverflowError(state, f, xRef, yRef));
     }
 
-    state->regs[retReg] = Fixnum{x / y}.oref();
+    state->regs[retReg] = Fixnum{x / y};
 
     return PrimopRes::CONTINUE;
 }
@@ -816,7 +816,7 @@ PrimopRes primopFxLt(State* state) {
     intptr_t const x = Fixnum::fromUnchecked(state->regs[firstArgReg]).val();
     intptr_t const y = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
-    state->regs[retReg] = Bool(x < y).oref();
+    state->regs[retReg] = Bool(x < y);
 
     return PrimopRes::CONTINUE;
 }
@@ -827,7 +827,7 @@ PrimopRes primopFixnumToFlonum(State* state) {
 
     intptr_t const n = Fixnum::fromUnchecked(state->regs[firstArgReg]).val();
 
-    state->regs[retReg] = Flonum((double)n).oref();
+    state->regs[retReg] = Flonum((double)n);
 
     return PrimopRes::CONTINUE;
 }
@@ -839,7 +839,7 @@ PrimopRes primopFlAdd(State* state) {
     double const x = Flonum::fromUnchecked(state->regs[firstArgReg]).val();
     double const y = Flonum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
-    state->regs[retReg] = Flonum(x + y).oref();
+    state->regs[retReg] = Flonum(x + y);
 
     return PrimopRes::CONTINUE;
 }
@@ -851,7 +851,7 @@ PrimopRes primopFlSub(State* state) {
     double const x = Flonum::fromUnchecked(state->regs[firstArgReg]).val();
     double const y = Flonum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
-    state->regs[retReg] = Flonum(x - y).oref();
+    state->regs[retReg] = Flonum(x - y);
 
     return PrimopRes::CONTINUE;
 }
@@ -863,7 +863,7 @@ PrimopRes primopFlMul(State* state) {
     double const x = Flonum::fromUnchecked(state->regs[firstArgReg]).val();
     double const y = Flonum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
-    state->regs[retReg] = Flonum(x * y).oref();
+    state->regs[retReg] = Flonum(x * y);
 
     return PrimopRes::CONTINUE;
 }
@@ -875,7 +875,7 @@ PrimopRes primopFlDiv(State* state) {
     double const x = Flonum::fromUnchecked(state->regs[firstArgReg]).val();
     double const y = Flonum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
-    state->regs[retReg] = Flonum(x / y).oref();
+    state->regs[retReg] = Flonum(x / y);
 
     return PrimopRes::CONTINUE;
 }

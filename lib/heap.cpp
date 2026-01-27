@@ -153,7 +153,7 @@ ORef Heap::mark(ORef oref) {
 
 [[nodiscard]]
 Header Heap::markHeader(Header header) {
-    HRef<Type> const type = HRef<Type>::fromUnchecked(mark(header.type().oref()));
+    HRef<Type> const type = HRef<Type>::fromUnchecked(mark(header.type()));
     return Header{type.ptr()};
 }
 

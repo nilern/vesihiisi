@@ -128,14 +128,14 @@ void print(State const* state, FILE* dest, ORef v) {
             Type const* const type = HRef<Type>::fromUnchecked(v).ptr();
 
             fprintf(dest, "#<type ");
-            print(state, dest, type->name.oref());
+            print(state, dest, type->name);
             putc('>', dest);
         } else if (isa(state, state->types.fatalError, v)) {
             FatalError const* const err = HRef<FatalError>::fromUnchecked(v).ptr();
 
             fputs("#<fatal-error ", dest);
 
-            print(state, dest, err->name.oref());
+            print(state, dest, err->name);
 
             Slice<ORef const> const irritants = err->irritants();
             size_t const count = irritants.count;
@@ -149,13 +149,13 @@ void print(State const* state, FILE* dest, ORef v) {
             UnboundError const* const err = HRef<UnboundError>::fromUnchecked(v).ptr();
 
             fputs("#<unbound-error ", dest);
-            print(state, dest, err->name.oref());
+            print(state, dest, err->name);
             putc('>', dest);
         } else if (isTypeError(state, v)) {
             TypeError const* const err = HRef<TypeError>::fromUnchecked(v).ptr();
 
             fputs("#<type-error ", dest);
-            print(state, dest, err->type.oref());
+            print(state, dest, err->type);
             putc(' ', dest);
             print(state, dest, err->val);
             putc('>', dest);
@@ -163,15 +163,15 @@ void print(State const* state, FILE* dest, ORef v) {
             ArityError const* const err = HRef<ArityError>::fromUnchecked(v).ptr();
 
             fputs("#<arity-error ", dest);
-            print(state, dest, err->callee.oref());
+            print(state, dest, err->callee);
             putc(' ', dest);
-            print(state, dest, err->callArgc.oref());
+            print(state, dest, err->callArgc);
             putc('>', dest);
         } else if (isa(state, state->types.inapplicableError, v)) {
             InapplicableError const* const err = HRef<InapplicableError>::fromUnchecked(v).ptr();
 
             fputs("#<inapplicable-error ", dest);
-            print(state, dest, err->callee.oref());
+            print(state, dest, err->callee);
             putc('>', dest);
         } else {
             Type const* const type = typeOf(state, v).ptr();

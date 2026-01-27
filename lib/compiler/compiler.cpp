@@ -22,7 +22,7 @@ IRName renameSymbolImpl(Compiler* compiler, ORef maybeSym) {
 }
 
 IRName renameSymbol(Compiler* compiler, HRef<Symbol> sym) {
-    return renameSymbolImpl(compiler, sym.oref());
+    return renameSymbolImpl(compiler, sym);
 }
 
 IRName freshName(Compiler* compiler) {
@@ -80,16 +80,16 @@ void markIRStmt(State* state, IRStmt* stmt) {
     switch (stmt->type) {
     case IRStmt::GLOBAL_DEF: {
         stmt->define.name =
-            HRef<Symbol>::fromUnchecked(state->heap.mark(stmt->define.name.oref()));
+            HRef<Symbol>::fromUnchecked(state->heap.mark(stmt->define.name));
     }; break;
 
     case IRStmt::GLOBAL_SET: {
         stmt->globalSet.name =
-            HRef<Symbol>::fromUnchecked(state->heap.mark(stmt->globalSet.name.oref()));
+            HRef<Symbol>::fromUnchecked(state->heap.mark(stmt->globalSet.name));
     }; break;
 
     case IRStmt::GLOBAL: {
-        stmt->global.name = HRef<Symbol>::fromUnchecked(state->heap.mark(stmt->global.name.oref()));
+        stmt->global.name = HRef<Symbol>::fromUnchecked(state->heap.mark(stmt->global.name));
     }; break;
 
     case IRStmt::CONST_DEF: {
@@ -380,7 +380,7 @@ void printStmt(
     case IRStmt::GLOBAL_DEF: {
         Define const define = stmt->define;
         fprintf(dest, "(def ");
-        print(state, dest, define.name.oref());
+        print(state, dest, define.name);
         fputc(' ', dest);
         printName(state, dest, compiler, define.val);
         fputc(')', dest);
@@ -389,7 +389,7 @@ void printStmt(
     case IRStmt::GLOBAL_SET: {
         GlobalSet const globalSet = stmt->globalSet;
         fprintf(dest, "(set! ");
-        print(state, dest, globalSet.name.oref());
+        print(state, dest, globalSet.name);
         fputc(' ', dest);
         printName(state, dest, compiler, globalSet.val);
         fputc(')', dest);
@@ -400,7 +400,7 @@ void printStmt(
         fprintf(dest, "(let ");
         printName(state, dest, compiler, global.tmpName);
         fprintf(dest, " (global ");
-        print(state, dest, global.name.oref());
+        print(state, dest, global.name);
         fprintf(dest, "))");
     }; break;
 

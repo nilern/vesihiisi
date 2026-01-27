@@ -95,7 +95,7 @@ BucketIdx toCpsFrameFindIdx(ToCpsFrame const* frame, HRef<Symbol> sym) {
     for (size_t collisions = 0, i = h & maxIdx;; ++collisions, i = (i + collisions) & maxIdx) {
         ORef const k = frame->keys[i];
 
-        if (eq(k, sym.oref())) {
+        if (eq(k, sym)) {
             return BucketIdx{.idx = i, .occupied = true};
         } else if (eq(k, Default)) {
             return BucketIdx{.idx = i, .occupied = false};
@@ -127,7 +127,7 @@ void toCpsFrameSet(ToCpsFrame* frame, HRef<Symbol> sym, ToCpsFrameDef def) {
             idx = bucketIdx.idx;
         }
 
-        frame->keys[idx] = sym.oref();
+        frame->keys[idx] = sym;
         frame->vals[idx] = def;
         frame->count = newCount;
     }
@@ -228,7 +228,7 @@ IRName toCpsContDestName(Compiler* compiler, ToCpsCont k) {
 ORef toCpsContDestSymbol(ToCpsCont k) {
     switch (k.type) {
     case ToCpsCont::BIND: // fallthrough
-    case ToCpsCont::DEF: case ToCpsCont::SET: return k.def.sym.oref();
+    case ToCpsCont::DEF: case ToCpsCont::SET: return k.def.sym;
 
     case ToCpsCont::EFF: // fallthrough
     case ToCpsCont::VAL: // fallthrough
@@ -327,7 +327,7 @@ bool paramToCPS(
         Pair const* const paramPair = HRef<Pair>::fromUnchecked(param).ptr();
 
         ORef const op = paramPair->car;
-        if (!eq(op, pass.state->singletons.ofType.oref())) { return false; }
+        if (!eq(op, pass.state->singletons.ofType)) { return false; }
 
         ORef anyArgs = paramPair->cdr;
         if (!isPair(pass.state, anyArgs)) { return false; }

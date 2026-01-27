@@ -101,18 +101,18 @@ void markRoots(State* state) {
         state->regs[i] = state->heap.mark(state->regs[i]);
     }
 
-    state->ns = HRef<Namespace>::fromUnchecked(state->heap.mark(state->ns.oref()));
+    state->ns = HRef<Namespace>::fromUnchecked(state->heap.mark(state->ns));
 
     for (size_t i = 0; i < BOOTSTRAP_TYPE_COUNT; ++i) {
         state->typesArray[i] =
-            HRef<Type>::fromUnchecked(state->heap.mark(state->typesArray[i].oref()));
+            HRef<Type>::fromUnchecked(state->heap.mark(state->typesArray[i]));
     }
 
     for (size_t i = 0; i < BOOTSTRAP_SINGLETON_COUNT; ++i) {
         state->singletonsArray[i] = state->heap.mark(state->singletonsArray[i]);
     }
 
-    state->errorHandler = HRef<Var>::fromUnchecked(state->heap.mark(state->errorHandler.oref()));
+    state->errorHandler = HRef<Var>::fromUnchecked(state->heap.mark(state->errorHandler));
 
     for (ORef* const rootHandle : state->shadowstack) {
         *rootHandle = state->heap.mark(*rootHandle);
@@ -404,7 +404,7 @@ void installPrimop(
         vcreatePrimopMethod(state, name, nativeCode, hasVarArg, arity, domain);
     va_end(domain);
     HRef<Closure> const closure = allocClosure(state, method, Fixnum{0l});
-    installPrimordial(state, name, closure.oref());
+    installPrimordial(state, name, closure);
 }
 
 Var* tryCreateUnboundVar(
@@ -604,7 +604,7 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
             Str const nameStr = Str{reinterpret_cast<uint8_t const*>(name), nameLen}; // HACK
             // `ORef const type = dest->types[i];` would not pay off since `nameType` may GC:
             nameType(dest, dest->typesArray[i], nameStr);
-            installPrimordial(dest, nameStr, dest->typesArray[i].oref());
+            installPrimordial(dest, nameStr, dest->typesArray[i]);
         }
     }
 
@@ -613,9 +613,9 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
                            false, Fixnum{1l}, dest->types.any);
     HRef<Closure> abortClosure = allocClosure(dest, abortMethod, Fixnum{0l});
     auto const abortClosureG = dest->pushRoot(&abortClosure);
-    dest->errorHandler.ptr()->val = abortClosure.oref();
+    dest->errorHandler.ptr()->val = abortClosure;
 
-    installPrimordial(dest, strLit("abort"), abortClosure.oref());
+    installPrimordial(dest, strLit("abort"), abortClosure);
     installPrimordial(dest, strLit("end"), dest->singletons.end);
     installPrimordial(dest, strLit("standard-input"), createInputFile(dest, UTF8InputFile{stdin}));
     installPrimordial(dest, strLit("*vshs-home*"),
@@ -738,9 +738,9 @@ HRef<Type> typeOf(State const* state, ORef v) {
 }
 
 bool isa(State const* state, HRef<Type> type, ORef v) {
-    if (eq(type.oref(), state->types.any.oref())) { return true; }
+    if (eq(type, state->types.any)) { return true; }
 
-    return eq(typeOf(state, v).oref(), type.oref());
+    return eq(typeOf(state, v), type);
 }
 
 [[maybe_unused]]
@@ -960,8 +960,8 @@ Method* tryAllocBytecodeMethod(
 
     *ptr = Method{
         .nativeCode = (MethodCode)callBytecode,
-        .code = code.oref(),
-        .consts = consts.oref(),
+        .code = code,
+        .consts = consts,
         .hasVarArg = hasVarArg,
         .hash = hash,
         .maybeName = maybeName,
@@ -980,8 +980,8 @@ Method* allocBytecodeMethodOrDie(
 
     *ptr = Method{
         .nativeCode = (MethodCode)callBytecode,
-        .code = code.oref(),
-        .consts = consts.oref(),
+        .code = code,
+        .consts = consts,
         .hasVarArg = hasVarArg,
         .hash = hash,
         .maybeName = maybeName,
@@ -1009,8 +1009,8 @@ HRef<Method> allocBytecodeMethod(
 
     *ptr = Method{
         .nativeCode = (MethodCode)callBytecode,
-        .code = code.oref(),
-        .consts = consts.oref(),
+        .code = code,
+        .consts = consts,
         .hasVarArg = hasVarArg,
         .hash = hash,
         .maybeName = maybeName,
@@ -1063,7 +1063,7 @@ HRef<Method> vcreatePrimopMethod(
     auto const methodG = state->pushRoot(&method);
     HRef<Symbol> const nameSym = intern(state, name);
     ptr = method.ptr(); // Post-GC reload
-    ptr->maybeName = nameSym.oref();
+    ptr->maybeName = nameSym;
 
     free(domain);
     return method;
@@ -1089,7 +1089,7 @@ HRef<Closure> allocClosure(State* state, HRef<Method> method, Fixnum cloverCount
         ptr = (Closure*)state->heap.tospace.allocFlexOrDie(state->types.closure.ptr(), cloverCount);
     }
 
-    ptr->method = method.oref();
+    ptr->method = method;
 
     return HRef(ptr);
 }
@@ -1106,7 +1106,7 @@ HRef<Continuation> allocContinuation(
             state->types.continuation.ptr(), cloverCount);
     }
 
-    ptr->method = method.oref();
+    ptr->method = method;
     ptr->pc = pc;
 
     return HRef(ptr);
@@ -1212,9 +1212,9 @@ HRef<FatalError> createOverflowError(
 
     *ptr = FatalError{.name = name};
     ORef* const irritantsMut = const_cast<ORef*>(ptr->flexData());
-    irritantsMut[0] = callee.oref();
-    irritantsMut[1] = x.oref();
-    irritantsMut[2] = y.oref();
+    irritantsMut[0] = callee;
+    irritantsMut[1] = x;
+    irritantsMut[2] = y;
 
     return res;
 }
@@ -1240,9 +1240,9 @@ HRef<FatalError> createDivByZeroError(
 
     *ptr = FatalError{.name = name};
     ORef* const irritantsMut = const_cast<ORef*>(ptr->flexData());
-    irritantsMut[0] = callee.oref();
-    irritantsMut[1] = x.oref();
-    irritantsMut[2] = y.oref();
+    irritantsMut[0] = callee;
+    irritantsMut[1] = x;
+    irritantsMut[2] = y;
 
     return res;
 }

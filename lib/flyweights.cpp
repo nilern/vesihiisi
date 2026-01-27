@@ -19,7 +19,7 @@ void SymbolTable::prune() {
         ORef* const v = &entries[i];
         if (isHeaped(*v)) {
             Object* const fwdPtr = uncheckedORefToPtr(*v)->tryForwarded();
-            *v = fwdPtr ? HRef(fwdPtr).oref() : Tombstone;
+            *v = fwdPtr ? HRef(fwdPtr) : Tombstone;
         }
     }
 }
@@ -69,7 +69,7 @@ SymbolTable::IndexOfRes SymbolTable::indexOf(Fixnum hash, Str name) const {
         if (isHeaped(*entry)) {
             HRef<Symbol> const symbol = HRef<Symbol>::fromUnchecked(*entry);
             Symbol const* const symbolPtr = symbol.ptr();
-            if (eq(symbolPtr->hash.oref(), hash.oref())
+            if (eq(symbolPtr->hash, hash)
                 && strEq(symbol.ptr()->name(), name)
             ) {
                 return IndexOfRes{i, true};
@@ -91,7 +91,7 @@ HRef<Symbol> SymbolTable::createAtUnchecked(State* state, size_t i, Fixnum hash,
     }
 
     HRef<Symbol> const symbol = createUninternedSymbol(state, hash, name);
-    entries[i] = symbol.oref();
+    entries[i] = symbol;
     count = newCount;
     return symbol;
 }
@@ -108,7 +108,7 @@ HRef<Symbol> SymbolTable::createFromHeapedAtUnchecked(
     }
 
     HRef<Symbol> const symbol = createUninternedSymbolFromHeaped(state, hash, name);
-    entries[i] = symbol.oref();
+    entries[i] = symbol;
     count = newCount;
     return symbol;
 }
@@ -182,7 +182,7 @@ void Specializations::prune() {
         ORef* const v = &entries[i];
         if (isHeaped(*v)) {
             Object* const fwdPtr = HRef<Object>::fromUnchecked(*v).ptr()->tryForwarded();
-            *v = fwdPtr ? HRef<Object>(fwdPtr).oref() : Tombstone;
+            *v = fwdPtr ? HRef<Object>(fwdPtr) : Tombstone;
         }
     }
 }
@@ -279,7 +279,7 @@ HRef<Method> Specializations::createAtUnchecked(
     }
 
     HRef<Method> const specialization = createSpecialization(state, generic, types, fxHash);
-    entries[i] = specialization.oref();
+    entries[i] = specialization;
     count = newCount;
     return specialization;
 }

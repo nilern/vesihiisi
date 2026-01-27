@@ -215,9 +215,6 @@ template<typename T>
 struct HRef : public ORef {
     constexpr explicit HRef(T* ptr) : HRef{heapedTag | (uint64_t)ptr} {}
 
-    // TODO: Remove now that `HRef : public ORef`
-    ORef oref() const { return *this; }
-
     static HRef<T> fromUnchecked(ORef v) { return std::bit_cast<HRef<T>>(v); }
 
     T* ptr() const { return std::bit_cast<T*>(bits & payloadMask); }

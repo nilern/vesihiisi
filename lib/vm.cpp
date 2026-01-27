@@ -28,8 +28,8 @@ VMRes run(State* state, HRef<Closure> selfRef) {
         state->code = HRef<ByteArray>::fromUnchecked(methodPtr->code).ptr()->flexData();
         state->pc = 0;
         state->consts = HRef<ArrayMut>::fromUnchecked(methodPtr->consts).ptr()->flexData();
-        state->regs[calleeReg] = selfRef.oref();
-        state->regs[retContReg] = state->singletons.exit.oref(); // Return continuation
+        state->regs[calleeReg] = selfRef;
+        state->regs[retContReg] = state->singletons.exit; // Return continuation
         state->entryRegc = 2;
     }
 
@@ -86,7 +86,7 @@ VMRes run(State* state, HRef<Closure> selfRef) {
                 // have to ensure that it does. But that continuation is definitely not a
                 // correct current continuation.
                 state->regs[calleeReg] = getErrorHandler(state);
-                state->regs[firstArgReg] = createUnboundError(state, name).oref();
+                state->regs[firstArgReg] = createUnboundError(state, name);
                 state->entryRegc = firstArgReg + 1;
                 goto apply;
             }
@@ -115,14 +115,14 @@ VMRes run(State* state, HRef<Closure> selfRef) {
                 // have to ensure that it does. But that continuation is definitely not a
                 // correct current continuation.
                 state->regs[calleeReg] = getErrorHandler(state);
-                state->regs[firstArgReg] = createUnboundError(state, name).oref();
+                state->regs[firstArgReg] = createUnboundError(state, name);
                 state->entryRegc = firstArgReg + 1;
                 goto apply;
             }
             HRef<Var> var = findRes.var;
 
             ORef const v = var.ptr()->val;
-            if (eq(v, state->singletons.unbound.oref())) {
+            if (eq(v, state->singletons.unbound)) {
                 assert(false); // FIXME: use of unbound var
             }
             state->regs[destReg] = v;
@@ -168,13 +168,13 @@ VMRes run(State* state, HRef<Closure> selfRef) {
             HRef<Method> const generic = HRef<Method>::fromUnchecked(state->consts[constIdx]);
             HRef<Method> const method = specialize(state, generic, types);
 
-            state->regs[destReg] = method.oref();
+            state->regs[destReg] = method;
         }; continue;
 
         case OP_KNOT: {
             uint8_t const destReg = state->code[state->pc++];
 
-            state->regs[destReg] = allocKnot(state).oref();
+            state->regs[destReg] = allocKnot(state);
         }; continue;
 
         case OP_KNOT_INIT: {
@@ -213,8 +213,8 @@ VMRes run(State* state, HRef<Closure> selfRef) {
         }; continue;
 
         case OP_RET: {
-            assert(eq(typeOf(state, state->regs[retContReg]).oref(),
-                      state->types.continuation.oref()));
+            assert(eq(typeOf(state, state->regs[retContReg]),
+                      state->types.continuation));
             HRef<Continuation> const retRef =
                 HRef<Continuation>::fromUnchecked(state->regs[retContReg]);
             Continuation const* const ret = retRef.ptr();
@@ -261,7 +261,7 @@ VMRes run(State* state, HRef<Closure> selfRef) {
                 }
             }
 
-            state->regs[destReg] = closure.oref();
+            state->regs[destReg] = closure;
         }; continue;
 
         case OP_CLOVER: {
@@ -312,7 +312,7 @@ VMRes run(State* state, HRef<Closure> selfRef) {
                 }
             }
 
-            state->regs[retContReg] = cont.oref();
+            state->regs[retContReg] = cont;
 
             state->entryRegc = regCount;
             goto apply;
@@ -361,7 +361,7 @@ VMRes run(State* state, HRef<Closure> selfRef) {
                     memcpy((void*)varargsRef.ptr()->flexData(),
                            state->regs + firstArgReg + minArity, varargCount * sizeof(ORef));
 
-                    state->regs[firstArgReg + minArity] = varargsRef.oref();
+                    state->regs[firstArgReg + minArity] = varargsRef;
                 }
 
                 trampoline = false;
@@ -369,8 +369,8 @@ VMRes run(State* state, HRef<Closure> selfRef) {
                 applyPrimop:
                 switch (methodPtr->nativeCode(state)) {
                 case PrimopRes::CONTINUE: { // TODO: DRY wrt. OP_RET:
-                    assert(eq(typeOf(state, state->regs[retContReg]).oref(),
-                              state->types.continuation.oref()));
+                    assert(eq(typeOf(state, state->regs[retContReg]),
+                              state->types.continuation));
                     HRef<Continuation> const retRef =
                         HRef<Continuation>::fromUnchecked(state->regs[retContReg]);
                     Continuation const* const ret = retRef.ptr();

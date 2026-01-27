@@ -185,7 +185,3 @@ void print(State const* state, FILE* dest, ORef v) {
 }
 
 } // namespace
-
-extern "C" void print(Vshs_State const* state, FILE* dest, ORef v) {
-    print((State const*)state, dest, v);
-}

@@ -1725,19 +1725,3 @@ HRef<FatalError> createDivByZeroError(
 }
 
 } // namespace
-
-extern "C" Vshs_State* tryCreateState(
-    size_t heapSize, char const* vshsHome, int argc, char const* argv[]
-) {
-    return (Vshs_State*)State::tryCreate(heapSize, vshsHome, argc, argv);
-}
-
-extern "C" void freeState(Vshs_State* state) { freeState((State*)state); }
-
-extern "C" void pushStackRoot(Vshs_State* state, ORef* stackLoc) {
-    pushStackRoot((State*)state, stackLoc);
-}
-
-extern "C" void popStackRoots(Vshs_State* state, size_t count) {
-    popStackRoots((State*)state, count);
-}

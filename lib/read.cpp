@@ -29,27 +29,6 @@ void revealMaybeChar(FILE* dest, int32_t mc) {
 }
 } // namespace
 
-extern "C" void printParseError(FILE* dest, Str src, ParseError const* err) {
-    if (err->type == INVALID_UTF8) {
-        fputs("invalid UTF-8", dest);
-    } else {
-        fputs("unexpected ", dest);
-        revealMaybeChar(dest, err->actualMaybeChar);
-    }
-
-    fputs(" at ", dest);
-    HRef<Loc> const loc = HRef<Loc>::fromUnchecked(err->loc);
-    printFilename(dest, loc.ptr()->filename.ptr()->str());
-    putc(':', dest);
-    byteIdxToCoord(src, (uint64_t)loc.ptr()->byteIdx.val()).print(dest);
-
-    switch (err->type) {
-    case EXPECTED_CHAR: fprintf(dest, ", expected '%c'", err->expectedChar); break;
-    case EXPECTED_CHAR_CLASS: fprintf(dest, ", expected %s", err->expectedCharClass); break;
-    case INVALID_UTF8: break;
-    }
-}
-
 using ReadExprRes = Res<ParseError, Vshs_LocatedORef>;
 
 using MaybeCharPred = bool (*)(int mc);
@@ -152,21 +131,6 @@ public:
         return ParseError{loc, UTF8PROC_ERROR_INVALIDUTF8, {}, INVALID_UTF8};
     }
 };
-
-extern "C" Parser* createParser(Vshs_State* state, Str src, Str filename) {
-    Parser* const parser = (Parser*)malloc(sizeof *parser);
-    if (!parser) { return nullptr; }
-    return new (parser) Parser{(State*)state, src, filename};
-}
-
-extern "C" void freeParser(Parser* parser) {
-    parser->~Parser();
-    return free(parser);
-}
-
-extern "C" void pushFilenameRoot(struct Vshs_State* state, Parser* parser) {
-    pushStackRoot((State*)state, &parser->filename);
-}
 
 namespace {
 
@@ -580,7 +544,3 @@ ParseRes read(State* state, Parser* parser) {
 }
 
 } // namespace
-
-extern "C" ParseRes Vshs_read(struct Vshs_State* state, Parser* parser) {
-    return read((State*)state, parser);
-}

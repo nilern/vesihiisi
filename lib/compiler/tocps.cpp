@@ -949,30 +949,3 @@ ToIRRes topLevelExprToIR(State const* state, Compiler* compiler, ORef expr, HRef
 }
 
 } // namespace
-
-extern "C" void freeSyntaxErrors(SyntaxErrors* errs) { free(errs->vals); }
-
-extern "C" void printSyntaxError(
-    Vshs_State const* extState, FILE* dest, Str src, SyntaxError const* err
-) {
-    auto const state = (State*)extState;
-
-    switch (err->type) {
-    case INVALID_DEFINIEND: fputs("Invalid definiend", dest); break;
-    case INVALID_PARAM: fputs("Invalid parameter", dest); break;
-    case INVALID_BINDING: fputs("Invalid binding (not a two-element list)", dest); break;
-    case INVALID_BINDER: fputs("Invalid binder (not a symbol)", dest); break;
-    case OVERLONG_BINDING: fputs("Invalid binding (too many expressions)", dest); break;
-    }
-
-    fputs(" at ", dest);
-    ORef const maybeLoc = err->maybeLoc;
-    if (isa(state, state->types.loc, maybeLoc)) {
-        auto const loc = HRef<Loc>::fromUnchecked(maybeLoc);
-        printFilename(dest, loc.ptr()->filename.ptr()->str());
-        putc(':', dest);
-        byteIdxToCoord(src, (uint64_t)loc.ptr()->byteIdx.val()).print(dest);
-    } else {
-        fputs("unknown location (from macro?)", dest);
-    }
-}

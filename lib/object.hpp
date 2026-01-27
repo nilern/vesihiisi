@@ -148,8 +148,10 @@ struct Object {
 struct FixedObject : public Object {};
 
 /// GC-heap object with a flex field
-template<typename CRTPSub, typename Item>
+template<typename CRTPSub, typename I>
 struct AnyIndexedObject : public Object {
+    using Item = I;
+
     struct FlexHeader const* flexHeader() const;
 
     Fixnum flexCount() const;
@@ -308,7 +310,7 @@ FlexHeader const* AnyIndexedObject<CRTPSub, Item>::flexHeader() const {
 template<typename CRTPSub, typename Item>
 Fixnum AnyIndexedObject<CRTPSub, Item>::flexCount() const { return flexHeader()->count; }
 
-struct String : IndexedObject<String, uint8_t> {
+struct String : public IndexedObject<String, uint8_t> {
     Str str() const { return Str{flexData(), static_cast<size_t>(flexCount().val())}; }
 };
 

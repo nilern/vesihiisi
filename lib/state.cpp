@@ -54,6 +54,11 @@ RootGuard::RootGuard(State* t_state, ORef* handle) : state{t_state} {
     state->shadowstack.push_back(handle);
 }
 
+RootGuard::RootGuard(RootGuard&& that) {
+    state = that.state;
+    that.state = nullptr;
+}
+
 RootGuard& RootGuard::operator=(RootGuard&& that) {
     if (state) { state->shadowstack.pop_back(); }
     state = that.state;
@@ -83,11 +88,6 @@ bool tryCreateNamespace(
 
     *dest = HRef(ptr);
     return true;
-}
-
-State::~State() {
-    freeSymbols(&symbols);
-    freeSpecializations(&specializations);
 }
 
 void freeState(State* state) { delete(state); }
@@ -120,8 +120,8 @@ void markRoots(State* state) {
 }
 
 void updateWeakRefs(State* state) {
-    pruneSymbols(&state->symbols);
-    pruneSpecializations(&state->specializations);
+    state->symbols.prune();
+    state->specializations.prune();
 }
 
 void initSpecialPurposeRegs(State* state) {
@@ -449,8 +449,8 @@ State::State(
     heap{std::move(heap)},
     types{types},
 
-    symbols{newSymbolTable()},
-    specializations{newSpecializations()},
+    symbols{},
+    specializations{},
 
     singletons{singletons},
     errorHandler{errorHandler},
@@ -766,18 +766,12 @@ void assertStateInTospace(State const* state) {
         assert(allocatedInSemispace(&state->heap.tospace, state->typesArray[i].ptr()));
     }
 
-    for (size_t i = 0; i < state->symbols.cap; ++i) {
-        ORef const v = state->symbols.entries[i];
-        if (isHeaped(v)) {
-            assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(v)));
-        }
+    for (HRef<Symbol> const& symbol : state->symbols) {
+        assert(allocatedInSemispace(&state->heap.tospace, symbol.ptr()));
     }
 
-    for (size_t i = 0; i < state->specializations.cap; ++i) {
-        ORef const v = state->specializations.entries[i];
-        if (isHeaped(v)) {
-            assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(v)));
-        }
+    for (HRef<Method> const& specialization : state->specializations) {
+        assert(allocatedInSemispace(&state->heap.tospace, specialization.ptr()));
     }
 
     for (size_t i = 0; i < BOOTSTRAP_SINGLETON_COUNT; ++i) {

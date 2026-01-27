@@ -10,12 +10,18 @@ namespace {
 // Symbols
 // =================================================================================================
 
-void freeSymbols(SymbolTable* symbols) { free(symbols->entries); }
+SymbolTable::SymbolTable() { entries = (ORef*)calloc(cap, sizeof *entries); }
 
-SymbolTable newSymbolTable() {
-    size_t const cap = 2;
-    ORef* const entries = (ORef*)calloc(cap, sizeof *entries);
-    return SymbolTable{.entries = entries, .count = 0, .cap = cap};
+SymbolTable::~SymbolTable() { free(entries); }
+
+void SymbolTable::prune() {
+    for (size_t i = 0; i < cap; ++i) {
+        ORef* const v = &entries[i];
+        if (isHeaped(*v)) {
+            Object* const fwdPtr = uncheckedORefToPtr(*v)->tryForwarded();
+            *v = fwdPtr ? HRef(fwdPtr).oref() : Tombstone;
+        }
+    }
 }
 
 HRef<Symbol> createUninternedSymbol(State* state, Fixnum hash, Str name) {
@@ -51,41 +57,71 @@ HRef<Symbol> createUninternedSymbolFromHeaped(State* state, Fixnum hash, HRef<St
 
 Fixnum hashStr(Str s) { return Fixnum((intptr_t)fnv1aHash(s)); }
 
-typedef struct IndexOfSymbolRes {
-    size_t index;
-    bool exists;
-} IndexOfSymbolRes;
-
-IndexOfSymbolRes indexOfSymbol(SymbolTable const* symbols, Fixnum hash, Str name) {
+SymbolTable::IndexOfRes SymbolTable::indexOf(Fixnum hash, Str name) const {
     uintptr_t const h = (uintptr_t)hash.val();
 
-    size_t const maxIndex = symbols->cap - 1;
+    size_t const maxIndex = cap - 1;
     for (size_t collisions = 0, i = h & maxIndex;; ++collisions, i = (i + collisions) & maxIndex) {
-        ORef* const entry = symbols->entries + i;
+        ORef* const entry = entries + i;
 
-        if (eq(*entry, Default)) { return IndexOfSymbolRes{i, false}; }
+        if (eq(*entry, Default)) { return IndexOfRes{i, false}; }
 
         if (isHeaped(*entry)) {
             HRef<Symbol> const symbol = HRef<Symbol>::fromUnchecked(*entry);
             Symbol const* const symbolPtr = symbol.ptr();
             if (eq(symbolPtr->hash.oref(), hash.oref())
                 && strEq(symbol.ptr()->name(), name)
-                ) {
-                return IndexOfSymbolRes{i, true};
+            ) {
+                return IndexOfRes{i, true};
             }
         }
     }
 }
 
+HRef<Symbol> SymbolTable::atIndexUnchecked(size_t i) const {
+    return HRef<Symbol>::fromUnchecked(entries[i]);;
+}
+
+HRef<Symbol> SymbolTable::createAtUnchecked(State* state, size_t i, Fixnum hash, Str name) {
+    size_t const newCount = count + 1;
+    size_t const capacity = cap;
+    if (capacity / 2 < newCount) {
+        rehash();
+        i = indexOf(hash, name).index;
+    }
+
+    HRef<Symbol> const symbol = createUninternedSymbol(state, hash, name);
+    entries[i] = symbol.oref();
+    count = newCount;
+    return symbol;
+}
+
+// TODO: DRY wrt. `SymbolTable::createAtUnchecked`
+HRef<Symbol> SymbolTable::createFromHeapedAtUnchecked(
+    State* state, size_t i, Fixnum hash, HRef<String> name
+) {
+    size_t const newCount = count + 1;
+    size_t const capacity = cap;
+    if (capacity / 2 < newCount) {
+        rehash();
+        i = indexOf(hash, name.ptr()->str()).index;
+    }
+
+    HRef<Symbol> const symbol = createUninternedSymbolFromHeaped(state, hash, name);
+    entries[i] = symbol.oref();
+    count = newCount;
+    return symbol;
+}
+
 // OPTMIZE: Do not grow if load factor is largely due to tombstones:
-void rehashSymbols(State* state) {
-    size_t const oldCap = state->symbols.cap;
+void SymbolTable::rehash() {
+    size_t const oldCap = cap;
     size_t const newCap = oldCap * 2;
     ORef* const newEntries = (ORef*)calloc(newCap, sizeof *newEntries);
     size_t newCount = 0;
 
     for (size_t i = 0; i < oldCap; ++i) {
-        ORef const v = state->symbols.entries[i];
+        ORef const v = entries[i];
         if (isHeaped(v)) {
             size_t const h = (uintptr_t)HRef<Symbol>::fromUnchecked(v).ptr()->hash.val();
 
@@ -103,31 +139,21 @@ void rehashSymbols(State* state) {
         }
     }
 
-    free(state->symbols.entries);
-    state->symbols.entries = newEntries;
-    state->symbols.count = newCount;
-    state->symbols.cap = newCap;
+    free(entries);
+    entries = newEntries;
+    count = newCount;
+    cap = newCap;
 }
 
 // `name` must not point into GC heap:
 HRef<Symbol> intern(State* state, Str name) {
     Fixnum const hash = hashStr(name);
 
-    IndexOfSymbolRes ires = indexOfSymbol(&state->symbols, hash, name);
+    SymbolTable::IndexOfRes ires = state->symbols.indexOf(hash, name);
     if (ires.exists) {
-        return HRef<Symbol>::fromUnchecked(state->symbols.entries[ires.index]);;
+        return state->symbols.atIndexUnchecked(ires.index);
     } else {
-        size_t const newCount = state->symbols.count + 1;
-        size_t const capacity = state->symbols.cap;
-        if (capacity / 2 < newCount) {
-            rehashSymbols(state);
-            ires = indexOfSymbol(&state->symbols, hash, name);
-        }
-
-        HRef<Symbol> const symbol = createUninternedSymbol(state, hash, name);
-        state->symbols.entries[ires.index] = symbol.oref();
-        state->symbols.count = newCount;
-        return symbol;
+        return state->symbols.createAtUnchecked(state, ires.index, hash, name);
     }
 }
 
@@ -136,46 +162,29 @@ HRef<Symbol> internHeaped(State* state, HRef<String> name) {
     Str const nameStr = name.ptr()->str();
     Fixnum const hash = hashStr(nameStr);
 
-    IndexOfSymbolRes ires = indexOfSymbol(&state->symbols, hash, nameStr);
+    SymbolTable::IndexOfRes ires = state->symbols.indexOf(hash, nameStr);
     if (ires.exists) {
-        return HRef<Symbol>::fromUnchecked(state->symbols.entries[ires.index]);;
+        return state->symbols.atIndexUnchecked(ires.index);
     } else {
-        size_t const newCount = state->symbols.count + 1;
-        size_t const capacity = state->symbols.cap;
-        if (capacity / 2 < newCount) {
-            rehashSymbols(state);
-            ires = indexOfSymbol(&state->symbols, hash, nameStr);
-        }
-
-        HRef<Symbol> const symbol = createUninternedSymbolFromHeaped(state, hash, name);
-        state->symbols.entries[ires.index] = symbol.oref();
-        state->symbols.count = newCount;
-        return symbol;
-    }
-}
-
-void pruneSymbols(SymbolTable* symbols) {
-    size_t const cap = symbols->cap;
-    for (size_t i = 0; i < cap; ++i) {
-        ORef* const v = &symbols->entries[i];
-        if (isHeaped(*v)) {
-            Object* const fwdPtr = uncheckedORefToPtr(*v)->tryForwarded();
-            *v = fwdPtr ? HRef(fwdPtr).oref() : Tombstone;
-        }
+        return state->symbols.createFromHeapedAtUnchecked(state, ires.index, hash, name);
     }
 }
 
 // Specializations
 // =================================================================================================
 
-Specializations newSpecializations() {
-    size_t const cap = 2;
-    ORef* const entries = (ORef*)calloc(cap, sizeof *entries);
-    return Specializations{.entries = entries, .count = 0, .cap = cap};
-}
+Specializations::Specializations() { entries = (ORef*)calloc(cap, sizeof *entries); }
 
-void freeSpecializations(Specializations* specializations) {
-    free(specializations->entries);
+Specializations::~Specializations() { free(entries); }
+
+void Specializations::prune() {
+    for (size_t i = 0; i < cap; ++i) {
+        ORef* const v = &entries[i];
+        if (isHeaped(*v)) {
+            Object* const fwdPtr = HRef<Object>::fromUnchecked(*v).ptr()->tryForwarded();
+            *v = fwdPtr ? HRef<Object>(fwdPtr).oref() : Tombstone;
+        }
+    }
 }
 
 // Is `method` the specialization of `generic` with `types`?
@@ -238,40 +247,52 @@ HRef<Method> createSpecialization(
     return specializationRef;
 }
 
-// TODO: DRY wrt. `IndexOfSymbolRes`:
-typedef struct IndexOfSpecializationRes {
-    size_t index;
-    bool exists;
-} IndexOfSpecializationRes;
-
-IndexOfSpecializationRes indexOfSpecialization(
-    Specializations const* specializations, uintptr_t h, HRef<Method> generic, HRef<ArrayMut> types
-) {
-    size_t const maxIndex = specializations->cap - 1;
+Specializations::IndexOfRes Specializations::indexOf(
+    uintptr_t h, HRef<Method> generic, HRef<ArrayMut> types
+) const {
+    size_t const maxIndex = cap - 1;
     for (size_t collisions = 0, i = h & maxIndex;; ++collisions, i = (i + collisions) & maxIndex) {
-        ORef* const entry = specializations->entries + i;
+        ORef* const entry = entries + i;
 
-        if (eq(*entry, Default)) { return IndexOfSpecializationRes{i, false}; }
+        if (eq(*entry, Default)) { return IndexOfRes{i, false}; }
 
         if (isHeaped(*entry)) {
             HRef<Method> const methodRef = HRef<Method>::fromUnchecked(*entry);
 
-            if (isSpecialized(methodRef, generic, types)) {
-                return IndexOfSpecializationRes{i, true};
-            }
+            if (isSpecialized(methodRef, generic, types)) { return IndexOfRes{i, true}; }
         }
     }
 }
 
+HRef<Method> Specializations::atIndexUnchecked(size_t i) const {
+    return HRef<Method>::fromUnchecked(entries[i]);
+}
+
+HRef<Method> Specializations::createAtUnchecked(
+    State* state, size_t i, Fixnum fxHash, HRef<Method> generic, HRef<ArrayMut> types
+) {
+    size_t const newCount = count + 1;
+    size_t const capacity = cap;
+    if (capacity / 2 < newCount) {
+        rehash();
+        i = indexOf(uint64_t(fxHash.val()), generic, types).index;
+    }
+
+    HRef<Method> const specialization = createSpecialization(state, generic, types, fxHash);
+    entries[i] = specialization.oref();
+    count = newCount;
+    return specialization;
+}
+
 // OPTMIZE: Do not grow if load factor is largely due to tombstones:
-void rehashSpecializations(Specializations* specializations) {
-    size_t const oldCap = specializations->cap;
+void Specializations::rehash() {
+    size_t const oldCap = cap;
     size_t const newCap = oldCap * 2;
     ORef* const newEntries = (ORef*)calloc(newCap, sizeof *newEntries);
     size_t newCount = 0;
 
     for (size_t i = 0; i < oldCap; ++i) {
-        ORef const v = specializations->entries[i];
+        ORef const v = entries[i];
         if (isHeaped(v)) {
             size_t const h = (uintptr_t)hashSpecialized(HRef<Method>::fromUnchecked(v)).val();
 
@@ -289,10 +310,10 @@ void rehashSpecializations(Specializations* specializations) {
         }
     }
 
-    free(specializations->entries);
-    specializations->entries = newEntries;
-    specializations->count = newCount;
-    specializations->cap = newCap;
+    free(entries);
+    entries = newEntries;
+    count = newCount;
+    cap = newCap;
 }
 
 HRef<Method> specialize(State* state, HRef<Method> generic, HRef<ArrayMut> types) {
@@ -311,34 +332,11 @@ HRef<Method> specialize(State* state, HRef<Method> generic, HRef<ArrayMut> types
     Fixnum const fxHash = hashSpecialization(generic, types);
     uintptr_t const hash = (uint64_t)fxHash.val();
 
-    IndexOfSpecializationRes ires =
-        indexOfSpecialization(&state->specializations, hash, generic, types);
+    Specializations::IndexOfRes ires = state->specializations.indexOf(hash, generic, types);
     if (ires.exists) {
-        return HRef<Method>::fromUnchecked(state->specializations.entries[ires.index]);;
+        return state->specializations.atIndexUnchecked(ires.index);
     } else {
-        size_t const newCount = state->specializations.count + 1;
-        size_t const capacity = state->specializations.cap;
-        if (capacity / 2 < newCount) {
-            rehashSpecializations(&state->specializations);
-            ires = indexOfSpecialization(&state->specializations, hash, generic, types);
-        }
-
-        HRef<Method> const specialization =
-            createSpecialization(state, generic, types, fxHash);
-        state->specializations.entries[ires.index] = specialization.oref();
-        state->specializations.count = newCount;
-        return specialization;
-    }
-}
-
-void pruneSpecializations(Specializations* specializations) {
-    size_t const cap = specializations->cap;
-    for (size_t i = 0; i < cap; ++i) {
-        ORef* const v = &specializations->entries[i];
-        if (isHeaped(*v)) {
-            Object* const fwdPtr = HRef<Object>::fromUnchecked(*v).ptr()->tryForwarded();
-            *v = fwdPtr ? HRef<Object>(fwdPtr).oref() : Tombstone;
-        }
+        return state->specializations.createAtUnchecked(state, ires.index, fxHash, generic, types);
     }
 }
 

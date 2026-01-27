@@ -32,16 +32,12 @@ extern "C" Vshs_State* tryCreateState(
 extern "C" void freeState(Vshs_State* state) { freeState((State*)state); }
 
 extern "C" Vshs_RootGuard* pushRoot(Vshs_State* state, ORef* stackLoc) {
-    auto const guard = static_cast<RootGuard*>(malloc(sizeof(RootGuard)));
+    auto const guard = new RootGuard{}; // So that we do not move-assign into uninitialized
     *guard = ((State*)state)->pushRoot(stackLoc);
     return (Vshs_RootGuard*)guard;
 }
 
-extern "C" void popRoot(Vshs_RootGuard* guard) {
-    auto const guardImpl = (RootGuard*)guard;
-    guardImpl->~RootGuard();
-    free(guardImpl);
-}
+extern "C" void popRoot(Vshs_RootGuard* guard) { delete (RootGuard*)guard; }
 
 extern "C" Parser* createParser(Vshs_State* state, Str src, Str filename) {
     Parser* const parser = (Parser*)malloc(sizeof *parser);

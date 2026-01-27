@@ -70,8 +70,8 @@ public:
 
     ~RootGuard();
 
-    RootGuard(RootGuard&& that) { *this = std::move(that); }
-    RootGuard& operator=(RootGuard&& that);
+    RootGuard(RootGuard&& that);
+    RootGuard& operator=(RootGuard&&);
 
     RootGuard(RootGuard const&) = delete;
     RootGuard& operator=(RootGuard const&) = delete;
@@ -107,11 +107,6 @@ struct State {
     std::vector<ORef*> shadowstack;
 
     static State* tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* argv[]);
-
-    ~State(); // Need a destructor (while we have `freeSymbolTable` etc.)
-
-    State(State&&) = default;
-    State& operator=(State&&) = default;
 
     [[nodiscard]]
     RootGuard pushRoot(ORef* handle) { return RootGuard{this, handle}; } // RVO => not even move

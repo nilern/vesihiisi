@@ -7,17 +7,15 @@ namespace {
 
 [[nodiscard]]
 ORef doCheckDomain(
-    State* state, HRef<Closure> calleeRef, ORef const* args, size_t argc
+    State* state, HRef<Closure> callee, ORef const* args, size_t argc
 ) {
-    Closure const* const callee = calleeRef.ptr();
     assert(isMethod(state, callee->method));
-    HRef<Method> const methodRef = HRef<Method>::fromUnchecked(callee->method);
-    Method const* const method = methodRef.ptr();
-    size_t const arity = (uint64_t)methodRef.ptr()->flexCount().val();
+    HRef<Method> const method = HRef<Method>::fromUnchecked(callee->method);
+    size_t const arity = (uint64_t)method->flexCount().val();
 
     if (argc != arity) {
         if (!(method->hasVarArg.val() && argc >= arity - 1)) {
-            return createArityError(state, calleeRef, Fixnum((intptr_t)argc));
+            return createArityError(state, callee, Fixnum((intptr_t)argc));
         }
     }
 
@@ -55,9 +53,8 @@ bool closureIsApplicable(
     State const* state, Closure const* callee, ORef const* args, size_t argc
 ) {
     assert(isMethod(state, callee->method));
-    HRef<Method> const methodRef = HRef<Method>::fromUnchecked(callee->method);
-    Method const* const method = methodRef.ptr();
-    size_t const arity = (uint64_t)methodRef.ptr()->flexCount().val();
+    HRef<Method> const method = HRef<Method>::fromUnchecked(callee->method);
+    size_t const arity = (uint64_t)method->flexCount().val();
 
     if (argc != arity) {
         if (!(method->hasVarArg.val() && argc >= arity - 1)) {
@@ -98,9 +95,8 @@ bool closureIsApplicable(
 [[nodiscard]]
 bool closureIsApplicableToList(State const* state, Closure const* callee, ORef args) {
     assert(isMethod(state, callee->method));
-    HRef<Method> const methodRef = HRef<Method>::fromUnchecked(callee->method);
-    Method const* const method = methodRef.ptr();
-    size_t const arity = (uint64_t)methodRef.ptr()->flexCount().val();
+    HRef<Method> const method = HRef<Method>::fromUnchecked(callee->method);
+    size_t const arity = (uint64_t)method->flexCount().val();
 
     bool const hasVarArg = method->hasVarArg.val();
     size_t const minArity = !hasVarArg ? arity : arity - 1;
@@ -108,7 +104,7 @@ bool closureIsApplicableToList(State const* state, Closure const* callee, ORef a
     // Fixed args:
     for (size_t i = 0; i < minArity; ++i) {
         if (isPair(state, args)) {
-            Pair const* const argsPair = HRef<Pair>::fromUnchecked(args).ptr();
+            auto const argsPair = HRef<Pair>::fromUnchecked(args);
 
             assert(isType(state, method->domain()[i]));
             HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[i]);
@@ -130,7 +126,7 @@ bool closureIsApplicableToList(State const* state, Closure const* callee, ORef a
         HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[minArity]);
         for (;/*ever*/;) {
             if (isPair(state, args)) {
-                Pair const* const argsPair = HRef<Pair>::fromUnchecked(args).ptr();
+                auto const argsPair = HRef<Pair>::fromUnchecked(args);
 
                 ORef const v = argsPair->car;
                 if (!isa(state, type, v)) {
@@ -184,14 +180,14 @@ ORef applicableClosureForArgs(
     State* state, Multimethod const* callee, ORef const* args, size_t argc
 ) {
     HRef<Array> const methodsRef = callee->methods;
-    Slice<ORef const> const methods = methodsRef.ptr()->flexItems();
+    Slice<ORef const> const methods = methodsRef->flexItems();
 
-    size_t const methodCount = (uint64_t)methodsRef.ptr()->flexCount().val();
+    size_t const methodCount = (uint64_t)methodsRef->flexCount().val();
     for (size_t i = 0; i < methodCount; ++i) {
         assert(isa(state, state->types.closure, (methods[i])));
-        HRef<Closure> const methodRef = HRef<Closure>::fromUnchecked(methods[i]);
+        auto const methodRef = HRef<Closure>::fromUnchecked(methods[i]);
 
-        if (closureIsApplicable(state, methodRef.ptr(), args, argc)) {
+        if (closureIsApplicable(state, &*methodRef, args, argc)) {
             state->checkDomain = false;
             return methodRef;
         }
@@ -204,14 +200,14 @@ ORef applicableClosureForArgs(
 /// Returns applicable closure from `callee`, `Default` if none is found.
 ORef applicableClosureForArglist(State* state, Multimethod const* callee, ORef args) {
     HRef<Array> const methodsRef = callee->methods;
-    Slice<ORef const> const methods = methodsRef.ptr()->flexItems();
+    Slice<ORef const> const methods = methodsRef->flexItems();
 
-    size_t const methodCount = (uint64_t)methodsRef.ptr()->flexCount().val();
+    size_t const methodCount = (uint64_t)methodsRef->flexCount().val();
     for (size_t i = 0; i < methodCount; ++i) {
         assert(isa(state, state->types.closure, (methods[i])));
         HRef<Closure> const methodRef = HRef<Closure>::fromUnchecked(methods[i]);
 
-        if (closureIsApplicableToList(state, methodRef.ptr(), args)) {
+        if (closureIsApplicableToList(state, &*methodRef, args)) {
             state->checkDomain = false;
             return methodRef;
         }
@@ -231,7 +227,7 @@ bool calleeClosureForArgs(State* state, ORef callee, ORef const* args, size_t ar
         HRef<Multimethod> const multiCalleeRef = HRef<Multimethod>::fromUnchecked(callee);
 
         ORef const maybeClosure =
-            applicableClosureForArgs(state, multiCalleeRef.ptr(), args, argc);
+            applicableClosureForArgs(state, &*multiCalleeRef, args, argc);
         if (isHeaped(maybeClosure)) {
             state->regs[calleeReg] = maybeClosure;
             return true;
@@ -266,7 +262,7 @@ bool calleeClosureForArglist(State* state, ORef callee, ORef args) {
         HRef<Multimethod> const multiCalleeRef = HRef<Multimethod>::fromUnchecked(callee);
 
         ORef const maybeClosure =
-            applicableClosureForArglist(state, multiCalleeRef.ptr(), args);
+            applicableClosureForArglist(state, &*multiCalleeRef, args);
         if (isHeaped(maybeClosure)) {
             state->regs[calleeReg] = maybeClosure;
             return true;

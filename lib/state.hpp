@@ -175,31 +175,31 @@ HRef<Symbol> intern(State* state, Str name);
 HRef<Symbol> internHeaped(State* state, HRef<String> name);
 
 inline Array* tryAllocArray(State* state, Fixnum count) {
-    return (Array*)state->heap.tospace.tryAllocFlex(state->types.array.ptr(), count);
+    return (Array*)state->heap.tospace.tryAllocFlex(&*state->types.array, count);
 }
 
 inline Array* allocArrayOrDie(State* state, Fixnum count) {
-    return (Array*)state->heap.tospace.allocFlexOrDie(state->types.array.ptr(), count);
+    return (Array*)state->heap.tospace.allocFlexOrDie(&*state->types.array, count);
 }
 
 HRef<Array> createArray(State* state, Fixnum count);
 
 inline ArrayMut* tryAllocArrayMut(State* state, Fixnum count) {
-    return (ArrayMut*)state->heap.tospace.tryAllocFlex(state->types.arrayMut.ptr(), count);
+    return (ArrayMut*)state->heap.tospace.tryAllocFlex(&*state->types.arrayMut, count);
 }
 
 inline ArrayMut* allocArrayMutOrDie(State* state, Fixnum count) {
-    return (ArrayMut*)state->heap.tospace.allocFlexOrDie(state->types.arrayMut.ptr(), count);
+    return (ArrayMut*)state->heap.tospace.allocFlexOrDie(&*state->types.arrayMut, count);
 }
 
 HRef<ArrayMut> createArrayMut(State* state, Fixnum count);
 
 inline ByteArray* tryAllocByteArray(State* state, Fixnum count) {
-    return (ByteArray*)state->heap.tospace.tryAllocFlex(state->types.byteArray.ptr(), count);
+    return (ByteArray*)state->heap.tospace.tryAllocFlex(&*state->types.byteArray, count);
 }
 
 inline ByteArray* allocByteArrayOrDie(State* state, Fixnum count) {
-    return (ByteArray*)state->heap.tospace.allocFlexOrDie(state->types.byteArray.ptr(), count);
+    return (ByteArray*)state->heap.tospace.allocFlexOrDie(&*state->types.byteArray, count);
 }
 
 HRef<ByteArrayMut> createByteArrayMut(State* state, Fixnum count);

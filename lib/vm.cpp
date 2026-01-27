@@ -16,19 +16,18 @@ typedef struct VMRes {
     bool success;
 } VMRes;
 
-VMRes run(State* state, HRef<Closure> selfRef) {
+VMRes run(State* state, HRef<Closure> self) {
     // TODO: Debug index & type checks & bytecode verifier
 
     {
-        Closure const* const self = selfRef.ptr();
-        ORef const method = self->method;
-        Method const* const methodPtr = HRef<Method>::fromUnchecked(method).ptr();
-        assert(isHeaped(methodPtr->code));
-        state->method = method;
-        state->code = HRef<ByteArray>::fromUnchecked(methodPtr->code).ptr()->flexData();
+        ORef const anyMethod = self->method;
+        auto const method = HRef<Method>::fromUnchecked(anyMethod);
+        assert(isHeaped(method->code));
+        state->method = anyMethod;
+        state->code = HRef<ByteArray>::fromUnchecked(method->code)->flexData();
         state->pc = 0;
-        state->consts = HRef<ArrayMut>::fromUnchecked(methodPtr->consts).ptr()->flexData();
-        state->regs[calleeReg] = selfRef;
+        state->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->flexData();
+        state->regs[calleeReg] = self;
         state->regs[retContReg] = state->singletons.exit; // Return continuation
         state->entryRegc = 2;
     }
@@ -63,7 +62,7 @@ VMRes run(State* state, HRef<Closure> selfRef) {
             HRef<Symbol> const name = HRef<Symbol>::fromUnchecked(c);
             HRef<Var> var = getVar(state, state->ns, name);
 
-            var.ptr()->val = state->regs[srcReg];
+            var->val = state->regs[srcReg];
         }; continue;
 
         case OP_GLOBAL_SET: {
@@ -92,7 +91,7 @@ VMRes run(State* state, HRef<Closure> selfRef) {
             }
             HRef<Var> var = findRes.var;
 
-            var.ptr()->val = state->regs[srcReg];
+            var->val = state->regs[srcReg];
         }; continue;
 
         case OP_GLOBAL: {
@@ -121,7 +120,7 @@ VMRes run(State* state, HRef<Closure> selfRef) {
             }
             HRef<Var> var = findRes.var;
 
-            ORef const v = var.ptr()->val;
+            ORef const v = var->val;
             if (eq(v, state->singletons.unbound)) {
                 assert(false); // FIXME: use of unbound var
             }
@@ -159,7 +158,7 @@ VMRes run(State* state, HRef<Closure> selfRef) {
                             if (!isType(state, maybeType)) {
                                 return VMRes{}; // TODO: Signal type error properly
                             }
-                            types.ptr()->itemsMut()[typeIdx++] = maybeType;
+                            types->itemsMut()[typeIdx++] = maybeType;
                         }
                     }
                 }
@@ -182,7 +181,7 @@ VMRes run(State* state, HRef<Closure> selfRef) {
             uint8_t const srcReg = state->code[state->pc++];
 
             assert(isa(state, state->types.knot, state->regs[knotReg]));
-            Knot* const knot = HRef<Knot>::fromUnchecked(state->regs[knotReg]).ptr();
+            auto const knot = HRef<Knot>::fromUnchecked(state->regs[knotReg]);
             knot->val = state->regs[srcReg];
         }; continue;
 
@@ -191,7 +190,7 @@ VMRes run(State* state, HRef<Closure> selfRef) {
             uint8_t const knotReg = state->code[state->pc++];
 
             assert(isa(state, state->types.knot, state->regs[knotReg]));
-            Knot const* const knot = HRef<Knot>::fromUnchecked(state->regs[knotReg]).ptr();
+            auto const knot = HRef<Knot>::fromUnchecked(state->regs[knotReg]);
             state->regs[destReg] = knot->val;
         }; continue;
 
@@ -215,17 +214,15 @@ VMRes run(State* state, HRef<Closure> selfRef) {
         case OP_RET: {
             assert(eq(typeOf(state, state->regs[retContReg]),
                       state->types.continuation));
-            HRef<Continuation> const retRef =
-                HRef<Continuation>::fromUnchecked(state->regs[retContReg]);
-            Continuation const* const ret = retRef.ptr();
-            ORef const method = ret->method;
-            if (isHeaped(method)) {
-                assert(isMethod(state, method));
-                Method const* const methodPtr = HRef<Method>::fromUnchecked(method).ptr();
+            auto const ret = HRef<Continuation>::fromUnchecked(state->regs[retContReg]);
+            ORef const anyMethod = ret->method;
+            if (isHeaped(anyMethod)) {
+                assert(isMethod(state, anyMethod));
+                auto const method = HRef<Method>::fromUnchecked(anyMethod);
                 state->method = method;
-                state->code = HRef<ByteArray>::fromUnchecked(methodPtr->code).ptr()->flexData();
+                state->code = HRef<ByteArray>::fromUnchecked(method->code)->flexData();
                 state->pc = (size_t)ret->pc.val();
-                state->consts = HRef<ArrayMut>::fromUnchecked(methodPtr->consts).ptr()->flexData();
+                state->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->flexData();
             } else { // Exit
                 return VMRes{.val = state->regs[retReg], .success = true};
             }
@@ -253,7 +250,7 @@ VMRes run(State* state, HRef<Closure> selfRef) {
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
                         if ((byte >> (UINT8_WIDTH - 1 - bitIdx)) & 1) {
                             ORef* const cloverPtr =
-                                (ORef*)closure.ptr()->clovers().data + cloverIdx++;
+                                (ORef*)closure->clovers().data + cloverIdx++;
                             size_t const regIdx = UINT8_WIDTH * byteIdx + bitIdx;
                             *cloverPtr = state->regs[regIdx];
                         }
@@ -272,11 +269,10 @@ VMRes run(State* state, HRef<Closure> selfRef) {
             // OPTIMIZE: Separate OP_CONT_CLOVER:
             ORef const anyClosure = state->regs[closureReg];
             if (!isClosure(state, anyClosure)) {
-                Continuation const* const cont =
-                    HRef<Continuation>::fromUnchecked(anyClosure).ptr();
+                auto const cont = HRef<Continuation>::fromUnchecked(anyClosure);
                 state->regs[destReg] = cont->saves()[cloverIdx];
             } else {
-                Closure const* const closure = HRef<Closure>::fromUnchecked(anyClosure).ptr();
+                auto const closure = HRef<Closure>::fromUnchecked(anyClosure);
                 state->regs[destReg] = closure->clovers()[cloverIdx];
             }
         }; continue;
@@ -304,7 +300,7 @@ VMRes run(State* state, HRef<Closure> selfRef) {
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
                         if ((byte >> (UINT8_WIDTH - 1 - bitIdx)) & 1) {
                             ORef* const cloverPtr =
-                                (ORef*)cont.ptr()->saves().data + cloverIdx++;
+                                (ORef*)cont->saves().data + cloverIdx++;
                             size_t const regIdx = UINT8_WIDTH * byteIdx + bitIdx;
                             *cloverPtr = state->regs[regIdx];
                         }
@@ -331,16 +327,16 @@ VMRes run(State* state, HRef<Closure> selfRef) {
         while (trampoline) {
             // Do not need return value here as a call is set up even in case of error:
             calleeClosure(state, state->regs[calleeReg]);
-            Closure const* closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]).ptr();
+            auto closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
 
-            ORef method = closure->method;
-            assert(isMethod(state, method));
-            Method const* methodPtr = HRef<Method>::fromUnchecked(method).ptr();
-            if (isHeaped(methodPtr->code)) {
-                state->method = method;
-                state->code = HRef<ByteArray>::fromUnchecked(methodPtr->code).ptr()->flexData();
+            ORef anyMethod = closure->method;
+            assert(isMethod(state, anyMethod));
+            auto method = HRef<Method>::fromUnchecked(anyMethod);
+            if (isHeaped(method->code)) {
+                state->method = anyMethod;
+                state->code = HRef<ByteArray>::fromUnchecked(method->code)->flexData();
                 state->pc = 0;
-                state->consts = HRef<ArrayMut>::fromUnchecked(methodPtr->consts).ptr()->flexData();
+                state->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->flexData();
 
                 ORef const maybeErr = checkDomain(state);
                 if (isHeaped(maybeErr)) {
@@ -350,15 +346,15 @@ VMRes run(State* state, HRef<Closure> selfRef) {
                     continue;
                 }
 
-                if (methodPtr->hasVarArg.val()) {
-                    size_t const arity = methodPtr->domain().count;
+                if (method->hasVarArg.val()) {
+                    size_t const arity = method->domain().count;
                     size_t const minArity = arity - 1;
                     uint8_t const callArgc = state->entryRegc - firstArgReg;
                     size_t const varargCount = callArgc - minArity;
 
                     HRef<ArrayMut> const varargsRef =
                         createArrayMut(state, Fixnum((intptr_t)varargCount));
-                    memcpy((void*)varargsRef.ptr()->flexData(),
+                    memcpy((void*)varargsRef->flexData(),
                            state->regs + firstArgReg + minArity, varargCount * sizeof(ORef));
 
                     state->regs[firstArgReg + minArity] = varargsRef;
@@ -367,23 +363,19 @@ VMRes run(State* state, HRef<Closure> selfRef) {
                 trampoline = false;
             } else {
                 applyPrimop:
-                switch (methodPtr->nativeCode(state)) {
+                switch (method->nativeCode(state)) {
                 case PrimopRes::CONTINUE: { // TODO: DRY wrt. OP_RET:
                     assert(eq(typeOf(state, state->regs[retContReg]),
                               state->types.continuation));
-                    HRef<Continuation> const retRef =
-                        HRef<Continuation>::fromUnchecked(state->regs[retContReg]);
-                    Continuation const* const ret = retRef.ptr();
-                    ORef const method = ret->method;
-                    if (isHeaped(method)) {
-                        assert(isMethod(state, method));
-                        Method const* const methodPtr = HRef<Method>::fromUnchecked(method).ptr();
-                        state->method = method;
-                        state->code =
-                            HRef<ByteArray>::fromUnchecked(methodPtr->code).ptr()->flexData();
+                    auto const ret = HRef<Continuation>::fromUnchecked(state->regs[retContReg]);
+                    ORef const anyMethod = ret->method;
+                    if (isHeaped(anyMethod)) {
+                        assert(isMethod(state, anyMethod));
+                        auto const methodPtr = HRef<Method>::fromUnchecked(anyMethod);
+                        state->method = anyMethod;
+                        state->code = HRef<ByteArray>::fromUnchecked(methodPtr->code)->flexData();
                         state->pc = (size_t)ret->pc.val();
-                        state->consts =
-                            HRef<ArrayMut>::fromUnchecked(methodPtr->consts).ptr()->flexData();
+                        state->consts = HRef<ArrayMut>::fromUnchecked(methodPtr->consts)->flexData();
                         trampoline = false;
                     } else { // Exit
                         return VMRes{.val = state->regs[retReg], .success = true};
@@ -394,17 +386,14 @@ VMRes run(State* state, HRef<Closure> selfRef) {
 
                 // TODO: DRY with loop head:
                 case PrimopRes::TAILAPPLY: {
-                    closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]).ptr();
-                    method = closure->method;
-                    assert(isMethod(state, method));
-                    methodPtr = HRef<Method>::fromUnchecked(method).ptr();
-                    if (isHeaped(methodPtr->code)) {
-                        state->method = method;
-                        state->code =
-                            HRef<ByteArray>::fromUnchecked(methodPtr->code).ptr()->flexData();
-                        state->pc = 0;
-                        state->consts =
-                            HRef<ArrayMut>::fromUnchecked(methodPtr->consts).ptr()->flexData();
+                    closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
+                    anyMethod = closure->method;
+                    assert(isMethod(state, anyMethod));
+                    method = HRef<Method>::fromUnchecked(anyMethod);
+                    if (isHeaped(method->code)) {
+                        state->method = anyMethod;
+                        state->code = HRef<ByteArray>::fromUnchecked(method->code)->flexData();
+                        state->pc = 0; HRef<ArrayMut>::fromUnchecked(method->consts)->flexData();
 
                         state->checkDomain = true;
 

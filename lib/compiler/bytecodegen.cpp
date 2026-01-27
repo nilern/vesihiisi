@@ -38,7 +38,7 @@ struct MethodBuilderLoc {
 
     static MethodBuilderLoc fromORef(State const& state, ORef maybeLoc) {
         if (isa(&state, state.types.loc, maybeLoc)) {
-            Loc const* const loc = HRef<Loc>::fromUnchecked(maybeLoc).ptr();
+            auto const loc = HRef<Loc>::fromUnchecked(maybeLoc);
             return MethodBuilderLoc{loc->filename, (uint64_t)loc->byteIdx.val()};
         } else {
             return MethodBuilderLoc{Default, 0};
@@ -151,7 +151,7 @@ HRef<Method> buildMethod(
     auto filenames = HRef<Array>{maybeFilenames};
     auto const filenamesG = state->pushRoot(&filenames);
     // Part of initialization, so `const_cast`:
-    ORef* const filenamesData = const_cast<ORef*>(filenames.ptr()->flexData());
+    ORef* const filenamesData = const_cast<ORef*>(filenames->flexData());
     for (size_t i = 0; i < filenamesSlotCount; ++i) { // Reversing copy
         filenamesData[i] = builder.revFilenameRuns[filenamesSlotCount - 1 - i];
     }
@@ -175,7 +175,7 @@ HRef<Method> buildMethod(
     auto const srcByteIdxsG = state->pushRoot(&srcByteIdxs);
     {
         // Part of initialization, so `const_cast`:
-        uint8_t* const srcByteIdxsData = const_cast<uint8_t*>(srcByteIdxs.ptr()->flexData());
+        uint8_t* const srcByteIdxsData = const_cast<uint8_t*>(srcByteIdxs->flexData());
         size_t i = 0;
 
         // Initial src byte index:
@@ -197,7 +197,7 @@ HRef<Method> buildMethod(
     size_t const arity = fn->blocks[0]->paramCount - 2;
     Fixnum const fxArity = Fixnum((intptr_t)arity);
     Bool const hasVarArg = Bool(fn->hasVarArg);
-    Slice<uint8_t const> const codeSlice = code.ptr()->flexItems();
+    Slice<uint8_t const> const codeSlice = code->flexItems();
     uintptr_t const hash = fnv1aHash_n(codeSlice.data, codeSlice.count);
     Fixnum const fxHash = Fixnum((intptr_t)hash);
     Method* maybeMethod =

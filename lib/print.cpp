@@ -33,22 +33,22 @@ void print(State const* state, FILE* dest, ORef v) {
         if (isString(state, v)) {
             HRef<String> const s = HRef<String>::fromUnchecked(v);
             
-            Str const str = s.ptr()->str();
+            Str const str = s->str();
             fprintf(dest, "\"%.*s\"", (int)str.len, str.data);
         } else if (isSymbol(state, v)) {
             HRef<Symbol> const s = HRef<Symbol>::fromUnchecked(v);
 
-            Str const name = s.ptr()->name();
+            Str const name = s->name();
             fprintf(dest, "%.*s", (int)name.len, name.data);
         } else if (isPair(state, v)) {
-            Pair const* pair = HRef<Pair>::fromUnchecked(v).ptr();
+            auto pair = HRef<Pair>::fromUnchecked(v);
             
             fputc('(', dest);
             print(state, dest, pair->car);
             
             for (ORef tail = pair->cdr; true; tail = pair->cdr) {
                 if (isPair(state, tail)) {
-                    pair = HRef<Pair>::fromUnchecked(tail).ptr();
+                    pair = HRef<Pair>::fromUnchecked(tail);
                     fputc(' ', dest);
                     print(state, dest, pair->car);
                 } else if (isEmptyList(state, tail)) {
@@ -64,7 +64,7 @@ void print(State const* state, FILE* dest, ORef v) {
         } else if (isEmptyList(state, v)) {
             fprintf(dest, "()");
         } else if (isa(state, state->types.array, v)) {
-            Slice<ORef const> const vs = HRef<Array>::fromUnchecked(v).ptr()->flexItems();
+            Slice<ORef const> const vs = HRef<Array>::fromUnchecked(v)->flexItems();
 
             fprintf(dest, "#<array");
 
@@ -76,7 +76,7 @@ void print(State const* state, FILE* dest, ORef v) {
 
             putc('>', dest);
         } else if (isa(state, state->types.arrayMut, v)) {
-            Slice<ORef const> const vs = HRef<ArrayMut>::fromUnchecked(v).ptr()->flexItems();
+            Slice<ORef const> const vs = HRef<ArrayMut>::fromUnchecked(v)->flexItems();
 
             fprintf(dest, "#<array!");
 
@@ -88,7 +88,7 @@ void print(State const* state, FILE* dest, ORef v) {
 
             putc('>', dest);
         } else if (isa(state, state->types.method, v)) {
-            Method const* const method = HRef<Method>::fromUnchecked(v).ptr();
+            auto const method = HRef<Method>::fromUnchecked(v);
 
             fprintf(dest, "#<method");
             ORef const maybeName = method->maybeName;
@@ -98,13 +98,13 @@ void print(State const* state, FILE* dest, ORef v) {
             }
             putc('>', dest);
         } else if (isClosure(state, v)) {
-            Closure const* const closure = HRef<Closure>::fromUnchecked(v).ptr();
+            auto const closure = HRef<Closure>::fromUnchecked(v);
 
             fprintf(dest, "#<fn");
 
             // TODO: DRY with #<method ... directly above:
             if (isMethod(state, closure->method)) {
-                Method const* const method = HRef<Method>::fromUnchecked(closure->method).ptr();
+                auto const method = HRef<Method>::fromUnchecked(closure->method);
                 ORef const maybeName = method->maybeName;
                 if (isHeaped(maybeName)) {
                     putc(' ', dest);
@@ -114,7 +114,7 @@ void print(State const* state, FILE* dest, ORef v) {
 
             putc('>', dest);
         } else if (isMultimethod(state, v)) {
-            Multimethod const* const multimethod = HRef<Multimethod>::fromUnchecked(v).ptr();
+            auto const multimethod = HRef<Multimethod>::fromUnchecked(v);
 
             fputs("#<multimethod", dest);
 
@@ -125,13 +125,13 @@ void print(State const* state, FILE* dest, ORef v) {
 
             putc('>', dest);
         } else if (isType(state, v)) {
-            Type const* const type = HRef<Type>::fromUnchecked(v).ptr();
+            auto const type = HRef<Type>::fromUnchecked(v);
 
             fprintf(dest, "#<type ");
             print(state, dest, type->name);
             putc('>', dest);
         } else if (isa(state, state->types.fatalError, v)) {
-            FatalError const* const err = HRef<FatalError>::fromUnchecked(v).ptr();
+            auto const err = HRef<FatalError>::fromUnchecked(v);
 
             fputs("#<fatal-error ", dest);
 
@@ -146,13 +146,13 @@ void print(State const* state, FILE* dest, ORef v) {
 
             putc('>', dest);
         } else if (isa(state, state->types.unboundError, v)) {
-            UnboundError const* const err = HRef<UnboundError>::fromUnchecked(v).ptr();
+            auto const err = HRef<UnboundError>::fromUnchecked(v);
 
             fputs("#<unbound-error ", dest);
             print(state, dest, err->name);
             putc('>', dest);
         } else if (isTypeError(state, v)) {
-            TypeError const* const err = HRef<TypeError>::fromUnchecked(v).ptr();
+            auto const err = HRef<TypeError>::fromUnchecked(v);
 
             fputs("#<type-error ", dest);
             print(state, dest, err->type);
@@ -160,7 +160,7 @@ void print(State const* state, FILE* dest, ORef v) {
             print(state, dest, err->val);
             putc('>', dest);
         } else if (isa(state, state->types.arityError, v)) {
-            ArityError const* const err = HRef<ArityError>::fromUnchecked(v).ptr();
+            auto const err = HRef<ArityError>::fromUnchecked(v);
 
             fputs("#<arity-error ", dest);
             print(state, dest, err->callee);
@@ -168,13 +168,13 @@ void print(State const* state, FILE* dest, ORef v) {
             print(state, dest, err->callArgc);
             putc('>', dest);
         } else if (isa(state, state->types.inapplicableError, v)) {
-            InapplicableError const* const err = HRef<InapplicableError>::fromUnchecked(v).ptr();
+            auto const err = HRef<InapplicableError>::fromUnchecked(v);
 
             fputs("#<inapplicable-error ", dest);
             print(state, dest, err->callee);
             putc('>', dest);
         } else {
-            Type const* const type = typeOf(state, v).ptr();
+            auto const type = typeOf(state, v);
 
             fputs("#<", dest);
             print(state, dest, type->name);

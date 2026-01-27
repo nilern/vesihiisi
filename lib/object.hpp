@@ -217,7 +217,9 @@ struct HRef : public ORef {
 
     static HRef<T> fromUnchecked(ORef v) { return std::bit_cast<HRef<T>>(v); }
 
-    T* ptr() const { return std::bit_cast<T*>(bits & payloadMask); }
+    T* operator->() const { return std::bit_cast<T*>(bits & payloadMask); }
+
+    T& operator*() const { return *std::bit_cast<T*>(bits & payloadMask); }
 
 private:
     constexpr explicit HRef(uint64_t t_bits) : ORef{t_bits} {}
@@ -287,15 +289,15 @@ FlexHeader const* uncheckedFlexHeader(ORef v) {
 
 // TODO: Align result if we go beyond 'either all slots or all bytes':
 void const* uncheckedUntypedFlexPtr(ORef v) {
-    Object const* const obj = HRef<Object>::fromUnchecked(v).ptr();
-    size_t const minSize = (uint64_t)obj->header()->type().ptr()->minSize.val();
+    Object const* const obj = &*HRef<Object>::fromUnchecked(v);
+    size_t const minSize = (uint64_t)obj->header()->type()->minSize.val();
     return static_cast<void const*>(std::bit_cast<char const*>(obj) + minSize);
 }
 
 // TODO: Align result if we go beyond 'either all slots or all bytes':
 void* uncheckedUntypedFlexPtrMut(ORef v) {
-    Object* const obj = HRef<Object>::fromUnchecked(v).ptr();
-    size_t const minSize = (uint64_t)obj->header()->type().ptr()->minSize.val();
+    Object* const obj = &*HRef<Object>::fromUnchecked(v);
+    size_t const minSize = (uint64_t)obj->header()->type()->minSize.val();
     return static_cast<void*>(std::bit_cast<char*>(obj) + minSize);
 }
 

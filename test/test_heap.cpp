@@ -39,7 +39,7 @@ static void testIntern(void) {
     
     assert(eq(typeOf(state, sym), state->types.symbol));
     assert(eq(symPtr->hash, Fixnum((intptr_t)fnv1aHash(name))));
-    assert(strEq(sym.ptr()->name(), name));
+    assert(strEq(sym->name(), name));
     
     HRef<Symbol> const dupSym = intern(state, name);
     

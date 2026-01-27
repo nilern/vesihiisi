@@ -108,15 +108,15 @@ void markIRStmt(State* state, IRStmt* stmt) {
 void assertIRStmtInTospace(State const* state, IRStmt const* stmt) {
     switch (stmt->type) {
     case IRStmt::GLOBAL_DEF: {
-        assert(allocatedInSemispace(&state->heap.tospace, stmt->define.name.ptr()));
+        assert(allocatedInSemispace(&state->heap.tospace, &*stmt->define.name));
     }; break;
 
     case IRStmt::GLOBAL_SET: {
-        assert(allocatedInSemispace(&state->heap.tospace, stmt->globalSet.name.ptr()));
+        assert(allocatedInSemispace(&state->heap.tospace, &*stmt->globalSet.name));
     }; break;
 
     case IRStmt::GLOBAL: {
-        assert(allocatedInSemispace(&state->heap.tospace, stmt->global.name.ptr()));
+        assert(allocatedInSemispace(&state->heap.tospace, &*stmt->global.name));
     }; break;
 
     case IRStmt::CONST_DEF: {

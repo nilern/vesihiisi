@@ -18,7 +18,7 @@
 namespace {
 
 ORef getErrorHandler(State const* state) {
-    ORef const v = state->errorHandler.ptr()->val;
+    ORef const v = state->errorHandler->val;
     if (eq(v, state->singletons.unbound)) {
         exit(EXIT_FAILURE); // FIXME
     }
@@ -46,8 +46,7 @@ PrimopRes primopAbort(State* state) {
     print(state, stderr, error);
 
     assert(isa(state, state->types.continuation, state->regs[retContReg]));
-    Continuation const* const cont =
-        HRef<Continuation>::fromUnchecked(state->regs[retContReg]).ptr();
+    auto const cont = HRef<Continuation>::fromUnchecked(state->regs[retContReg]);
     ORef const anyCaller = cont->method;
     if (isMethod(state, anyCaller)) {
         auto const caller = HRef<Method>::fromUnchecked(anyCaller);
@@ -55,7 +54,7 @@ PrimopRes primopAbort(State* state) {
         size_t const callerPc = uint64_t(cont->pc.val()); // FIXME: This is return PC, not *call* PC
         auto const maybeLoc = locatePc(caller, callerPc);
 
-        ORef const maybeCallerName = caller.ptr()->maybeName;
+        ORef const maybeCallerName = caller->maybeName;
         if (isSymbol(state, maybeCallerName)) {
             fputs(" in ", stderr);
             print(state, stderr, HRef<Symbol>::fromUnchecked(maybeCallerName));
@@ -83,8 +82,8 @@ PrimopRes primopApplyArray(State* state) {
     // Could also be an `<array!>`, but we "illegally" cast that here to avoid duplicating this
     // function for no actual benefit:
     HRef<Array> argsRef = HRef<Array>::fromUnchecked(state->regs[firstArgReg + 1]);
-    ORef const* args = argsRef.ptr()->flexData();
-    size_t argc = (uint64_t)argsRef.ptr()->flexCount().val();
+    ORef const* args = argsRef->flexData();
+    size_t argc = (uint64_t)argsRef->flexCount().val();
 
     // Dispatch:
     if (!calleeClosureForArgs(state, callee, args, argc)) {
@@ -101,15 +100,15 @@ PrimopRes primopApplyArray(State* state) {
         return PrimopRes::TAILCALL;
     }
 
-    ORef const method = closure.ptr()->method;
+    ORef const method = closure->method;
     assert(isMethod(state, method));
-    Method const* const methodPtr = HRef<Method>::fromUnchecked(method).ptr();
+    auto const methodRef = HRef<Method>::fromUnchecked(method);
 
     // Put args in place:
-    if (!isHeaped(methodPtr->code) || !methodPtr->hasVarArg.val()){
+    if (!isHeaped(methodRef->code) || !methodRef->hasVarArg.val()){
         memcpy(state->regs + firstArgReg, args, argc * sizeof(ORef));
     } else { // Non-primop with varargs:
-        size_t const arity = (uint64_t)methodPtr->flexCount().val();
+        size_t const arity = (uint64_t)methodRef->flexCount().val();
         size_t const minArity = arity - 1;
         size_t const varargCount = argc - minArity;
 
@@ -119,8 +118,8 @@ PrimopRes primopApplyArray(State* state) {
         // Varargs:
         auto const argsRefG = state->pushRoot(&argsRef);
         HRef<ArrayMut> const varargsRef = createArrayMut(state, Fixnum((intptr_t)varargCount));
-        args = argsRef.ptr()->flexData(); // Post-GC reload
-        memcpy((void*)varargsRef.ptr()->flexData(), args + minArity, varargCount * sizeof(ORef));
+        args = argsRef->flexData(); // Post-GC reload
+        memcpy((void*)varargsRef->flexData(), args + minArity, varargCount * sizeof(ORef));
 
         state->regs[firstArgReg + minArity] = varargsRef;
 
@@ -145,27 +144,27 @@ PrimopRes primopApplyList(State* state) {
     }
     HRef<Closure> const closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
 
-    ORef const method = closure.ptr()->method;
+    ORef const method = closure->method;
     assert(isMethod(state, method));
-    Method const* const methodPtr = HRef<Method>::fromUnchecked(method).ptr();
+    auto const methodRef = HRef<Method>::fromUnchecked(method);
 
     // Put args in place and check them (if not already checked by dispatch):
-    size_t const arity = (uint64_t)methodPtr->flexCount().val();
+    size_t const arity = (uint64_t)methodRef->flexCount().val();
     size_t argc = 0;
     if (state->checkDomain) {
-        bool const hasVarArg = methodPtr->hasVarArg.val();
+        bool const hasVarArg = methodRef->hasVarArg.val();
         size_t const minArity = !hasVarArg ? arity : arity - 1;
 
         // Fixed args:
         for (; argc < minArity; ++argc) {
             if (isPair(state, args)) {
-                Pair const* const argsPair = HRef<Pair>::fromUnchecked(args).ptr();
+                auto const argsPair = HRef<Pair>::fromUnchecked(args);
 
                 ORef const arg = argsPair->car;
 
                 // OPTIMIZE: Skip type check if no typed params (= not a specialization):
-                assert(isa(state, state->types.type, methodPtr->domain()[argc]));
-                HRef<Type> const type = HRef<Type>::fromUnchecked(methodPtr->domain()[argc]);
+                assert(isa(state, state->types.type, methodRef->domain()[argc]));
+                HRef<Type> const type = HRef<Type>::fromUnchecked(methodRef->domain()[argc]);
                 if (!isa(state, type, arg)) {
                     ORef const err = createTypeError(state, type, arg);
                     return primopError(state, err);
@@ -187,7 +186,7 @@ PrimopRes primopApplyList(State* state) {
             if (!isEmptyList(state, args)) {
                 for (; true; ++argc) {
                     if (isPair(state, args)) {
-                        Pair const* const argsPair = HRef<Pair>::fromUnchecked(args).ptr();
+                        auto const argsPair = HRef<Pair>::fromUnchecked(args);
                         args = argsPair->cdr;
                     } else if (isEmptyList(state, args)) {
                         break;
@@ -200,12 +199,12 @@ PrimopRes primopApplyList(State* state) {
                     createArityError(state, closure, Fixnum((intptr_t)argc));
                 return primopError(state, err);
             }
-        } else if (!isHeaped(methodPtr->code)) { // Primop varargs:
-            assert(isa(state, state->types.type, methodPtr->domain()[minArity]));
-            HRef<Type> type = HRef<Type>::fromUnchecked(methodPtr->domain()[minArity]);
+        } else if (!isHeaped(methodRef->code)) { // Primop varargs:
+            assert(isa(state, state->types.type, methodRef->domain()[minArity]));
+            HRef<Type> type = HRef<Type>::fromUnchecked(methodRef->domain()[minArity]);
             for (; true; ++argc) {
                 if (isPair(state, args)) {
-                    Pair const* const argsPair = HRef<Pair>::fromUnchecked(args).ptr();
+                    auto const argsPair = HRef<Pair>::fromUnchecked(args);
 
                     ORef const arg = argsPair->car;
 
@@ -227,17 +226,17 @@ PrimopRes primopApplyList(State* state) {
         } else { // Non-primop varargs:
             auto const argsG = state->pushRoot(&args);
 
-            assert(isa(state, state->types.type, methodPtr->domain()[minArity]));
-            HRef<Type> type = HRef<Type>::fromUnchecked(methodPtr->domain()[minArity]);
+            assert(isa(state, state->types.type, methodRef->domain()[minArity]));
+            HRef<Type> type = HRef<Type>::fromUnchecked(methodRef->domain()[minArity]);
             auto const typeG = state->pushRoot(&type);
             size_t bufCap = 10;
             HRef<ArrayMut> varargsBufRef = createArrayMut(state, Fixnum((intptr_t)bufCap));
             auto const varargsBufRefG = state->pushRoot(&varargsBufRef);
-            ORef* varargsBuf = varargsBufRef.ptr()->flexDataMut();
+            ORef* varargsBuf = varargsBufRef->flexDataMut();
             size_t varargCount = 0;
             for (size_t i = 0; true; ++i, ++varargCount) {
                 if (isPair(state, args)) {
-                    Pair const* argsPair = HRef<Pair>::fromUnchecked(args).ptr();
+                    auto argsPair = HRef<Pair>::fromUnchecked(args);
 
                     ORef arg = argsPair->car;
 
@@ -253,9 +252,9 @@ PrimopRes primopApplyList(State* state) {
                         auto const argG = state->pushRoot(&arg);
                         HRef<ArrayMut> const newVarargsBufRef =
                             createArrayMut(state, Fixnum((intptr_t)newBufCap));
-                        argsPair = HRef<Pair>::fromUnchecked(args).ptr(); // Post-GC reload
-                        varargsBuf = varargsBufRef.ptr()->flexDataMut(); // Post-GC reload
-                        ORef* const newVarargsBuf = newVarargsBufRef.ptr()->flexDataMut();
+                        argsPair = HRef<Pair>::fromUnchecked(args); // Post-GC reload
+                        varargsBuf = varargsBufRef->flexDataMut(); // Post-GC reload
+                        ORef* const newVarargsBuf = newVarargsBufRef->flexDataMut();
                         memcpy(newVarargsBuf, varargsBuf, bufCap * sizeof(ORef));
 
                         bufCap = newBufCap;
@@ -276,8 +275,8 @@ PrimopRes primopApplyList(State* state) {
                 if (varargCount != bufCap) {
                     HRef<ArrayMut> const varargsRef =
                         createArrayMut(state, Fixnum((intptr_t)varargCount));
-                    varargsBuf = varargsBufRef.ptr()->flexDataMut(); // Post-GC reload
-                    memcpy((void*)varargsRef.ptr()->flexData(), varargsBuf,
+                    varargsBuf = varargsBufRef->flexDataMut(); // Post-GC reload
+                    memcpy((void*)varargsRef->flexData(), varargsBuf,
                            varargCount * sizeof(ORef));
                     return varargsRef;
                 } else {
@@ -290,14 +289,14 @@ PrimopRes primopApplyList(State* state) {
             argc = minArity + varargCount;
         }
     } else { // `state->checkDomain == false`
-        bool const hasVarArg = methodPtr->hasVarArg.val();
+        bool const hasVarArg = methodRef->hasVarArg.val();
         size_t const minArity = !hasVarArg ? arity : arity - 1;
 
         // Fixed args:
         for (size_t i = 0; i < minArity; ++i) {
             // Arity already checked to be correct so `args` *must* be a pair:
             assert(isa(state, state->types.pair, args));
-            Pair const* const argsPair = HRef<Pair>::fromUnchecked(args).ptr();
+            auto const argsPair = HRef<Pair>::fromUnchecked(args);
 
             state->regs[firstArgReg + i] = argsPair->car;
 
@@ -305,10 +304,10 @@ PrimopRes primopApplyList(State* state) {
         }
 
         if (hasVarArg){ // Vararg:
-            if (!isHeaped(methodPtr->code)) { // Primop:
+            if (!isHeaped(methodRef->code)) { // Primop:
                 // Arity already checked to be correct so `args` *must* be a proper list:
                 for (size_t i = minArity; isPair(state, args); ++i) {
-                    Pair const* const argsPair = HRef<Pair>::fromUnchecked(args).ptr();
+                    auto const argsPair = HRef<Pair>::fromUnchecked(args);
 
                     state->regs[firstArgReg + i] = argsPair->car;
 
@@ -320,20 +319,20 @@ PrimopRes primopApplyList(State* state) {
                 size_t bufCap = 10;
                 HRef<ArrayMut> varargsBufRef = createArrayMut(state, Fixnum((intptr_t)bufCap));
                 auto const varargsBufRefG = state->pushRoot(&varargsBufRef);
-                ORef* varargsBuf = varargsBufRef.ptr()->flexDataMut();
+                ORef* varargsBuf = varargsBufRef->flexDataMut();
                 size_t varargCount = 0;
                 for (size_t i = 0; true; ++i, ++varargCount) {
                     if (isPair(state, args)) {
-                        Pair const* argsPair = HRef<Pair>::fromUnchecked(args).ptr();
+                        auto argsPair = HRef<Pair>::fromUnchecked(args);
 
                         if (i == bufCap) {
                             size_t const newBufCap = bufCap + bufCap * 2;
 
                             HRef<ArrayMut> const newVarargsBufRef =
                                 createArrayMut(state, Fixnum((intptr_t)newBufCap));
-                            argsPair = HRef<Pair>::fromUnchecked(args).ptr(); // Post-GC reload
-                            varargsBuf = varargsBufRef.ptr()->flexDataMut(); // Post-GC reload
-                            ORef* const newVarargsBuf = newVarargsBufRef.ptr()->flexDataMut();
+                            argsPair = HRef<Pair>::fromUnchecked(args); // Post-GC reload
+                            varargsBuf = varargsBufRef->flexDataMut(); // Post-GC reload
+                            ORef* const newVarargsBuf = newVarargsBufRef->flexDataMut();
                             memcpy(newVarargsBuf, varargsBuf, bufCap * sizeof(ORef));
 
                             bufCap = newBufCap;
@@ -354,8 +353,8 @@ PrimopRes primopApplyList(State* state) {
                     if (varargCount != bufCap) {
                         HRef<ArrayMut> const varargsRef =
                             createArrayMut(state, Fixnum((intptr_t)varargCount));
-                        varargsBuf = varargsBufRef.ptr()->flexDataMut(); // Post-GC reload
-                        memcpy(varargsRef.ptr()->flexDataMut(), varargsBuf,
+                        varargsBuf = varargsBufRef->flexDataMut(); // Post-GC reload
+                        memcpy(varargsRef->flexDataMut(), varargsBuf,
                                varargCount * sizeof(ORef));
                         return varargsRef;
                     } else {
@@ -432,18 +431,16 @@ PrimopRes primopMake(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
 
-    HRef<Type> typeRef = HRef<Type>::fromUnchecked(state->regs[firstArgReg]);
+    HRef<Type> type = HRef<Type>::fromUnchecked(state->regs[firstArgReg]);
     uint8_t const callArity = state->entryRegc - firstArgReg;
 
-    Type const* type = typeRef.ptr();
     if (!type->isFlex.val()) {
         // Alloc:
-        Object* ptr = state->heap.tospace.tryAlloc(type);
+        Object* ptr = state->heap.tospace.tryAlloc(&*type);
         if (mustCollect(ptr)) {
             collect(state);
-            typeRef = HRef<Type>::fromUnchecked(state->regs[firstArgReg]);
-            type = typeRef.ptr(); // Post-GC reload
-            ptr = state->heap.tospace.allocOrDie(type);
+            type = HRef<Type>::fromUnchecked(state->regs[firstArgReg]);
+            ptr = state->heap.tospace.allocOrDie(&*type);
         }
 
         // Init:
@@ -478,7 +475,7 @@ PrimopRes primopSlotGet(State* state) {
     ORef const v = state->regs[firstArgReg];
     size_t const slotIdx = (uint64_t)Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
-    Type const* type = typeOf(state, v).ptr();
+    HRef<Type> const type = typeOf(state, v);
     if (!type->isBytes.val()) {
         size_t const slotCount = (uintptr_t)type->minSize.val() / sizeof(ORef);
         if (slotIdx >= slotCount) {
@@ -502,7 +499,7 @@ PrimopRes primopSlotSet(State* state) {
     size_t const slotIdx = (uint64_t)Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
     ORef const slotV = state->regs[firstArgReg + 2];
 
-    Type const* type = typeOf(state, v).ptr();
+    HRef<Type> const type = typeOf(state, v);
     if (!type->isBytes.val()) {
         size_t const slotCount = (uintptr_t)type->minSize.val() / sizeof(ORef);
         if (slotIdx >= slotCount) {
@@ -524,17 +521,15 @@ PrimopRes primopMakeFlex(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
 
-    HRef<Type> typeRef = HRef<Type>::fromUnchecked(state->regs[firstArgReg]);
+    HRef<Type> type = HRef<Type>::fromUnchecked(state->regs[firstArgReg]);
     Fixnum const count = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]);
 
-    Type const* type = typeRef.ptr();
     if (type->isFlex.val()) {
-        Object* ptr = state->heap.tospace.tryAllocFlex(type, count);
+        Object* ptr = state->heap.tospace.tryAllocFlex(&*type, count);
         if (mustCollect(ptr)) {
             collect(state);
-            typeRef = HRef<Type>::fromUnchecked(state->regs[firstArgReg]);
-            type = typeRef.ptr();
-            ptr = state->heap.tospace.allocFlexOrDie(type, count);
+            type = HRef<Type>::fromUnchecked(state->regs[firstArgReg]);
+            ptr = state->heap.tospace.allocFlexOrDie(&*type, count);
         }
 
         state->regs[retReg] = HRef<Object>(ptr);
@@ -551,7 +546,7 @@ PrimopRes primopFlexCount(State* state) {
 
     ORef const v = state->regs[firstArgReg];
 
-    Type const* type = typeOf(state, v).ptr();
+    HRef<Type> const type = typeOf(state, v);
     if (!type->isFlex.val()) {
         assert(false); // TODO: Proper nonflex error
     }
@@ -568,7 +563,7 @@ PrimopRes primopFlexGet(State* state) {
     ORef const v = state->regs[firstArgReg];
     int64_t const i = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
-    Type const* type = typeOf(state, v).ptr();
+    HRef<Type> const type = typeOf(state, v);
     if (!type->isFlex.val()) {
         assert(false); // TODO: Proper nonflex error
     }
@@ -596,7 +591,7 @@ PrimopRes primopFlexSet(State* state) {
     int64_t const i = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
     ORef const iv = state->regs[firstArgReg + 2];
 
-    Type const* type = typeOf(state, v).ptr();
+    HRef<Type> const type = typeOf(state, v);
     if (!type->isFlex.val()) {
         assert(false); // TODO: Proper nonflex error
     }
@@ -626,8 +621,8 @@ PrimopRes primopFlexCopy(State* state) {
     ORef const src = state->regs[firstArgReg + 2];
     intptr_t const startS = Fixnum::fromUnchecked(state->regs[firstArgReg + 3]).val();
     intptr_t const endS = Fixnum::fromUnchecked(state->regs[firstArgReg + 4]).val();
-    Type const* const destType = typeOf(state, dest).ptr();
-    Type const* const srcType = typeOf(state, src).ptr();
+    HRef<Type> const destType = typeOf(state, dest);
+    HRef<Type> const srcType = typeOf(state, src);
 
     if (!destType->isFlex.val()) { exit(EXIT_FAILURE); } // TODO: Proper nonflex error
     Bool const isBytesRef = destType->isBytes;
@@ -667,8 +662,7 @@ PrimopRes primopFlexClone(State* state) {
     ORef src = state->regs[firstArgReg];
     intptr_t const startS = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
     intptr_t const endS = Fixnum::fromUnchecked(state->regs[firstArgReg + 2]).val();
-    HRef<Type> typeRef = typeOf(state, src);
-    Type const* type = typeRef.ptr();
+    HRef<Type> type = typeOf(state, src);
 
     if (!type->isFlex.val()) { exit(EXIT_FAILURE); } // TODO: Proper nonflex error
 
@@ -683,13 +677,12 @@ PrimopRes primopFlexClone(State* state) {
 
     size_t const copyCount = end - start;
 
-    Object* dest = state->heap.tospace.tryAllocFlex(type, Fixnum{int64_t(copyCount)});
+    Object* dest = state->heap.tospace.tryAllocFlex(&*type, Fixnum{int64_t(copyCount)});
     if (mustCollect(dest)) {
         auto const srcG = state->pushRoot(&src);
-        auto const typeRefG = state->pushRoot(&typeRef);
+        auto const typeRefG = state->pushRoot(&type);
         collect(state);
-        type = typeRef.ptr();
-        dest = state->heap.tospace.allocFlexOrDie(type, Fixnum{int64_t(copyCount)});
+        dest = state->heap.tospace.allocFlexOrDie(&*type, Fixnum{int64_t(copyCount)});
     }
 
     auto const minSize = size_t(type->minSize.val());
@@ -949,11 +942,10 @@ PrimopRes primopArrayMutToString(State* state) {
     auto vs = HRef<ArrayMut>::fromUnchecked(state->regs[firstArgReg]);
     auto const vsG = state->pushRoot(&vs);
 
-    auto const cpCount = size_t(vs.ptr()->flexCount().val());
-    auto tmpRef = createByteArrayMut(state, Fixnum{int64_t(cpCount * 4)});
-    auto const tmpRefG = state->pushRoot(&tmpRef);
-    auto tmp = tmpRef.ptr();
-    auto const cps = vs.ptr()->flexData();
+    auto const cpCount = size_t(vs->flexCount().val());
+    auto tmp = createByteArrayMut(state, Fixnum{int64_t(cpCount * 4)});
+    auto const tmpRefG = state->pushRoot(&tmp);
+    auto const cps = vs->flexData();
     auto const tmpData = tmp->flexDataMut();
     ssize_t stringSize = 0;
     for (size_t i = 0; i < cpCount; ++i) {
@@ -967,7 +959,6 @@ PrimopRes primopArrayMutToString(State* state) {
     }
 
     String* const res = allocString(state, Fixnum{stringSize});
-    tmp = tmpRef.ptr(); // Post-GC reload
     memcpy(const_cast<uint8_t*>(res->flexData()), tmp->flexData(), size_t(stringSize));
 
     state->regs[retReg] = HRef{res};
@@ -979,8 +970,7 @@ PrimopRes primopStringIteratorPeek(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
 
-    StringIterator* const iter =
-        HRef<StringIterator>::fromUnchecked(state->regs[firstArgReg]).ptr();
+    auto const iter = HRef<StringIterator>::fromUnchecked(state->regs[firstArgReg]);
 
     ORef const maybeString = iter->string;
     if (!isString(state, maybeString)) {
@@ -992,7 +982,7 @@ PrimopRes primopStringIteratorPeek(State* state) {
         return primopError(state, createTypeError(state, state->types.fixnum, maybeString));
     }
     ssize_t const byteIdx = Fixnum::fromUnchecked(maybeByteIdx).val();
-    ssize_t const cap = string.ptr()->flexCount().val();
+    ssize_t const cap = string->flexCount().val();
 
     if (byteIdx >= cap) {
         state->regs[retReg] = state->singletons.end;
@@ -1001,7 +991,7 @@ PrimopRes primopStringIteratorPeek(State* state) {
 
     int32_t maybeCp;
     [[maybe_unused]] ssize_t cpWidth =
-        utf8proc_iterate(string.ptr()->flexData() + byteIdx, cap, &maybeCp);
+        utf8proc_iterate(string->flexData() + byteIdx, cap, &maybeCp);
     assert(cpWidth > 0); // Strings should always have been created from valid UTF-8
     auto const cp = uint32_t(maybeCp);
 
@@ -1015,8 +1005,7 @@ PrimopRes primopStringIteratorNext(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
 
-    StringIterator* const iter =
-        HRef<StringIterator>::fromUnchecked(state->regs[firstArgReg]).ptr();
+    auto const iter = HRef<StringIterator>::fromUnchecked(state->regs[firstArgReg]);
 
     ORef const maybeString = iter->string;
     if (!isString(state, maybeString)) {
@@ -1028,7 +1017,7 @@ PrimopRes primopStringIteratorNext(State* state) {
         return primopError(state, createTypeError(state, state->types.fixnum, maybeString));
     }
     ssize_t const byteIdx = Fixnum::fromUnchecked(maybeByteIdx).val();
-    ssize_t const cap = string.ptr()->flexCount().val();
+    ssize_t const cap = string->flexCount().val();
 
     if (byteIdx >= cap) {
         state->regs[retReg] = state->singletons.end;
@@ -1036,7 +1025,7 @@ PrimopRes primopStringIteratorNext(State* state) {
     }
 
     int32_t maybeCp;
-    ssize_t cpWidth = utf8proc_iterate(string.ptr()->flexData() + byteIdx, cap, &maybeCp);
+    ssize_t cpWidth = utf8proc_iterate(string->flexData() + byteIdx, cap, &maybeCp);
     assert(cpWidth > 0); // Strings should always have been created from valid UTF-8
     auto const cp = uint32_t(maybeCp);
 
@@ -1063,9 +1052,9 @@ PrimopRes primopFileExists(State* state) {
     auto const filename = HRef<String>::fromUnchecked(state->regs[firstArgReg]);
 
     // TODO: Avoid copy (with null termination of String?):
-    size_t const byteCount = filename.ptr()->str().len;
+    size_t const byteCount = filename->str().len;
     char* const cFilename = static_cast<char*>(malloc(byteCount + 1));
-    memcpy(cFilename, filename.ptr()->str().data, byteCount);
+    memcpy(cFilename, filename->str().data, byteCount);
     cFilename[byteCount] = '\0';
 
     state->regs[retReg] = Bool{access(cFilename, F_OK) == 0};
@@ -1096,7 +1085,7 @@ PrimopRes primopClosePort(State* state) {
 
     auto const port = HRef<InputFile>::fromUnchecked(state->regs[firstArgReg]);
 
-    port.ptr()->file.close();
+    port->file.close();
 
     return PrimopRes::CONTINUE; // Implicitly returns `port`
 }
@@ -1107,7 +1096,7 @@ PrimopRes primopPeekChar(State* state) {
 
     auto const port = HRef<InputFile>::fromUnchecked(state->regs[firstArgReg]);
 
-    auto const maybeCp = port.ptr()->file.peec();
+    auto const maybeCp = port->file.peec();
     if (maybeCp == EOF) {
         state->regs[retReg] = state->singletons.end;
         return PrimopRes::CONTINUE;
@@ -1125,7 +1114,7 @@ PrimopRes primopReadChar(State* state) {
 
     auto const port = HRef<InputFile>::fromUnchecked(state->regs[firstArgReg]);
 
-    auto const maybeCp = port.ptr()->file.getc();
+    auto const maybeCp = port->file.getc();
     if (maybeCp == EOF) {
         state->regs[retReg] = state->singletons.end;
         return PrimopRes::CONTINUE;
@@ -1165,7 +1154,7 @@ PrimopRes primopWriteString(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
 
-    String const* const str = HRef<String>::fromUnchecked(state->regs[firstArgReg]).ptr();
+    auto const str = HRef<String>::fromUnchecked(state->regs[firstArgReg]);
 
     // TODO: Avoid POSIX format spec extension:
     printf("%.*s", int(str->flexCount().val()), str->flexData());

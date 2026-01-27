@@ -14,10 +14,10 @@ Var* tryCreateUnboundVar(Semispace* semispace, Type const* varType, HRef<Unbound
 }
 
 HRef<Var> createUnboundVar(State* state) {
-    Var* ptr = (Var*)state->heap.tospace.tryAlloc(state->types.var.ptr());
+    Var* ptr = (Var*)state->heap.tospace.tryAlloc(&*state->types.var);
     if (mustCollect(ptr)) {
         collect(state);
-        ptr = (Var*)state->heap.tospace.allocOrDie(state->types.var.ptr());
+        ptr = (Var*)state->heap.tospace.allocOrDie(&*state->types.var);
     }
 
     *ptr = Var{.val = state->singletons.unbound, .macroCategory = False};
@@ -25,16 +25,15 @@ HRef<Var> createUnboundVar(State* state) {
     return HRef<Var>(ptr);
 }
 
-FindVarRes findVar(HRef<Namespace> nsRef, HRef<Symbol> name) {
-    Namespace const* ns = nsRef.ptr();
-    ORef const* keys = ns->keys.ptr()->flexDataMut();
-    size_t const h = (uintptr_t)name.ptr()->hash.val();
+FindVarRes findVar(HRef<Namespace> ns, HRef<Symbol> name) {
+    ORef const* keys = ns->keys->flexDataMut();
+    size_t const h = (uintptr_t)name->hash.val();
 
-    size_t const maxIdx = (uint64_t)ns->keys.ptr()->flexCount().val() - 1;
+    size_t const maxIdx = (uint64_t)ns->keys->flexCount().val() - 1;
     for (size_t collisions = 0, i = h & maxIdx;; ++collisions, i = (i + collisions) & maxIdx) {
         ORef const k = keys[i];
         if (eq(k, name)) {
-            HRef<Var> const var = HRef<Var>::fromUnchecked(ns->vals.ptr()->flexDataMut()[i]);
+            HRef<Var> const var = HRef<Var>::fromUnchecked(ns->vals->flexDataMut()[i]);
             return FindVarRes{.type = FindVarRes::NS_FOUND_VAR, .var = var};
         } else if (eq(k, Default)) {
             return FindVarRes{.type = FindVarRes::NS_FOUND_VAR_DEST_IDX, .destIndex = i};
@@ -43,21 +42,21 @@ FindVarRes findVar(HRef<Namespace> nsRef, HRef<Symbol> name) {
 }
 
 void rehashNamespace(State* state, HRef<Namespace> const* nsHandle) {
-    size_t const oldCap = (uint64_t)nsHandle->ptr()->keys.ptr()->flexCount().val();
+    size_t const oldCap = (uint64_t)(*nsHandle)->keys->flexCount().val();
     size_t const newCap = oldCap << 1;
     HRef<ArrayMut> newKeysRef = createArrayMut(state, Fixnum((intptr_t)newCap)); // May GC
     auto const newKeysRefG = state->pushRoot(&newKeysRef);
     HRef<ArrayMut> const newValsRef = createArrayMut(state, Fixnum((intptr_t)newCap)); // May GC
 
-    Namespace* const ns = nsHandle->ptr();
-    ORef* const oldKeys = ns->keys.ptr()->flexDataMut();
-    ORef* const oldVals = ns->vals.ptr()->flexDataMut();
-    ORef* const newKeys = newKeysRef.ptr()->flexDataMut();
-    ORef* const newVals = newValsRef.ptr()->flexDataMut();
+    HRef<Namespace> const ns = *nsHandle;
+    ORef* const oldKeys = ns->keys->flexDataMut();
+    ORef* const oldVals = ns->vals->flexDataMut();
+    ORef* const newKeys = newKeysRef->flexDataMut();
+    ORef* const newVals = newValsRef->flexDataMut();
     for (size_t i = 0; i < oldCap; ++i) {
         ORef const k = oldKeys[i];
         if (!eq(k, Default)) {
-            size_t const h = (uint64_t)HRef<Symbol>::fromUnchecked(k).ptr()->hash.val();
+            size_t const h = (uint64_t)HRef<Symbol>::fromUnchecked(k)->hash.val();
 
             size_t const maxIndex = newCap - 1;
             for (size_t collisions = 0, j = h & maxIndex;;
@@ -77,30 +76,28 @@ void rehashNamespace(State* state, HRef<Namespace> const* nsHandle) {
     ns->vals = newValsRef;
 }
 
-HRef<Var> getVar(State* state, HRef<Namespace> nsRef, HRef<Symbol> name) {
-    FindVarRes findRes = findVar(nsRef, name);
+HRef<Var> getVar(State* state, HRef<Namespace> ns, HRef<Symbol> name) {
+    FindVarRes findRes = findVar(ns, name);
     switch (findRes.type) {
     case FindVarRes::NS_FOUND_VAR: return findRes.var;
 
     case FindVarRes::NS_FOUND_VAR_DEST_IDX: {
-        Namespace* ns = nsRef.ptr();
         size_t const newCount = (uintptr_t)ns->count.val() + 1;
-        size_t const cap = (uint64_t)ns->keys.ptr()->flexCount().val();
+        size_t const cap = (uint64_t)ns->keys->flexCount().val();
 
-        auto const nsRefG = state->pushRoot(&nsRef);
+        auto const nsRefG = state->pushRoot(&ns);
         auto const nameG = state->pushRoot(&name);
 
         if (newCount > cap >> 1) {
-            rehashNamespace(state, &nsRef); // May GC
+            rehashNamespace(state, &ns); // May GC
         }
 
         HRef<Var> const var = createUnboundVar(state); // May GC
 
-        ns = nsRef.ptr();
-        findRes = findVar(nsRef, name);
+        findRes = findVar(ns, name);
         assert(findRes.type == FindVarRes::NS_FOUND_VAR_DEST_IDX);
-        ns->keys.ptr()->flexDataMut()[findRes.destIndex] = name;
-        ns->vals.ptr()->flexDataMut()[findRes.destIndex] = var;
+        ns->keys->flexDataMut()[findRes.destIndex] = name;
+        ns->vals->flexDataMut()[findRes.destIndex] = var;
         ns->count = Fixnum((intptr_t)newCount);
 
         return var;

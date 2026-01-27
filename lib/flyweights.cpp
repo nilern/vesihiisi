@@ -26,11 +26,11 @@ void SymbolTable::prune() {
 
 HRef<Symbol> createUninternedSymbol(State* state, Fixnum hash, Str name) {
     Symbol* ptr = (Symbol*)state->heap.tospace.tryAllocFlex(
-        state->types.symbol.ptr(), Fixnum((intptr_t)name.len));
+        &*state->types.symbol, Fixnum((intptr_t)name.len));
     if (mustCollect(ptr)) {
         collect(state);
         ptr = (Symbol*)state->heap.tospace.allocFlexOrDie(
-            state->types.symbol.ptr(), Fixnum((intptr_t)name.len));
+            &*state->types.symbol, Fixnum((intptr_t)name.len));
     }
 
     ptr->hash = hash;
@@ -41,16 +41,16 @@ HRef<Symbol> createUninternedSymbol(State* state, Fixnum hash, Str name) {
 
 HRef<Symbol> createUninternedSymbolFromHeaped(State* state, Fixnum hash, HRef<String> name) {
     Symbol* ptr = (Symbol*)state->heap.tospace.tryAllocFlex(
-        state->types.symbol.ptr(), name.ptr()->flexCount());
+        &*state->types.symbol, name->flexCount());
     if (mustCollect(ptr)) {
         auto const nameG = state->pushRoot(&name);
         collect(state);
         ptr = (Symbol*)state->heap.tospace.allocFlexOrDie(
-            state->types.symbol.ptr(), name.ptr()->flexCount());
+            &*state->types.symbol, name->flexCount());
     }
 
     ptr->hash = hash;
-    memcpy((char*)ptr->flexData(), name.ptr()->flexData(), size_t(name.ptr()->flexCount().val()));
+    memcpy((char*)ptr->flexData(), name->flexData(), size_t(name->flexCount().val()));
 
     return HRef(ptr);
 }
@@ -68,9 +68,8 @@ SymbolTable::IndexOfRes SymbolTable::indexOf(Fixnum hash, Str name) const {
 
         if (isHeaped(*entry)) {
             HRef<Symbol> const symbol = HRef<Symbol>::fromUnchecked(*entry);
-            Symbol const* const symbolPtr = symbol.ptr();
-            if (eq(symbolPtr->hash, hash)
-                && strEq(symbol.ptr()->name(), name)
+            if (eq(symbol->hash, hash)
+                && strEq(symbol->name(), name)
             ) {
                 return IndexOfRes{i, true};
             }
@@ -104,7 +103,7 @@ HRef<Symbol> SymbolTable::createFromHeapedAtUnchecked(
     size_t const capacity = cap;
     if (capacity / 2 < newCount) {
         rehash();
-        i = indexOf(hash, name.ptr()->str()).index;
+        i = indexOf(hash, name->str()).index;
     }
 
     HRef<Symbol> const symbol = createUninternedSymbolFromHeaped(state, hash, name);
@@ -123,7 +122,7 @@ void SymbolTable::rehash() {
     for (size_t i = 0; i < oldCap; ++i) {
         ORef const v = entries[i];
         if (isHeaped(v)) {
-            size_t const h = (uintptr_t)HRef<Symbol>::fromUnchecked(v).ptr()->hash.val();
+            size_t const h = (uintptr_t)HRef<Symbol>::fromUnchecked(v)->hash.val();
 
             size_t const maxIndex = newCap - 1;
             for (size_t collisions = 0, j = h & maxIndex;;
@@ -159,7 +158,7 @@ HRef<Symbol> intern(State* state, Str name) {
 
 // TODO: DRY wrt. `intern`
 HRef<Symbol> internHeaped(State* state, HRef<String> name) {
-    Str const nameStr = name.ptr()->str();
+    Str const nameStr = name->str();
     Fixnum const hash = hashStr(nameStr);
 
     SymbolTable::IndexOfRes ires = state->symbols.indexOf(hash, nameStr);
@@ -181,20 +180,17 @@ void Specializations::prune() {
     for (size_t i = 0; i < cap; ++i) {
         ORef* const v = &entries[i];
         if (isHeaped(*v)) {
-            Object* const fwdPtr = HRef<Object>::fromUnchecked(*v).ptr()->tryForwarded();
+            Object* const fwdPtr = HRef<Object>::fromUnchecked(*v)->tryForwarded();
             *v = fwdPtr ? HRef<Object>(fwdPtr) : Tombstone;
         }
     }
 }
 
 // Is `method` the specialization of `generic` with `types`?
-bool isSpecialized(HRef<Method> methodRef, HRef<Method> genericRef, HRef<ArrayMut> typesRef) {
-    Method const* const method = methodRef.ptr();
-    Method const* const generic = genericRef.ptr();
-
+bool isSpecialized(HRef<Method> method, HRef<Method> generic, HRef<ArrayMut> typesRef) {
     if (!eq(method->code, generic->code)) { return false; }
 
-    ORef const* const types = typesRef.ptr()->flexData();
+    ORef const* const types = typesRef->flexData();
     size_t const arity = (uint64_t)generic->flexCount().val();
     for (size_t i = 0, typeIdx = 0; i < arity; ++i) {
         ORef const maybeType = generic->domain()[i];
@@ -208,43 +204,40 @@ bool isSpecialized(HRef<Method> methodRef, HRef<Method> genericRef, HRef<ArrayMu
 }
 
 Fixnum hashSpecialization(HRef<Method> generic, HRef<ArrayMut> typesRef) {
-    uintptr_t hash = (uintptr_t)generic.ptr()->hash.val();
+    uintptr_t hash = (uintptr_t)generic->hash.val();
 
-    Slice<ORef const> const typesSlice = typesRef.ptr()->items();
+    Slice<ORef const> const typesSlice = typesRef->items();
     size_t const typeCount = typesSlice.count;
     for (size_t i = 0; i < typeCount; ++i) {
-        Type const* const type = HRef<Type>::fromUnchecked(typesSlice[i]).ptr();
+        auto const type = HRef<Type>::fromUnchecked(typesSlice[i]);
         hash = hashCombine(hash, (uintptr_t)type->hash.val());
     }
 
     return Fixnum((intptr_t)hash);
 }
 
-Fixnum hashSpecialized(HRef<Method> specialization) { return specialization.ptr()->hash; }
+Fixnum hashSpecialized(HRef<Method> specialization) { return specialization->hash; }
 
 HRef<Method> createSpecialization(
-    State* state, HRef<Method> genericRef, HRef<ArrayMut> typesRef, Fixnum hash
+    State* state, HRef<Method> generic, HRef<ArrayMut> typesRef, Fixnum hash
 ) {
-    Method const* generic = genericRef.ptr();
     Fixnum const fxArity = generic->flexCount();
-    auto const genericRefG = state->pushRoot(&genericRef);
+    auto const genericRefG = state->pushRoot(&generic);
     auto const typesRefG = state->pushRoot(&typesRef);
-    HRef<Method> const specializationRef =
+    HRef<Method> const specialization =
         allocBytecodeMethod(state, HRef<ByteArray>::fromUnchecked(generic->code),
                             HRef<ArrayMut>::fromUnchecked(generic->consts), fxArity,
                             generic->hasVarArg, hash, generic->maybeName, generic->maybeFilenames,
                             generic->maybeSrcByteIdxs);
-    Method* const specialization = specializationRef.ptr();
 
-    generic = genericRef.ptr(); // Reload after potential GC
-    ORef const* const types = typesRef.ptr()->flexData();
+    ORef const* const types = typesRef->flexData();
     size_t const arity = (uintptr_t)fxArity.val();
     for (size_t i = 0, typeIdx = 0; i < arity; ++i) {
         ORef const maybeType = generic->domain()[i];
         specialization->domain()[i] = isHeaped(maybeType) ? maybeType : types[typeIdx++];
     }
 
-    return specializationRef;
+    return specialization;
 }
 
 Specializations::IndexOfRes Specializations::indexOf(
@@ -318,10 +311,10 @@ void Specializations::rehash() {
 
 HRef<Method> specialize(State* state, HRef<Method> generic, HRef<ArrayMut> types) {
 #ifndef NDEBUG
-    assert(isHeaped(generic.ptr()->code));
+    assert(isHeaped(generic->code));
 
     {
-        Slice<ORef const> const typesSlice = types.ptr()->items();
+        Slice<ORef const> const typesSlice = types->items();
         size_t const typeCount = typesSlice.count;
         for (size_t i = 0; i < typeCount; ++i) {
             assert(isType(state, typesSlice[i]));

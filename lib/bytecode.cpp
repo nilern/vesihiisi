@@ -27,9 +27,9 @@ void ZLoc::print(State const& state, FILE *dest) const {
     if (isString(&state, maybeFilename)) {
         auto const filename = HRef<String>::fromUnchecked(maybeFilename);
 
-        printFilename(dest, filename.ptr()->str());
+        printFilename(dest, filename->str());
 
-        Maybe<Coord> const maybePos = fileByteIdxToCoord(filename.ptr()->str(), srcByteIdx);
+        Maybe<Coord> const maybePos = fileByteIdxToCoord(filename->str(), srcByteIdx);
         if (maybePos.hasVal) {
             putc(':', dest);
             maybePos.val.print(dest);
@@ -58,7 +58,7 @@ public:
         state{t_state}, method{t_method}, pc{t_pc}
     {
         assert(isHeaped(t_method->code));
-        codeSlice = HRef<ByteArray>::fromUnchecked(t_method->code).ptr()->items();
+        codeSlice = HRef<ByteArray>::fromUnchecked(t_method->code)->items();
     }
 
     Disassembler(State const* t_state, Method const* t_method)
@@ -102,9 +102,9 @@ private:
         Disassembler{t_state, t_method}, srcByteIdx{0}, filenameIdx{0}, srcByteIdxsIdx{0}
     {
         assert(isa(state, state->types.array, method->maybeFilenames));
-        filenames = HRef<Array>::fromUnchecked(method->maybeFilenames).ptr()->items();
+        filenames = HRef<Array>::fromUnchecked(method->maybeFilenames)->items();
         assert(isa(state, state->types.byteArray, method->maybeSrcByteIdxs));
-        srcByteIdxs = HRef<ByteArray>::fromUnchecked(method->maybeSrcByteIdxs).ptr()->items();
+        srcByteIdxs = HRef<ByteArray>::fromUnchecked(method->maybeSrcByteIdxs)->items();
 
         maybeFilename = filenames[filenameIdx++];
         assert(isa(state, state->types.fixnum, filenames[filenameIdx]));
@@ -185,7 +185,7 @@ void Disassembler::disassembleRegBits(FILE* dest) {
 void disassembleNested(State const* state, FILE* dest, HRef<Method> methodRef, size_t nesting);
 
 void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t codeByte) {
-    ORef const* const consts = HRef<ArrayMut>::fromUnchecked(method->consts).ptr()->flexData();
+    ORef const* const consts = HRef<ArrayMut>::fromUnchecked(method->consts)->flexData();
 
     for (size_t j = 0; j < nesting; ++j) { fputc('\t', dest); }
     fprintf(dest, "[%lu]:\t", pc - 1);
@@ -330,27 +330,27 @@ void disassembleNested(State const* state, FILE* dest, HRef<Method> methodRef, s
     for (size_t j = 0; j < nesting; ++j) { putc('\t', dest); }
     putc('(', dest);
 
-    ORef const maybeName = methodRef.ptr()->maybeName;
+    ORef const maybeName = methodRef->maybeName;
     if (isa(state, state->types.symbol, maybeName)) {
         print(state, dest, maybeName);
     } else {
         putc('_', dest);
     }
 
-    size_t const arity = (uint64_t)methodRef.ptr()->flexCount().val();
+    size_t const arity = (uint64_t)methodRef->flexCount().val();
     for (size_t i = 0; i < arity; ++i) {
         putc(' ', dest);
-        if (i == arity - 1 && methodRef.ptr()->hasVarArg.val()) {
+        if (i == arity - 1 && methodRef->hasVarArg.val()) {
             fputs(". ", dest);
         }
 
-        print(state, dest, methodRef.ptr()->domain()[i]);
+        print(state, dest, methodRef->domain()[i]);
     }
 
     fputs(")\n", dest); // TODO: Source location for function (not the same as for instr #1!)
 
-    if (isHeaped(methodRef.ptr()->code)) {
-        Disassembler* const dis = Disassembler::create(state, methodRef.ptr());
+    if (isHeaped(methodRef->code)) {
+        Disassembler* const dis = Disassembler::create(state, &*methodRef);
 
         {
             ORef maybeFilename = Default;
@@ -370,7 +370,7 @@ void disassembleNested(State const* state, FILE* dest, HRef<Method> methodRef, s
                         if (isString(state, maybeFilename)) {
                             auto const filename = HRef<String>::fromUnchecked(maybeFilename);
 
-                            printFilename(dest, filename.ptr()->str());
+                            printFilename(dest, filename->str());
                         } else {
                             fputs("???", dest);
                         }
@@ -402,25 +402,22 @@ void disassemble(State const* state, FILE* dest, HRef<Method> methodRef) {
     disassembleNested(state, dest, methodRef, 0);
 }
 
-void disassembleInstrAt(State const* state, FILE* dest, HRef<Method> methodRef, size_t pc) {
-    assert(isHeaped(methodRef.ptr()->code));
+void disassembleInstrAt(State const* state, FILE* dest, HRef<Method> method, size_t pc) {
+    assert(isHeaped(method->code));
 
-    Method const* const method =methodRef.ptr();
-    auto dis = Disassembler{state, method, pc + 1};
-    uint8_t const codeByte = HRef<ByteArray>::fromUnchecked(method->code).ptr()->items()[pc];
+    auto dis = Disassembler{state, &*method, pc + 1};
+    uint8_t const codeByte = HRef<ByteArray>::fromUnchecked(method->code)->items()[pc];
     dis.disassembleNestedInstr(dest, 0, codeByte);
 }
 
-Maybe<ZLoc> locatePc(HRef<Method> methodRef, size_t pc) {
-    Method const* const method = methodRef.ptr();
-
+Maybe<ZLoc> locatePc(HRef<Method> method, size_t pc) {
     if (!isHeaped(method->maybeFilenames) || !isHeaped(method->maybeSrcByteIdxs)) {
         return Maybe<ZLoc>{};
     }
     Slice<ORef const> const filenames =
-        HRef<Array>::fromUnchecked(method->maybeFilenames).ptr()->items();
+        HRef<Array>::fromUnchecked(method->maybeFilenames)->items();
     Slice<uint8_t const> const srcByteIdxs =
-        HRef<ByteArray>::fromUnchecked(method->maybeSrcByteIdxs).ptr()->items();
+        HRef<ByteArray>::fromUnchecked(method->maybeSrcByteIdxs)->items();
 
     ORef maybeFilename = Default;
     for (size_t i = 1, filenameStartPc = 0; i < filenames.count; i += 2) {

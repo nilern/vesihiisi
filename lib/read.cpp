@@ -224,9 +224,8 @@ ReadExprTailRes readListTail(State* state, Parser* parser) {
     if (!carRes.success) { return ReadExprTailRes{carRes.err}; }
     {
         Vshs_LocatedORef const locVal = carRes.val;
-        Pair* const pairPtr = pair.ptr();
-        pairPtr->car = locVal.val;
-        pairPtr->maybeLoc = locVal.loc;
+        pair->car = locVal.val;
+        pair->maybeLoc = locVal.loc;
     }
 
     TRY(ReadExprTailRes, skipWhitespace(parser)); // <ws>
@@ -234,7 +233,7 @@ ReadExprTailRes readListTail(State* state, Parser* parser) {
     // (<expr> <ws>)* ; FOLLOW = {')', '.'}
     for (int c; !((c = TRY(ReadExprTailRes, parser->peek())) == ')' || c == '.');) {
         HRef<Pair> const newPair = allocPair(state);
-        pair.ptr()->cdr = newPair;
+        pair->cdr = newPair;
         pair = newPair;
 
         // <expr>
@@ -242,9 +241,8 @@ ReadExprTailRes readListTail(State* state, Parser* parser) {
         if (!carRes.success) { return ReadExprTailRes{carRes.err}; }
         {
             Vshs_LocatedORef const locVal = carRes.val;
-            Pair* const pairPtr = pair.ptr();
-            pairPtr->car = locVal.val;
-            pairPtr->maybeLoc = locVal.loc;
+            pair->car = locVal.val;
+            pair->maybeLoc = locVal.loc;
         }
 
         TRY(ReadExprTailRes, skipWhitespace(parser)); // <ws>
@@ -254,7 +252,7 @@ ReadExprTailRes readListTail(State* state, Parser* parser) {
     case ')': {
         parser->skipUnchecked(1); // ')'
 
-        pair.ptr()->cdr = state->singletons.emptyList;
+        pair->cdr = state->singletons.emptyList;
     }; break;
 
     case '.': {
@@ -263,7 +261,7 @@ ReadExprTailRes readListTail(State* state, Parser* parser) {
         // <expr>
         ReadExprRes const improperRes = readExpr(state, parser);
         if (!improperRes.success) { return ReadExprTailRes{carRes.err}; }
-        pair.ptr()->cdr = improperRes.val.val;
+        pair->cdr = improperRes.val.val;
 
         TRY(ReadExprTailRes, skipWhitespace(parser)); // <ws>
 

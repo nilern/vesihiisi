@@ -107,7 +107,7 @@ Object* Heap::tryShallowCopy(void* ptr) {
            || allocatedInSemispace(&fromspace, ptr)); // GC
 
     Header const header = *((Header*)ptr - 1);
-    Type const* const type = header.type().ptr(); // OPTIMIZE: tag-untag
+    Type const* const type = &*header.type(); // OPTIMIZE: tag-untag
 
     Object* copy = nullptr;
     size_t size = (uintptr_t)type->minSize.val();
@@ -153,8 +153,8 @@ ORef Heap::mark(ORef oref) {
 
 [[nodiscard]]
 Header Heap::markHeader(Header header) {
-    HRef<Type> const type = HRef<Type>::fromUnchecked(mark(header.type()));
-    return Header{type.ptr()};
+    auto const type = HRef<Type>::fromUnchecked(mark(header.type()));
+    return Header{&*type};
 }
 
 [[nodiscard]]
@@ -181,7 +181,7 @@ void* Heap::scanObj(void* const scan) {
 
     Header* const header = (Header*)scan - 1;
     *header = markHeader(*header);
-    Type* const type = header->type().ptr();
+    Type* const type = &*header->type(); // OPTIMIZE: tag-untag
 
     char* byteScan = (char*)scan;
 

@@ -766,11 +766,11 @@ void assertStateInTospace(State const* state) {
         assert(allocatedInSemispace(&state->heap.tospace, state->typesArray[i].ptr()));
     }
 
-    for (HRef<Symbol> const& symbol : state->symbols) {
+    for ([[maybe_unused]] HRef<Symbol> const& symbol : state->symbols) {
         assert(allocatedInSemispace(&state->heap.tospace, symbol.ptr()));
     }
 
-    for (HRef<Method> const& specialization : state->specializations) {
+    for ([[maybe_unused]] HRef<Method> const& specialization : state->specializations) {
         assert(allocatedInSemispace(&state->heap.tospace, specialization.ptr()));
     }
 

@@ -4,7 +4,19 @@
 
 namespace {
 
-Specializations newSpecializations(void);
+// Symbols
+// =================================================================================================
+
+SymbolTable newSymbolTable();
+
+void freeSymbols(SymbolTable* symbols);
+
+void pruneSymbols(SymbolTable* symbols);
+
+// Specializations
+// =================================================================================================
+
+Specializations newSpecializations();
 
 void freeSpecializations(Specializations* specializations);
 

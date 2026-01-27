@@ -2,6 +2,7 @@
 
 #include "../state.hpp"
 #include "../bytecode.hpp"
+#include "../print.hpp"
 #include "tocps.hpp"
 #include "liveness.hpp"
 #include "pureloads.hpp"

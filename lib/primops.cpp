@@ -9,6 +9,7 @@
 #include "../deps/utf8proc/utf8proc.h"
 
 #include "util/util.hpp"
+#include "print.hpp"
 #include "bytecode.hpp"
 #include "dispatch.hpp"
 #include "namespace.hpp"

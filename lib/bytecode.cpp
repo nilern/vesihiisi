@@ -2,6 +2,8 @@
 
 #include <stddef.h>
 
+#include "print.hpp"
+
 namespace {
 
 int64_t decodeVarInt(size_t* i, Slice<uint8_t const> src) {

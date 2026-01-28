@@ -45,7 +45,7 @@
       (_ (when maybe-thunk
            (let ((v (maybe-thunk))
                  (ks (box-get stash)))
-             (box-set! stash (cdr ks))
+             (box-set! stash (cdr ks)) ; FIXME: What is `ks` is `()`?
              (continue (car ks) v)))))
   (define reset*
     (fn (thunk)
@@ -107,6 +107,37 @@
                                (fn (v) v)))))
         (loop (fn () (reset* thunk)))))))
 
+(define <prompt> (make-slots-type '<prompt> 0 #f))
+(define prompt (fn () (make <prompt>)))
+
+(define continuable? (fn (exn) #f)) ; TODO: Continuable
+
+(define with-exception-handler
+  (fn (thunk handle-exception)
+    (try-yield-at* 'catch
+                   thunk
+                   (fn (p exn k)
+                     (if (continuable? exn)
+                       (k (handle-exception exn))
+                       (do (handle-exception exn)
+                           (yield-to p exn))))
+                   (fn (v) v))))
+
+(define try*
+  (fn (thunk handle-exception)
+    (let ((p (prompt)))
+      (try-yield-at* p
+                     (fn ()
+                       (with-exception-handler
+                         thunk
+                         (fn (exn) (yield-to p (handle-exception exn))))) ; OPTIMIZE: `abort-to`
+                     (fn (_ v __) v)
+                     (fn (v) v)))))
+
+(define throw (fn (exn) (yield-to 'catch exn)))
+
+(set! *error-handler* throw)
+
 ;;; Self-Hosting REPL
 ;;; ================================================================================================
 
@@ -118,11 +149,14 @@
                  (flush-output-port)
                  (let ((line (read-line input)))
                    (if (not (identical? line end))
-                     (let ((loc&expr (read* (make <string-iterator> line 0)
-                                            (make <source-location> "REPL" 0)))
-                           (v (eval (array-get loc&expr 1) (array-get loc&expr 0) debug)))
-                       (write v)
-                       (newline)
+                     (do
+                       (try*
+                         (fn ()
+                           (let ((loc&expr (read* (make <string-iterator> line 0)
+                                                  (make <source-location> "REPL" 0)))
+                                 (v (eval (array-get loc&expr 1) (array-get loc&expr 0) debug)))
+                             (write v) (newline)))
+                         (fn (exn) (write-string "Uncaught exception: ") (write exn) (newline)))
                        (loop))
                      end))))
         (loop)))))

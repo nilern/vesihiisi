@@ -29,6 +29,8 @@ But what we do have going on in various states of completeness:
 * Multimethods
 	- But with no overriding whatsoever (methods must have zero overlap)
 * First-class multi-shot continuations
+* Delimited continuations (with winders)
+	- Exception handling built on these
 * Unhygienic macros
     - Including symbol/identifier macros
 * UTF-8 ports and strings
@@ -36,11 +38,9 @@ But what we do have going on in various states of completeness:
 
 ## Immediate Goals
 
-* Exception handling (the REPL still crashes on your first mistake)
 * Stack traces
 * Standard library (roughly to par with R4RS Scheme)
 * Complete reader
-* Delimited continuations (with winders)
 * Safe for space
     - Seems like the only thing remaining is not tracing dead roots in VM
       registers

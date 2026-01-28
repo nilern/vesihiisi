@@ -95,11 +95,12 @@
   (fn ()
     (let ((config (parse-argv))
           (filename (config-filename config)))
-      (if (config-help config)
-        (let ()
-          (print-help config)
-          (exit #t))
-        (let ()
+      (when (config-help config)
+        (print-help config)
+        (exit #t))
+
+      (try*
+        (fn ()
           (if filename
             (load filename (config-debug config))
             (if (config-from-stdin config)
@@ -114,7 +115,10 @@
             (let ()
               (repl standard-input (config-debug config))
               (newline))
-            #f)))
+            #f))
+        (fn (exn)
+          (write-string "Uncaught exception: ") (write exn) (newline)
+          (exit #f)))
 
       (exit #t))))
 

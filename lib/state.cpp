@@ -11,6 +11,7 @@
 #include "object.hpp"
 #include "heap.hpp"
 #include "flyweights.hpp"
+#include "namespace.hpp"
 #include "primops.hpp"
 
 namespace {
@@ -538,8 +539,9 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
     if (!exit) { return nullptr; }
     exit->pc = Fixnum{0l};
 
-    Var* const errorHandler = tryCreateUnboundVar(&heap.tospace, varType, HRef(unbound));
-    if (!errorHandler) { return nullptr; }
+    // HACK:
+    Var* const errorHandlerPlaceholder = tryCreateUnboundVar(&heap.tospace, varType, HRef(unbound));
+    if (!errorHandlerPlaceholder) { return nullptr; }
 
     HRef<Namespace> ns = HRef<Namespace>::fromUnchecked(ORef{0}); // HACK;
     if (!tryCreateNamespace(&heap.tospace, &ns, nsType, arrayType)) { return nullptr; }
@@ -589,7 +591,7 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
             .ofType = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
         },
         ns,
-        HRef{errorHandler}
+        HRef{errorHandlerPlaceholder}
     };
     if (!dest) { return nullptr; }
 
@@ -607,14 +609,19 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
         }
     }
 
-    HRef<Method> const abortMethod =
-        createPrimopMethod(dest, strLit("abort"), (MethodCode)primopAbort,
-                           false, Fixnum{1l}, dest->types.any);
-    HRef<Closure> abortClosure = allocClosure(dest, abortMethod, Fixnum{0l});
-    auto const abortClosureG = dest->pushRoot(&abortClosure);
-    dest->errorHandler->val = abortClosure;
+    {
+        HRef<Method> const abortMethod =
+            createPrimopMethod(dest, strLit("abort"), (MethodCode)primopAbort,
+                               false, Fixnum{1l}, dest->types.any);
+        HRef<Closure> abortClosure = allocClosure(dest, abortMethod, Fixnum{0l});
 
-    installPrimordial(dest, strLit("*error-handler*"), abortClosure);
+        Str const errorHandlerName = strLit("*error-handler*");
+        installPrimordial(dest, errorHandlerName, abortClosure);
+        HRef<Symbol> const errorHandlerSym = intern(dest, errorHandlerName); // Cannot (alloc => GC)
+        FindVarRes const varRes = findVar(dest->ns, errorHandlerSym);
+        assert(varRes.type == FindVarRes::NS_FOUND_VAR);
+        dest->errorHandler = varRes.var;
+    }
     installPrimordial(dest, strLit("end"), dest->singletons.end);
     installPrimordial(dest, strLit("standard-input"), createInputFile(dest, UTF8InputFile{stdin}));
     installPrimordial(dest, strLit("*vshs-home*"),

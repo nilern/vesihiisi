@@ -25,6 +25,7 @@ typedef struct RegEnv {
     IRName* regVars;
     size_t maxVarCount; // `.index` of max allocated register + 1
     size_t varCap;
+    IRName retName;
 } RegEnv;
 
 void freeRegEnv(RegEnv* env) {
@@ -32,11 +33,17 @@ void freeRegEnv(RegEnv* env) {
     free(env->regVars);
 }
 
-RegEnv newRegEnv(Compiler const* compiler) {
+RegEnv newRegEnv(Compiler const* compiler, IRName retName) {
     size_t const varCap = compiler->nameSyms.count();
     MaybeReg* const varRegs = (MaybeReg*)calloc(varCap, sizeof *varRegs);
     IRName* const regVars = (IRName*)calloc(REG_COUNT, sizeof *regVars);
-    return RegEnv{.varRegs = varRegs, .regVars = regVars, .maxVarCount = 0, .varCap = varCap};
+    return RegEnv{
+        .varRegs = varRegs,
+        .regVars = regVars,
+        .maxVarCount = 0,
+        .varCap = varCap,
+        .retName = retName
+    };
 }
 
 RegEnv cloneRegEnv(RegEnv const* env) {
@@ -51,7 +58,8 @@ RegEnv cloneRegEnv(RegEnv const* env) {
         .varRegs = varRegs,
         .regVars = regVars,
         .maxVarCount = env->maxVarCount,
-        .varCap = varCap
+        .varCap = varCap,
+        .retName = env->retName
     };
 }
 
@@ -112,7 +120,7 @@ void regEnvAdd(RegEnv* env, IRName var, Reg reg) {
 }
 
 Reg allocVarReg(RegEnv* env, IRName var) {
-    for (size_t i = 0; i < REG_COUNT; ++i) {
+    for (size_t i = /*reserve "stack pointer":*/ retContReg + 1; i < REG_COUNT; ++i) {
         Reg const reg = Reg{(uint8_t)i};
 
         // Will be true when `i == env->maxVarCount` at the latest:
@@ -377,7 +385,7 @@ AVec<Move> regAllocCallArgs(Compiler* compiler, RegEnv* env, Args* args) {
 
     size_t const arity = args->count;
     for (size_t i = 0; i < arity; ++i) {
-        Reg const reg = Reg{(uint8_t)(2 + i)};
+        Reg const reg = Reg{(uint8_t)(firstArgReg + i)};
 
         Maybe<Move> const maybeMove = allocTransferArgReg(env, args->names[i], reg, true);
         if (maybeMove.hasVal) {
@@ -395,7 +403,7 @@ void regAllocTailcallArgs(
 ) {
     size_t const arity = args->count;
     for (size_t i = 0; i < arity; ++i) {
-        Reg const reg = Reg{(uint8_t)(2 + i)};
+        Reg const reg = Reg{(uint8_t)(firstArgReg + i)};
 
         Maybe<Move> const maybeMove = allocTransferArgReg(env, args->names[i], reg, false);
         if (maybeMove.hasVal) {
@@ -425,9 +433,31 @@ RegEnv regAllocTransfer(
         IRBlock* const retBlock = fn->blocks[retLabel.blockIndex];
         regAllocBlock(compiler, savedEnvs, visited, fn, retBlock);
 
-        RegEnv env = newRegEnv(compiler);
+        IRName const succRetName = [&](){
+            assert(savedEnvs->vals[retLabel.blockIndex].hasVal);
+            RegEnv const* const succEnv = &savedEnvs->vals[retLabel.blockIndex].val;
+            return succEnv->retName;
+        }();
+        IRName const retName = [&](){
+            // OPTIMIZE:
+            size_t i = 0;
+            for (BitSetIter it = newBitSetIter(&retBlock->liveIns);; ++i) {
+                Maybe<size_t> const maybeIdx = bitSetIterNext(&it);
+                if (!maybeIdx.hasVal) { break; }
+                IRName const spillName = IRName{maybeIdx.val};
+
+                if (irNameEq(spillName, succRetName)) {
+                    return call->closes.names[i];
+                }
+            }
+
+            assert(false); // Unreachable
+        }();
+        RegEnv env = newRegEnv(compiler, retName);
 
         call->callee = regAllocCallee(&env, call->callee);
+
+        regEnvAdd(&env, retName, Reg{retContReg});
 
         AVec<Move> moves = regAllocCallArgs(compiler, &env, &call->args);
 
@@ -453,7 +483,7 @@ RegEnv regAllocTransfer(
     case IRTransfer::TAILCALL: {
         Tailcall* const tailcall = &transfer->tailcall;
 
-        RegEnv env = newRegEnv(compiler);
+        RegEnv env = newRegEnv(compiler, tailcall->retFrame);
 
         tailcall->callee = regAllocCallee(&env, tailcall->callee);
 
@@ -489,6 +519,7 @@ RegEnv regAllocTransfer(
 
     case IRTransfer::GOTO: {
         IRGoto* const gotoo = &transfer->gotoo;
+        size_t const arity = gotoo->args.count;
 
         IRLabel const destLabel = gotoo->dest;
         assert(destLabel.blockIndex < fn->blockCount);
@@ -497,8 +528,14 @@ RegEnv regAllocTransfer(
 
         assert(savedEnvs->vals[destLabel.blockIndex].hasVal);
         RegEnv env = cloneRegEnv(&savedEnvs->vals[destLabel.blockIndex].val);
+        for (size_t i = 0; i < arity; ++i) {
+            Reg const paramReg = Reg{uint8_t(destBlock->params[i].index)}; // HACK?
+            if (irNameEq(env.regVars[paramReg.index], env.retName)) {
+                env.retName = gotoo->args.names[i];
+                break;
+            }
+        }
 
-        size_t const arity = gotoo->args.count;
         assert(destBlock->paramCount == arity);
         for (size_t i = 0; i < arity; ++i) {
             Reg const paramReg = Reg{(uint8_t)destBlock->params[i].index};
@@ -521,7 +558,7 @@ RegEnv regAllocTransfer(
     case IRTransfer::RETURN: {
         IRReturn* const ret = &transfer->ret;
 
-        RegEnv env = newRegEnv(compiler);
+        RegEnv env = newRegEnv(compiler, ret->callee);
 
         Reg const calleeReg = Reg{retContReg};
         [[maybe_unused]] Maybe<Move> const maybeContMove =
@@ -574,8 +611,14 @@ void regAllocStmt(Compiler* compiler, RegEnv* env, Stmts* outputStmts, IRStmt* s
 
     case IRStmt::CLOVER: {
         Clover* const clover = &stmt->clover;
+
+        IRName const name = clover->name;
         clover->name = IRName{deallocVarReg(env, clover->name).index};
         clover->closure = IRName{getVarReg(env, clover->closure).index};
+
+        if (irNameEq(name, env->retName)) {
+            env->retName = clover->origName;
+        }
 
         pushIRStmt(compiler, outputStmts, *stmt);
     }; break;
@@ -703,7 +746,7 @@ void regAllocStmt(Compiler* compiler, RegEnv* env, Stmts* outputStmts, IRStmt* s
 
 void regAllocParams(Compiler* compiler, RegEnv* env, Stmts* outputStmts, IRBlock* block) {
     if (block->callers.count == 0) { // Escaping block:
-        RegEnv goal = newRegEnv(compiler);
+        RegEnv goal = newRegEnv(compiler, env->retName);
 
         size_t paramIdx = 0;
 
@@ -770,11 +813,7 @@ void regAllocBlock(
     reverse(outputStmts.vals, outputStmts.count, sizeof *outputStmts.vals, swapStmts);
     block->stmts = outputStmts;
 
-    if (block->callers.count == 0) {
-        freeRegEnv(&env);
-    } else {
-        saveRegEnv(savedEnvs, label, env);
-    }
+    saveRegEnv(savedEnvs, label, env);
 }
 
 void regAllocFn(Compiler* compiler, IRFn* fn) {

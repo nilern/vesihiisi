@@ -614,7 +614,7 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
     auto const abortClosureG = dest->pushRoot(&abortClosure);
     dest->errorHandler->val = abortClosure;
 
-    installPrimordial(dest, strLit("abort"), abortClosure);
+    installPrimordial(dest, strLit("*error-handler*"), abortClosure);
     installPrimordial(dest, strLit("end"), dest->singletons.end);
     installPrimordial(dest, strLit("standard-input"), createInputFile(dest, UTF8InputFile{stdin}));
     installPrimordial(dest, strLit("*vshs-home*"),

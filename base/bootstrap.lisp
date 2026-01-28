@@ -150,7 +150,7 @@
 
 (define error
   (fn (name . irritants)
-    (abort (cons name (array!->list irritants))))) ; HACK: Using a list as error
+    (*error-handler* (cons name (array!->list irritants))))) ; HACK: Using a list as error
 
 (define fn-method (fn ((: f <fn>)) (slot-get f 0)))
 

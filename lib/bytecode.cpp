@@ -76,6 +76,14 @@ public:
         }
     }
 
+    size_t getPc() const { return pc; }
+
+    void skipDisplacement();
+
+    void skipRegBits();
+
+    void skipOperands(uint8_t codeByte);
+
     void disassembleReg(FILE* dest, uint8_t reg);
 
     void disassembleDisplacement(FILE* dest);
@@ -156,6 +164,102 @@ Disassembler* Disassembler::create(State const* state, Method const* method) {
         return new LocDisassembler{state, method};
     } else {
         return new Disassembler{state, method};
+    }
+}
+
+void Disassembler::skipDisplacement() {
+    next();
+    next();
+}
+
+void Disassembler::skipRegBits() {
+    uint8_t const byteCount = next().val.codeByte;
+    for (size_t j = 0; j < byteCount; ++j) { next(); }
+}
+
+void Disassembler::skipOperands(uint8_t codeByte) {
+    switch ((Opcode)codeByte) { // FIXME: Handle invalid instruction
+    case OP_MOVE: {
+        next();
+        next();
+    }; break;
+
+    case OP_SWAP: {
+        next();
+        next();
+    }; break;
+
+    case OP_DEFINE: {
+        next();
+        next();
+    }; break;
+
+    case OP_GLOBAL_SET: {
+        next();
+        next();
+    }; break;
+
+    case OP_GLOBAL: {
+        next();
+        next();
+    }; break;
+
+    case OP_CONST: {
+        next();
+        next();
+    }; break;
+
+    case OP_SPECIALIZE: {
+        next();
+        next();
+        skipRegBits();
+    }; break;
+
+    case OP_KNOT: {
+        next();
+    }; break;
+
+    case OP_KNOT_INIT: {
+        next();
+        next();
+    }; break;
+
+    case OP_KNOT_GET: {
+        next();
+        next();
+    }; break;
+
+    case OP_BRF: {
+        next();
+        skipDisplacement();
+    }; break;
+
+    case OP_BR: {
+        skipDisplacement();
+    }; break;
+
+    case OP_RET: break;
+
+    case OP_CLOSURE: {
+        next();
+        next();
+        skipRegBits();
+    }; break;
+
+    case OP_CLOVER: {
+        next();
+        next();
+        next();
+    }; break;
+
+    case OP_CALL: {
+        next();
+        skipRegBits();
+    }; break;
+
+    case OP_TAILCALL: {
+        next();
+    }; break;
     }
 }
 
@@ -441,6 +545,30 @@ Maybe<ZLoc> locatePc(HRef<Method> method, size_t pc) {
     }
 
     return Maybe{ZLoc{maybeFilename, size_t(srcByteIdx)}};
+}
+
+Maybe<ZLoc> locateCallerPc(State const* state, HRef<Method> method, size_t retPc) {
+    if (isHeaped(method->code)) {
+        Disassembler* const dis = Disassembler::create(state, &*method);
+
+        {
+            Maybe<Disassembler::MaybeLocatedCodeByte> prev;
+            for (Maybe<Disassembler::MaybeLocatedCodeByte> res; (res = dis->next()).hasVal;) {
+                auto const mlocOp = res.val;
+
+                if (dis->getPc() >= retPc) {
+                    delete dis;
+                    return prev.hasVal ? prev.val.loc : Maybe<ZLoc>{};
+                }
+
+                dis->skipOperands(mlocOp.codeByte);
+            }
+        }
+
+        delete dis;
+    }
+
+    return Maybe<ZLoc>{};
 }
 
 } // namespace

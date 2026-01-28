@@ -51,8 +51,8 @@ PrimopRes primopAbort(State* state) {
     if (isMethod(state, anyCaller)) {
         auto const caller = HRef<Method>::fromUnchecked(anyCaller);
 
-        size_t const callerPc = uint64_t(cont->pc.val()); // FIXME: This is return PC, not *call* PC
-        auto const maybeLoc = locatePc(caller, callerPc);
+        size_t const retPc = uint64_t(cont->pc.val());
+        auto const maybeCallLoc = locateCallerPc(state, caller, retPc);
 
         ORef const maybeCallerName = caller->maybeName;
         if (isSymbol(state, maybeCallerName)) {
@@ -62,7 +62,7 @@ PrimopRes primopAbort(State* state) {
 
         fputs(" at ", stderr);
 
-        if (maybeLoc.hasVal) { maybeLoc.val.print(*state, stderr); }
+        if (maybeCallLoc.hasVal) { maybeCallLoc.val.print(*state, stderr); }
     } else {
         // FIXME: Exit continuation should have a method that inherits toplevel thunk location to
         // make this work.

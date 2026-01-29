@@ -39,24 +39,30 @@
 
 (define fold-left
   (fn (f acc xs)
-    (if (identical? xs ())
-      acc
-      (fold-left f (f (car xs) acc) (cdr xs)))))
+    (letfn (((fold-left acc xs)
+               (if (identical? xs ())
+                 acc
+                 (fold-left (f (car xs) acc) (cdr xs)))))
+      (fold-left acc xs))))
 
 ;; Like `fold-left`, but if `xs` is improper folds the tail with one last `f` call.
 (define fold-left*
   (fn (f acc xs)
-    (if (isa? <pair> xs)
-      (fold-left* f (f (car xs) acc) (cdr xs))
-      (if (identical? xs ())
-        acc
-        (f xs acc)))))
+    (letfn (((fold-left* acc xs)
+               (if (isa? <pair> xs)
+                 (fold-left* (f (car xs) acc) (cdr xs))
+                 (if (identical? xs ())
+                   acc
+                   (f xs acc)))))
+      (fold-left* acc xs))))
 
 (define fold-right
   (fn (f xs acc)
-    (if (identical? xs ())
-      acc
-      (f (car xs) (fold-right f (cdr xs) acc)))))
+    (letfn (((fold-right xs acc)
+               (if (identical? xs ())
+                 acc
+                 (f (car xs) (fold-right (cdr xs) acc)))))
+      (fold-right xs acc))))
 
 (define map
   (fn (f xs)
@@ -91,9 +97,11 @@
 
 (define drop
   (fn (n xs)
-    (if (identical? n 0)
-      xs
-      (drop (fx- n 1) (cdr xs)))))
+    (letfn (((drop n xs)
+               (if (identical? n 0)
+                 xs
+                 (drop (fx- n 1) (cdr xs)))))
+      (drop n xs))))
 
 (define nth (fn (xs i) (car (drop i xs))))
 

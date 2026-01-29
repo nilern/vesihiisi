@@ -451,7 +451,7 @@ RegEnv regAllocTransfer(
                 }
             }
 
-            assert(false); // Unreachable
+            return invalidIRName; // Unreachable
         }();
         RegEnv env = newRegEnv(compiler, retName);
 

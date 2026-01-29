@@ -102,6 +102,7 @@ struct State {
         ORef singletonsArray[BOOTSTRAP_SINGLETON_COUNT];
     };
 
+    HRef<Var> debug;
     HRef<Var> errorHandler;
 
     std::vector<ORef*> shadowstack;
@@ -113,7 +114,7 @@ struct State {
 
 private:
     State(Heap heap, NamedTypes types, NamedSingletons singletons, HRef<Namespace> ns,
-          HRef<Var> errorHandler);
+          HRef<Var> debug, HRef<Var> errorHandler);
 };
 
 // OPTIMIZE: If we already know that `isHeaped(v)`, the calls to `isa` -> `typeOf` recheck that

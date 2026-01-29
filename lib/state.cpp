@@ -113,6 +113,7 @@ void markRoots(State* state) {
         state->singletonsArray[i] = state->heap.mark(state->singletonsArray[i]);
     }
 
+    state->debug = HRef<Var>::fromUnchecked(state->heap.mark(state->debug));
     state->errorHandler = HRef<Var>::fromUnchecked(state->heap.mark(state->errorHandler));
 
     for (ORef* const rootHandle : state->shadowstack) {
@@ -419,6 +420,23 @@ void nameType(State* state, HRef<Type> type, Str name) {
     type->name = nameSym;
 }
 
+bool debugFromArgv(int argc, char const* argv[]) {
+    char const* arg;
+    for (int i = 1; i < argc && *(arg = argv[i]) == '-'; ++i) {
+        ++arg;
+
+        if (*arg != '\0' && *arg != '-') { // Short flag(s)
+            for (; *arg != '\0'; ++arg) {
+                if (*arg == 'd') {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
 HRef<Array> createCommandLine(State* state, int argc, char const* argv[]) {
     HRef<Array> commandLine = createArray(state, Fixnum{int64_t(argc)});
     auto const commandLineG = state->pushRoot(&commandLine);
@@ -435,7 +453,7 @@ HRef<Array> createCommandLine(State* state, int argc, char const* argv[]) {
 
 State::State(
     Heap heap, NamedTypes types, NamedSingletons singletons, HRef<Namespace> ns,
-    HRef<Var> errorHandler
+    HRef<Var> t_debug, HRef<Var> t_errorHandler
 ) :
     method{Default},
     code{nullptr},
@@ -453,7 +471,8 @@ State::State(
     specializations{},
 
     singletons{singletons},
-    errorHandler{errorHandler},
+    debug{t_debug},
+    errorHandler{t_errorHandler},
 
     shadowstack{}
 {}
@@ -540,6 +559,8 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
     exit->pc = Fixnum{0l};
 
     // HACK:
+    Var* const debugPlaceholder = tryCreateUnboundVar(&heap.tospace, varType, HRef(unbound));
+    if (!debugPlaceholder) { return nullptr; }
     Var* const errorHandlerPlaceholder = tryCreateUnboundVar(&heap.tospace, varType, HRef(unbound));
     if (!errorHandlerPlaceholder) { return nullptr; }
 
@@ -591,6 +612,7 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
             .ofType = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
         },
         ns,
+        HRef{debugPlaceholder},
         HRef{errorHandlerPlaceholder}
     };
     if (!dest) { return nullptr; }
@@ -609,6 +631,14 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
         }
     }
 
+    {
+        Str const debugName = strLit("*vm-debug*");
+        installPrimordial(dest, debugName, Bool{debugFromArgv(argc, argv)});
+        HRef<Symbol> const debugNameSym = intern(dest, debugName); // Cannot (alloc => GC)
+        FindVarRes const varRes = findVar(dest->ns, debugNameSym);
+        assert(varRes.type == FindVarRes::NS_FOUND_VAR);
+        dest->errorHandler = varRes.var;
+    }
     {
         HRef<Method> const abortMethod =
             createPrimopMethod(dest, strLit("abort"), (MethodCode)primopAbort,
@@ -789,6 +819,7 @@ void assertStateInTospace(State const* state) {
         }
     }
 
+    assert(allocatedInSemispace(&state->heap.tospace, &*state->debug));
     assert(allocatedInSemispace(&state->heap.tospace, &*state->errorHandler));
 
     for (ORef* const v : state->shadowstack) {

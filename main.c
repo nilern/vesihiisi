@@ -99,6 +99,9 @@ typedef struct ParseArgvRes {
     ResTag tag;
 } ParseArgvRes;
 
+// TODO: Remove CLI as it is already actually running in Lisp and even `debug` is available in
+// `State`
+
 static void printCLIErr(FILE* dest, char const* argv[], CLIErr const* err) {
     switch (err->type) {
     case CLI_ERR_NONFLAG: {
@@ -134,7 +137,6 @@ static char const* const flagDescriptions[] = {
 };
 static_assert(countof(flagDescriptions) == countof(longFlagNames));
 
-// TODO: Reduce this to only determining debug mode as the CLI is now in Lisp:
 static ParseArgvRes parseArgv(int argc, char const* argv[static argc]) {
     CLIArgs config = {
         .name = argv[0],
@@ -308,8 +310,7 @@ int main(int argc, char const* argv[static argc]) {
     free(fchars);
 
     {
-        uint8_t rawSrc[] = "(load \"base/interpreter.lisp\" #t)";
-        rawSrc[31] = args.debug ? 't' : 'f'; // HACK
+        uint8_t rawSrc[] = "(load \"base/interpreter.lisp\" *vm-debug*)";
         Str src = {rawSrc, (sizeof rawSrc / sizeof *rawSrc) - 1};
         Parser* parser = createParser(state, src, replFilenameStr);
         pushFilenameRoot(state, parser);

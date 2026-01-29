@@ -1388,4 +1388,4 @@
       (let ((filename (resolve-path filename))) ; FIXME: Handle error
         (load (open-input-file filename) filename debug)))))
 
-(load "base/base.lisp" #t) ;; FIXME: `*vm-debug*` global here (and elsewhere)
+(load "base/base.lisp" *vm-debug*)

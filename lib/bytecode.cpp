@@ -562,6 +562,8 @@ Maybe<ZLoc> locateCallerPc(State const* state, HRef<Method> method, size_t retPc
                 }
 
                 dis->skipOperands(mlocOp.codeByte);
+
+                prev = res;
             }
         }
 

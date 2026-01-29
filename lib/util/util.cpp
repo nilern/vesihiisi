@@ -186,8 +186,7 @@ Maybe<Coord> fileByteIdxToCoord(Str filename, size_t byteIdx) {
 
     UTF8InputFile file;
     if (!UTF8InputFile::open(file, filename)) { return Maybe<Coord>{}; }
-    size_t i = 0;
-    for (/*size_t i = 0*/; i < byteIdx;) {
+    for (size_t i = 0; i < byteIdx;) {
         int32_t const maybeCp = file.getc();
         if (maybeCp == EOF) {
             // Surely if we got here the error is at the end of the file:

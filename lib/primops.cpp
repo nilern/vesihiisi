@@ -1240,6 +1240,27 @@ PrimopRes primopEval(State* state) {
     return PrimopRes::TAILCALL;
 }
 
+PrimopRes primopContinuationCallLoc(State* state) {
+    ORef const maybeErr = checkDomain(state);
+    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+
+    auto const cont = HRef<Continuation>::fromUnchecked(state->regs[firstArgReg]);
+
+    if (!isMethod(state, cont->method)) { exit(EXIT_FAILURE); } // TODO
+    auto const method = HRef<Method>::fromUnchecked(cont->method);
+    Maybe<ZLoc> const maybeLoc = locateCallerPc(state, method, size_t(cont->pc.val()));
+
+    state->regs[retReg] = [&]() -> ORef {
+        if (maybeLoc.hasVal && isString(state, maybeLoc.val.maybeFilename)) {
+            return createLoc(state, HRef<String>::fromUnchecked(maybeLoc.val.maybeFilename),
+                             Fixnum{int64_t(maybeLoc.val.srcByteIdx)});
+        } else {
+            return False;
+        }
+    }();
+    return PrimopRes::CONTINUE;
+}
+
 PrimopRes primopExit(State* state) {
     ORef const maybeErr = checkDomain(state);
     if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }

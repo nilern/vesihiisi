@@ -82,6 +82,7 @@ PrimopRes primopJiffiesPerSecond(State* state);
 // Reflection
 PrimopRes primopResolve(State* state);
 PrimopRes primopEval(State* state);
+PrimopRes primopContinuationCallLoc(State* state);
 
 // System Interface
 PrimopRes primopExit(State* state);

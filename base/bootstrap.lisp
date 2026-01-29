@@ -451,7 +451,9 @@
 (define fold
   (make-multimethod 'fold
     array-fold
-    string-fold))
+    string-fold
+    (fn (f acc (: vs <pair>)) (fold-left f acc vs))
+    (fn (f acc (: vs <empty-list>)) acc)))
 
 (define index-of
   (fn (vs v)

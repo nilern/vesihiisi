@@ -34,6 +34,114 @@
         (body (cddr form)))
     `(if ,condition (do ,@body) #f)))
 
+;;; Collections
+;;; ================================================================================================
+
+(define for-each (fn (f vs) (fold (fn (v _) (f v)) vs vs)))
+
+;;; I/O
+;;; ================================================================================================
+
+(define char-utf8-width
+  (fn (c)
+    (let ((codepoint (char->integer c)))
+      (if (fx< codepoint #x80)
+        1
+        (if (fx< codepoint #x800)
+          2
+          (if (fx< codepoint #x10000)
+            3
+            4))))))
+
+(define call-with-port
+  (fn (port f)
+    (let ((res (f port)))
+      (close-port port)
+      res)))
+
+(define call-with-input-file (fn (filename f) (call-with-port (open-input-file filename) f)))
+
+;;; Debug Info
+;;; ================================================================================================
+
+(define continuation-method (fn ((: continuation <continuation>)) (slot-get continuation 0)))
+
+(define method-name (fn ((: method <method>)) (slot-get method 5)))
+
+(define <file-coordinates> (make-slots-type '<file-coordinates> 2 #f))
+(define file-coordinates (fn (line column) (make <file-coordinates> line column)))
+(define file-coordinates-line (fn ((: coords <file-coordinates>)) (slot-get coords 0)))
+(define file-coordinates-column (fn ((: coords <file-coordinates>)) (slot-get coords 1)))
+
+(define display-file-coordinates
+  (fn (coords)
+    (write (file-coordinates-line coords))
+    (write-char #":") (write (file-coordinates-column coords))))
+
+;; OPTIMIZE: Very slow:
+(define try-source-location-coords
+  (fn (loc)
+    (let ((filename (source-location-filename loc))
+          (byte-idx (source-location-byte-index loc)))
+      (if (file-exists? filename)
+        (call-with-input-file filename
+          (fn (file)
+            (letfn (((loop line col i)
+                      (if (fx< i byte-idx)
+                        (let ((c (read-char file)))
+                          (if (not (identical? c end))
+                            (let ((i* (fx+ i (char-utf8-width c))))
+                              (if (identical? c #"\n")
+                                (loop (fx+ line 1) 1 i*)
+                                (loop line (fx+ col 1) i*)))
+                            (file-coordinates line col)))
+                        (file-coordinates line col))))
+              (loop 1 1 0))))
+        byte-idx))))
+
+(define continulet-trace
+  (fn (k)
+    (letfn (((trace k)
+               (let ((method (continuation-method k)))
+                 (if (isa? <method> method)
+                   (let ((name (let ((name (method-name method)))
+                                 (if (isa? <symbol> name) name #f)))
+                         (loc (continuation-call-loc k))
+                         (entry (if loc
+                                  (array name
+                                         (source-location-filename loc)
+                                         (try-source-location-coords loc))
+                                  (array name #f #f))))
+                     (cons entry (trace (flex-get k 0))))
+                   ()))))
+      (trace k))))
+
+(define display-trace-entry
+  (fn (entry)
+    (write-string "in ")
+    (let ((fn-name (array-get entry 0)))
+      (if fn-name
+        (write fn-name)
+        (write-string "???")))
+    (write-string " at ")
+    (let ((filename (array-get entry 1)))
+      (if filename
+        (write filename)
+        (write-string "???")))
+    (let ((coords (array-get entry 2)))
+      (when coords
+        (if (isa? <file-coordinates> coords)
+          (do (write-char #":")
+              (display-file-coordinates coords))
+          (do (write-string " byte ")
+              (write coords)))))))
+
+(define display-continulet-trace
+  (fn (trace)
+    (for-each (fn (entry) (display-trace-entry entry) (newline))
+              trace)
+    #t))
+
 ;;; Delimited Continuations
 ;;; ================================================================================================
 

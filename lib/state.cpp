@@ -730,6 +730,8 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
                   false, Fixnum{1l}, dest->types.symbol);
     installPrimop(dest, strLit("eval"), (MethodCode)primopEval,
                   false, Fixnum{3l}, dest->types.any, dest->types.loc, dest->types.booll);
+    installPrimop(dest, strLit("continuation-call-loc"), (MethodCode)primopContinuationCallLoc,
+                  false, Fixnum{1l}, dest->types.continuation);
     installPrimop(dest, strLit("exit"), (MethodCode)primopExit,
                   false, Fixnum{1l}, dest->types.any);
 

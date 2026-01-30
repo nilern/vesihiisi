@@ -118,6 +118,7 @@
             #f))
         (fn (exn)
           (write-string "Uncaught exception: ") (write exn) (newline)
+          (display-continuation-trace (current-continuation-trace))
           (exit #f)))
 
       (exit #t))))

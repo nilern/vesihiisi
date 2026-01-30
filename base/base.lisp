@@ -122,7 +122,7 @@
     (let ((fn-name (array-get entry 0)))
       (if fn-name
         (write fn-name)
-        (write-string "???")))
+        (write-string "#<fn>")))
     (write-string " at ")
     (let ((filename (array-get entry 1)))
       (if filename
@@ -178,7 +178,7 @@
            (let ((v (maybe-thunk))
                  (ks (box-get stash)))
              (box-set! stash (frame-next ks))
-             (continue (frame-continulet ks) (fn () v)))))
+             (continue (frame-continulet ks) v))))
 
       (unwind-to (fn (stash prompt)
                    (letfn (((unwind-to frame capture)
@@ -211,17 +211,17 @@
                                         (error 'prompt-not-set prompt)))))
                            (unwind-abort-to stash))))
       (take-subcont (fn (prompt f)
-                      ((call-with-current-continuation
-                         (fn (continulet)
-                           (let ((stash&stash-capture (unwind-to (box-get stash) prompt))
-                                 (stash* (array-get stash&stash-capture 0))
-                                 (on-yield (prompt-frame-on-yield stash*))
-                                 (_ (box-set! stash stash*))
-                                 (k (delimited-continuation continulet
-                                                            (array-get stash&stash-capture 1)
-                                                            prompt
-                                                            on-yield)))
-                             (continue (box-get trampoline) (f k))))))))
+                      (call-with-current-continuation
+                        (fn (continulet)
+                          (let ((stash&stash-capture (unwind-to (box-get stash) prompt))
+                                (stash* (array-get stash&stash-capture 0))
+                                (on-yield (prompt-frame-on-yield stash*))
+                                (_ (box-set! stash stash*))
+                                (k (delimited-continuation continulet
+                                                           (array-get stash&stash-capture 1)
+                                                           prompt
+                                                           on-yield)))
+                            (continue (box-get trampoline) (f k)))))))
 
       (rewind (fn (stash capture)
                 (letfn (((rewind stash capture)
@@ -242,19 +242,19 @@
                                stash))))
                   (rewind stash capture))))
       (push-subcont (fn (k thunk)
-                      ((call-with-current-continuation
-                         (fn (continulet)
-                           (let ((continulet* (slot-get k 0))
-                                 (stash-capture (slot-get k 1)))
-                                 ;; Prompt and handler of `k` ignored in favor of placeholders
-                             (box-set! stash (prompt-frame (box-get stash)
-                                                           continulet
-                                                           (prompt)       ; placeholder
-                                                           (fn (k v) v))) ; placeholder
-                             (box-set! stash (rewind (box-get stash) stash-capture))
-                             (continue continulet* thunk)))))))
+                      (call-with-current-continuation
+                        (fn (continulet)
+                          (let ((continulet* (slot-get k 0))
+                                (stash-capture (slot-get k 1)))
+                                ;; Prompt and handler of `k` ignored in favor of placeholders
+                            (box-set! stash (prompt-frame (box-get stash)
+                                                          continulet
+                                                          (prompt)       ; placeholder
+                                                          (fn (k v) v))) ; placeholder
+                            (box-set! stash (rewind (box-get stash) stash-capture))
+                            (continue continulet* thunk))))))
       (push-delim-subcont (fn (k thunk)
-                            ((call-with-current-continuation
+                            (call-with-current-continuation
                               (fn (k)
                                 (let ((continulet (slot-get k 0))
                                       (stash-capture (slot-get k 1))
@@ -265,7 +265,7 @@
                                                                 prompt
                                                                 on-yield))
                                   (box-set! stash (rewind (box-get stash) stash-capture))
-                                  (continue continulet thunk))))))))
+                                  (continue continulet thunk)))))))
   (define call-delimited-continuation (fn (k v) (push-subcont k (fn () v))))
 
   (define <prompt> (make-slots-type '<prompt> 0 #f))
@@ -285,7 +285,11 @@
         (fn (continulet)
           (box-set! stash (wind-frame (box-get stash) continulet initially finally))
           (continue (box-get trampoline)
-                    (fn () (initially) (thunk) (finally)))))))
+                    (fn ()
+                      (initially)
+                      (let ((res (thunk)))
+                        (finally)
+                        res)))))))
 
   (define call-at-prompt
     (fn (prompt thunk)
@@ -300,21 +304,85 @@
                     (fn (k)
                       (fn ()
                         (let ((on-yield (slot-get k 3)))
-                          (on-yield k v))))))))
+                          (on-yield k v)))))))
+  (define yield (fn (v) (yield-to default-prompt v)))
 
-(define yield (fn (v) (yield-to default-prompt v)))
+  (define stash-trace
+    (fn (stash)
+      (letfn (((trace frame)
+                 (if frame
+                   (let ((t (cons (continulet-trace (frame-continulet frame))
+                                  (trace (frame-next frame)))))
+                     (if (isa? <prompt-frame> frame)
+                       (cons (prompt-frame-prompt frame) t)
+                       t))
+                   ())))
+        (trace stash))))
+  (define continuation-trace
+    (fn (k)
+      (cons (continulet-trace (slot-get k 0))
+            (reverse (stash-trace (slot-get k 1))))))
+  (define current-continuation-trace
+    (fn ()
+      (call-with-current-continuation
+        (fn (continulet)
+          (cons (continulet-trace continulet)
+                (stash-trace (box-get stash)))))))
+  (define display-continuation-trace
+    (fn (trace)
+      (for-each (fn (entry)
+                  (if (if (isa? <pair> entry) #t (identical? entry ()))
+                    (display-continulet-trace entry)
+                    (do (write-string "on prompt ") (write entry) (newline))))
+                trace)
+      #t)))
+
+;;; Parameters
+;;; ================================================================================================
+
+(define <parameter> (make-slots-type '<parameter> 1 #f))
+(define parameter (fn (v) (make <parameter> v)))
+(define parameter-get (fn ((: parameter <parameter>)) (slot-get parameter 0)))
+(define parameter-set! (fn ((: parameter <parameter>) v) (slot-set! parameter 0 v)))
+
+(define-macro (parameterize _ form)
+  (let ((bindings (cadr form))
+        (body (cddr form)))
+    (letfn (((emit bindings)
+               (if (isa? <pair> bindings)
+                 (let ((binding (car bindings)))
+                   ; FIXME: Use `gensym` for these (when it becomes available):
+                   `(let ((__parameter ,(car binding))
+                          (__old-value (parameter-get __parameter))
+                          (__parameter-value ,(cadr binding)))
+                       (dynamic-wind (fn () (parameter-set! __parameter __parameter-value))
+                                     (fn () ,(emit (cdr bindings)))
+                                     (fn () (parameter-set! __parameter __old-value)))))
+                 `(do ,@body))))
+      (emit bindings))))
+
+;;; Exception Handling
+;;; ================================================================================================
 
 (define continuable? (fn (exn) #f)) ; TODO: Continuable
 
+(define *exception-handlers* (parameter ()))
+
 (define with-exception-handler
   (fn (thunk handle-exception)
-    (call-with-prompt 'catch
-                      thunk
-                      (fn (k exn)
-                        (if (continuable? exn)
-                          (call-delimited-continuation k (handle-exception exn))
-                          (do (handle-exception exn)
-                              (throw exn)))))))
+    (parameterize ((*exception-handlers* (cons handle-exception
+                                               (parameter-get *exception-handlers*))))
+      (thunk))))
+
+(define throw
+  (fn (exn)
+    (let ((exception-handlers (parameter-get *exception-handlers*))
+          (handle-exception (car exception-handlers)))
+      (parameterize ((*exception-handlers* (cdr exception-handlers))) ; HACK?
+        (if (continuable? exn)
+          (handle-exception exn)
+          (do (handle-exception exn)
+              (throw exn)))))))
 
 (define try*
   (fn (thunk handle-exception)
@@ -327,8 +395,6 @@
                               (let ((v (handle-exception exn)))
                                 (call-at-prompt p (fn () v))))))
                         (fn (k v) v))))) ; Unreachable
-
-(define throw (fn (exn) (yield-to 'catch exn)))
 
 (set! *error-handler* throw)
 
@@ -350,7 +416,9 @@
                                                   (make <source-location> "REPL" 0)))
                                  (v (eval (array-get loc&expr 1) (array-get loc&expr 0) debug)))
                              (write v) (newline)))
-                         (fn (exn) (write-string "Uncaught exception: ") (write exn) (newline)))
+                         (fn (exn)
+                           (write-string "Uncaught exception: ") (write exn) (newline)
+                           (display-continuation-trace (current-continuation-trace))))
                        (loop))
                      end))))
         (loop)))))

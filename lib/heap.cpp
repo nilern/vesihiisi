@@ -64,7 +64,7 @@ Object* Semispace::tryAlloc(Type const* type) {
 [[nodiscard]]
 Object* Semispace::allocOrDie(Type const* type) {
     Object* const res = tryAlloc(type);
-    if (!res) { exit(EXIT_FAILURE); } // OOM
+    if (!res) { PANIC("Out of memory"); }
     return res;
 }
 
@@ -97,7 +97,7 @@ Object* Semispace::tryAllocFlex(Type const* type, Fixnum length) {
 [[nodiscard]]
 Object* Semispace::allocFlexOrDie(Type const* type, Fixnum length) {
     Object* const res = tryAllocFlex(type, length);
-    if (!res) { exit(EXIT_FAILURE); } // OOM
+    if (!res) { PANIC("Out of memory"); }
     return res;
 }
 

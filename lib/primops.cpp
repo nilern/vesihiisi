@@ -20,7 +20,7 @@ namespace {
 ORef getErrorHandler(State const* state) {
     ORef const v = state->errorHandler->val;
     if (eq(v, state->singletons.unbound)) {
-        exit(EXIT_FAILURE); // FIXME
+        PANIC("Unbound *error-handler*");
     }
 
     return v;
@@ -447,7 +447,8 @@ PrimopRes primopMake(State* state) {
         if (!type->isBytes.val()) {
             size_t const fieldCount = (uint64_t)type->minSize.val() / sizeof(ORef);
             if (callArity - 1u != fieldCount) {
-                exit(EXIT_FAILURE); // TODO: Proper error (but not really an arity error!)
+                // TODO: Proper error (but not really an arity error!):
+                PANIC("Constructor arity %d != %lu", callArity - 1u, fieldCount);
             }
 
             {
@@ -457,14 +458,14 @@ PrimopRes primopMake(State* state) {
                 }
             }
         } else {
-            exit(EXIT_FAILURE); // TODO:
+            PANIC("TODO");
         }
 
         state->regs[retReg] = HRef<Object>(ptr);
 
         return PrimopRes::CONTINUE;
     } else {
-        exit(EXIT_FAILURE); // TODO
+        PANIC("TODO");
     }
 }
 
@@ -536,7 +537,7 @@ PrimopRes primopMakeFlex(State* state) {
 
         return PrimopRes::CONTINUE;
     } else {
-        exit(EXIT_FAILURE); // TODO
+        PANIC("TODO");
     }
 }
 
@@ -624,28 +625,28 @@ PrimopRes primopFlexCopy(State* state) {
     HRef<Type> const destType = typeOf(state, dest);
     HRef<Type> const srcType = typeOf(state, src);
 
-    if (!destType->isFlex.val()) { exit(EXIT_FAILURE); } // TODO: Proper nonflex error
+    if (!destType->isFlex.val()) { PANIC("TODO: Proper nonflex error"); }
     Bool const isBytesRef = destType->isBytes;
-    if (!srcType->isFlex.val()) { exit(EXIT_FAILURE); } // TODO: Proper nonflex error
+    if (!srcType->isFlex.val()) { PANIC("TODO: Proper nonflex error"); }
     if (!eq(srcType->isBytes, isBytesRef)) {
-        exit(EXIT_FAILURE); // TODO: Proper bytes-vs-slots error
+        PANIC("TODO: Proper bytes-vs-slots error");
     }
 
     size_t const destCount = (uintptr_t)uncheckedFlexHeader(dest)->count.val();
     size_t const srcCount = (uintptr_t)uncheckedFlexHeader(src)->count.val();
 
-    if (offsetS < 0) { exit(EXIT_FAILURE); } // Negative index TODO: Proper bounds error
+    if (offsetS < 0) { PANIC("TODO: Proper bounds error"); } // Negative index
     size_t const offset = (uintptr_t)offsetS;
-    if (offset > destCount) { exit(EXIT_FAILURE); } // TODO: Proper bounds error
-    if (startS < 0) { exit(EXIT_FAILURE); } // Negative index TODO: Proper bounds error
+    if (offset > destCount) { PANIC("TODO: Proper bounds error"); }
+    if (startS < 0) { PANIC("TODO: Proper bounds error"); } // Negative index
     size_t const start = (uintptr_t)startS;
-    if (start > srcCount) { exit(EXIT_FAILURE); } // TODO: Proper bounds error
-    if (endS < startS) { exit(EXIT_FAILURE); } // TODO: Proper bounds error
+    if (start > srcCount) { PANIC("TODO: Proper bounds error"); }
+    if (endS < startS) { PANIC("TODO: Proper bounds error"); }
     size_t const end = (uintptr_t)endS;
 
     size_t const copyCount = end - start;
     size_t const copySpace = destCount - offset;
-    if (copyCount > copySpace) { exit(EXIT_FAILURE); } // TODO: Proper bounds error
+    if (copyCount > copySpace) { PANIC("TODO: Proper bounds error"); }
 
     char* const destVals = (char*)uncheckedUntypedFlexPtrMut(dest);
     char const* const srcVals = (char const*)uncheckedUntypedFlexPtr(src);
@@ -664,16 +665,16 @@ PrimopRes primopFlexClone(State* state) {
     intptr_t const endS = Fixnum::fromUnchecked(state->regs[firstArgReg + 2]).val();
     HRef<Type> type = typeOf(state, src);
 
-    if (!type->isFlex.val()) { exit(EXIT_FAILURE); } // TODO: Proper nonflex error
+    if (!type->isFlex.val()) { PANIC("TODO: Proper nonflex error"); }
 
     size_t const srcCount = (uintptr_t)uncheckedFlexHeader(src)->count.val();
 
-    if (startS < 0) { exit(EXIT_FAILURE); } // Negative index TODO: Proper bounds error
+    if (startS < 0) { PANIC("TODO: Proper bounds error"); } // Negative index
     size_t const start = (uintptr_t)startS;
-    if (endS < 0) { exit(EXIT_FAILURE); } // Negative index TODO: Proper bounds error
+    if (endS < 0) { PANIC("TODO: Proper bounds error"); } // Negative index
     size_t const end = (uintptr_t)endS;
-    if (end > srcCount) { exit(EXIT_FAILURE); } // TODO: Proper bounds error
-    if (start > end) { exit(EXIT_FAILURE); } // TODO: Proper bounds error
+    if (end > srcCount) { PANIC("TODO: Proper bounds error"); }
+    if (start > end) { PANIC("TODO: Proper bounds error"); }
 
     size_t const copyCount = end - start;
 
@@ -1071,7 +1072,7 @@ PrimopRes primopOpenInputFile(State* state) {
 
     ORef port = Default;
     if (!InputFile::open(state, static_cast<HRef<InputFile>&>(port), filename)) {
-        exit(EXIT_FAILURE); // TODO
+        PANIC("TODO");
     }
 
     state->regs[retReg] = port;
@@ -1101,7 +1102,7 @@ PrimopRes primopPeekChar(State* state) {
         state->regs[retReg] = state->singletons.end;
         return PrimopRes::CONTINUE;
     }
-    if (maybeCp < EOF) { exit(EXIT_FAILURE); } // TODO
+    if (maybeCp < EOF) { PANIC("TODO"); }
     auto const cp = uint32_t(maybeCp);
 
     state->regs[retReg] = Char{cp};
@@ -1119,7 +1120,7 @@ PrimopRes primopReadChar(State* state) {
         state->regs[retReg] = state->singletons.end;
         return PrimopRes::CONTINUE;
     }
-    if (maybeCp < EOF) { exit(EXIT_FAILURE); } // TODO
+    if (maybeCp < EOF) { PANIC("TODO"); }
     auto const cp = uint32_t(maybeCp);
 
     state->regs[retReg] = Char{cp};
@@ -1231,7 +1232,7 @@ PrimopRes primopEval(State* state) {
     CompilationRes const compilationRes =
         compile(state, expr, HRef<Loc>::fromUnchecked(loc), debug);
     if (!compilationRes.success) {
-        exit(EXIT_FAILURE); // TODO
+        PANIC("TODO");
     }
     auto const method = compilationRes.val;
 
@@ -1246,7 +1247,7 @@ PrimopRes primopContinuationCallLoc(State* state) {
 
     auto const cont = HRef<Continuation>::fromUnchecked(state->regs[firstArgReg]);
 
-    if (!isMethod(state, cont->method)) { exit(EXIT_FAILURE); } // TODO
+    if (!isMethod(state, cont->method)) { PANIC("TODO"); }
     auto const method = HRef<Method>::fromUnchecked(cont->method);
     Maybe<ZLoc> const maybeLoc = locateCallerPc(state, method, size_t(cont->pc.val()));
 

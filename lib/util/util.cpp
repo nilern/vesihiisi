@@ -31,7 +31,6 @@ StringBuilder createStringBuilder(void) {
     size_t const cap = 2;
     
     auto data = (uint8_t*)malloc(cap);
-    if (!data) { exit(EXIT_FAILURE); }
     
     return StringBuilder{
         .data = data,
@@ -45,7 +44,6 @@ void stringBuilderPush(StringBuilder* s, uint8_t c) {
         size_t const newCap = s->cap + (s->cap >> 1); // cap * 1.5
         
         auto const data = (uint8_t*)realloc(s->data, newCap);
-        if (!data) { exit(EXIT_FAILURE); }
         
         s->data = data;
         s->cap = newCap;

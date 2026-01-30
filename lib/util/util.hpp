@@ -13,6 +13,12 @@
 #define CAT_IMPL(A, B) A##_##B
 #define CAT(A, B) CAT_IMPL(A, B)
 
+#define PANIC(fmt, ...) \
+    do { \
+        fprintf(stderr, "PANIC: %s:%d: " fmt "\n", __FILE__, __LINE__, ##__VA_ARGS__); \
+        exit(EXIT_FAILURE); \
+    } while (0)
+
 namespace {
 
 inline size_t requiredBitsize(int64_t n) {

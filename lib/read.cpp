@@ -134,7 +134,7 @@ public:
 
 namespace {
 
-bool cannotBe(int /*mc*/) { exit(EXIT_FAILURE); }
+bool cannotBe(int /*mc*/) { PANIC("Unreachable code reached"); }
 
 bool isSpace(int mc) { return (bool)isspace(mc); }
 

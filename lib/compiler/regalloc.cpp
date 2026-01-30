@@ -132,7 +132,8 @@ Reg allocVarReg(RegEnv* env, IRName var) {
         }
     }
 
-    exit(EXIT_FAILURE); // FIXME: Unlikely to happen, but still should fail just compile instead
+    // FIXME: Unlikely to happen, but still should fail just compile instead:
+    PANIC("Out of registers");
 }
 
 struct Move {
@@ -575,7 +576,7 @@ RegEnv regAllocTransfer(
         return env;
     }; break;
 
-    default: exit(EXIT_FAILURE); // Unreachable
+    default: PANIC("Unreachable code reached");
     }
 }
 

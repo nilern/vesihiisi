@@ -2,7 +2,7 @@ BASER_FLAGS := -Wall -Wextra -Wconversion -fno-strict-aliasing # -Wpedantic (usi
 BASE_CPP_FLAGS := -std=c++20 $(BASER_FLAGS) -Werror
 BASE_C_FLAGS := -std=c23 $(BASER_FLAGS) -Werror
 OPT_FLAGS := -O2 -DNDEBUG
-DEBUG_FLAGS := -g
+DEBUG_FLAGS := -Og -g
 SANITIZE_FLAGS := -fsanitize=address -fsanitize=leak -DGC_ALOT
 
 PROD_C_FLAGS := $(BASE_C_FLAGS) $(OPT_FLAGS)

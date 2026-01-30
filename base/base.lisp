@@ -145,102 +145,188 @@
 ;;; Delimited Continuations
 ;;; ================================================================================================
 
-;;; OPTIMIZE
+(define <delimited-continuation> (make-slots-type '<delimited-continuation> 4 #f))
+(define delimited-continuation
+  (fn (continulet stash-capture prompt on-yield)
+    (make <delimited-continuation> continulet stash-capture prompt on-yield)))
 
-(let ((stash (box ()))
+(let ((<prompt-frame> (make-slots-type '<prompt-frame> 4 #f))
+      (prompt-frame (fn (next continulet prompt on-yield)
+                      (make <prompt-frame> next continulet prompt on-yield)))
+      (prompt-frame-next (fn ((: frame <prompt-frame>)) (slot-get frame 0)))
+      (prompt-frame-continulet (fn ((: frame <prompt-frame>)) (slot-get frame 1)))
+      (prompt-frame-prompt (fn ((: frame <prompt-frame>)) (slot-get frame 2)))
+      (prompt-frame-on-yield (fn ((: frame <prompt-frame>)) (slot-get frame 3)))
+
+      (<wind-frame> (make-slots-type '<wind-frame> 4 #f))
+      (wind-frame (fn (next continulet initially finally)
+                    (make <wind-frame> next continulet initially finally)))
+      (wind-frame-next (fn ((: frame <wind-frame>)) (slot-get frame 0)))
+      (wind-frame-continulet (fn ((: frame <wind-frame>)) (slot-get frame 1)))
+      (wind-frame-initially (fn ((: frame <wind-frame>)) (slot-get frame 2)))
+      (wind-frame-finally (fn ((: frame <wind-frame>)) (slot-get frame 3)))
+
+      (frame-next (make-multimethod 'frame-next prompt-frame-next wind-frame-next))
+      (frame-continulet (make-multimethod 'frame-continulet
+                                          prompt-frame-continulet
+                                          wind-frame-continulet))
+
+      (stash (box #f))
       (trampoline (box #f))
       (maybe-thunk (call-with-current-continuation (fn (k) (box-set! trampoline k) #f)))
       (_ (when maybe-thunk
            (let ((v (maybe-thunk))
                  (ks (box-get stash)))
-             (box-set! stash (cdr ks)) ; FIXME: What is `ks` is `()`?
-             (continue (car ks) v)))))
-  (define reset*
-    (fn (thunk)
+             (box-set! stash (frame-next ks))
+             (continue (frame-continulet ks) (fn () v)))))
+
+      (unwind-to (fn (stash prompt)
+                   (letfn (((unwind-to frame capture)
+                              (if (isa? <prompt-frame> frame)
+                                (if (identical? (prompt-frame-prompt frame) prompt)
+                                  (array frame capture)
+                                  (unwind-to (prompt-frame-next frame)
+                                             (prompt-frame capture
+                                                           (prompt-frame-continulet frame)
+                                                           (prompt-frame-prompt frame)
+                                                           (prompt-frame-on-yield frame))))
+                                (if (isa? <wind-frame> frame)
+                                  (let ((finally (wind-frame-finally frame)))
+                                    (finally)
+                                    (unwind-to (wind-frame-next frame)
+                                               (wind-frame capture
+                                                           (wind-frame-continulet frame)
+                                                           (wind-frame-initially frame)
+                                                           finally)))
+                                  (error 'prompt-not-set prompt)))))
+                     (unwind-to stash #f))))
+      (unwind-abort-to (fn (stash prompt)
+                         (letfn (((unwind-abort-to frame)
+                                    (if (isa? <prompt-frame> frame)
+                                      (if (identical? (prompt-frame-prompt frame) prompt)
+                                        frame
+                                        (unwind-abort-to (prompt-frame-next frame)))
+                                      (if (isa? <wind-frame> frame)
+                                        (unwind-abort-to (wind-frame-next frame))
+                                        (error 'prompt-not-set prompt)))))
+                           (unwind-abort-to stash))))
+      (take-subcont (fn (prompt f)
+                      ((call-with-current-continuation
+                         (fn (continulet)
+                           (let ((stash&stash-capture (unwind-to (box-get stash) prompt))
+                                 (stash* (array-get stash&stash-capture 0))
+                                 (on-yield (prompt-frame-on-yield stash*))
+                                 (_ (box-set! stash stash*))
+                                 (k (delimited-continuation continulet
+                                                            (array-get stash&stash-capture 1)
+                                                            prompt
+                                                            on-yield)))
+                             (continue (box-get trampoline) (f k))))))))
+
+      (rewind (fn (stash capture)
+                (letfn (((rewind stash capture)
+                           (if (isa? <prompt-frame> capture)
+                             (rewind (prompt-frame stash
+                                                   (prompt-frame-continulet capture)
+                                                   (prompt-frame-prompt capture)
+                                                   (prompt-frame-on-yield capture))
+                                     (prompt-frame-next capture))
+                             (if (isa? <wind-frame> capture)
+                               (let ((initially (wind-frame-initially capture)))
+                                 (initially)
+                                 (rewind (wind-frame stash
+                                                     (wind-frame-continulet capture)
+                                                     initially
+                                                     (wind-frame-finally capture))
+                                         (wind-frame-next capture)))
+                               stash))))
+                  (rewind stash capture))))
+      (push-subcont (fn (k thunk)
+                      ((call-with-current-continuation
+                         (fn (continulet)
+                           (let ((continulet* (slot-get k 0))
+                                 (stash-capture (slot-get k 1)))
+                                 ;; Prompt and handler of `k` ignored in favor of placeholders
+                             (box-set! stash (prompt-frame (box-get stash)
+                                                           continulet
+                                                           (prompt)       ; placeholder
+                                                           (fn (k v) v))) ; placeholder
+                             (box-set! stash (rewind (box-get stash) stash-capture))
+                             (continue continulet* thunk)))))))
+      (push-delim-subcont (fn (k thunk)
+                            ((call-with-current-continuation
+                              (fn (k)
+                                (let ((continulet (slot-get k 0))
+                                      (stash-capture (slot-get k 1))
+                                      (prompt (slot-get k 2))
+                                      (on-yield (slot-get k 3)))
+                                  (box-set! stash (prompt-frame (box-get stash)
+                                                                continulet
+                                                                prompt
+                                                                on-yield))
+                                  (box-set! stash (rewind (box-get stash) stash-capture))
+                                  (continue continulet thunk))))))))
+  (define call-delimited-continuation (fn (k v) (push-subcont k (fn () v))))
+
+  (define <prompt> (make-slots-type '<prompt> 0 #f))
+  (define prompt (fn () (make <prompt>)))
+  (define default-prompt 'default-prompt)
+
+  (define call-with-prompt
+    (fn (prompt thunk on-yield)
       (call-with-current-continuation
-        (fn (k)
-          (box-set! stash (cons k (box-get stash)))
+        (fn (continulet)
+          (box-set! stash (prompt-frame (box-get stash) continulet prompt on-yield))
           (continue (box-get trampoline) thunk)))))
-
-  (define shift*
-    (fn (f)
-      (call-with-current-continuation
-        (fn (k)
-          (continue (box-get trampoline)
-                    (fn ()
-                      (f (fn (v)
-                           (call-with-current-continuation
-                             (fn (k*)
-                               (box-set! stash (cons k* (box-get stash)))
-                               (continue k v)))))))))))
-
-  (define <yield> (make-slots-type '<yield> 3 #f))
-  (define yield-prompt (fn ((: y <yield>)) (slot-get y 0)))
-  (define yield-value (fn ((: y <yield>)) (slot-get y 1)))
-  (define yield-continuation (fn ((: y <yield>)) (slot-get y 2)))
-
-  (define yield-to (fn (prompt v) (shift* (fn (k) (make <yield> prompt v k)))))
-  (define yield (fn (v) (yield-to (box #f) v)))
-
-  (define try-yield*
-    (fn (thunk on-yield finish)
-      (let ((v (thunk)))
-        (if (isa? <yield> v)
-          (on-yield (yield-prompt v) (yield-value v) (yield-continuation v))
-          (finish v)))))
-
-  (define try-yield-at*
-    (fn (prompt thunk on-yield finish)
-      (letfn (((loop thunk)
-                 (let ((v (thunk)))
-                   (try-yield* (fn () v)
-                               (fn (yield-prompt v k)
-                                 (if (identical? yield-prompt prompt)
-                                   (on-yield yield-prompt v k)
-                                   (let ((v* (yield-to yield-prompt v)))
-                                     (loop (fn () (k v*))))))
-                               (fn (v) v)))))
-        (loop (fn () (reset* thunk))))))
 
   (define dynamic-wind
     (fn (initially thunk finally)
-      (letfn (((loop thunk)
-                 (initially)
-                 (let ((v (thunk)))
-                   (finally)
-                   (try-yield* (fn () v)
-                               (fn (p v k)
-                                 (let ((v* (yield-to p v)))
-                                   (loop (fn () (k v*)))))
-                               (fn (v) v)))))
-        (loop (fn () (reset* thunk)))))))
+      (call-with-current-continuation
+        (fn (continulet)
+          (box-set! stash (wind-frame (box-get stash) continulet initially finally))
+          (continue (box-get trampoline)
+                    (fn () (initially) (thunk) (finally)))))))
 
-(define <prompt> (make-slots-type '<prompt> 0 #f))
-(define prompt (fn () (make <prompt>)))
+  (define call-at-prompt
+    (fn (prompt thunk)
+      (let ((stash* (unwind-abort-to (box-get stash) prompt))
+            (continulet (prompt-frame-continulet stash*)))
+        (box-set! stash (prompt-frame-next stash*))
+        (continue continulet thunk))))
+
+  (define yield-to
+    (fn (prompt v)
+      (take-subcont prompt
+                    (fn (k)
+                      (fn ()
+                        (let ((on-yield (slot-get k 3)))
+                          (on-yield k v))))))))
+
+(define yield (fn (v) (yield-to default-prompt v)))
 
 (define continuable? (fn (exn) #f)) ; TODO: Continuable
 
 (define with-exception-handler
   (fn (thunk handle-exception)
-    (try-yield-at* 'catch
-                   thunk
-                   (fn (p exn k)
-                     (if (continuable? exn)
-                       (k (handle-exception exn))
-                       (do (handle-exception exn)
-                           (yield-to p exn))))
-                   (fn (v) v))))
+    (call-with-prompt 'catch
+                      thunk
+                      (fn (k exn)
+                        (if (continuable? exn)
+                          (call-delimited-continuation k (handle-exception exn))
+                          (do (handle-exception exn)
+                              (throw exn)))))))
 
 (define try*
   (fn (thunk handle-exception)
     (let ((p (prompt)))
-      (try-yield-at* p
-                     (fn ()
-                       (with-exception-handler
-                         thunk
-                         (fn (exn) (yield-to p (handle-exception exn))))) ; OPTIMIZE: `abort-to`
-                     (fn (_ v __) v)
-                     (fn (v) v)))))
+      (call-with-prompt p
+                        (fn ()
+                          (with-exception-handler
+                            thunk
+                            (fn (exn)
+                              (let ((v (handle-exception exn)))
+                                (call-at-prompt p (fn () v))))))
+                        (fn (k v) v))))) ; Unreachable
 
 (define throw (fn (exn) (yield-to 'catch exn)))
 

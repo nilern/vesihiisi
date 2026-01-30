@@ -19,13 +19,13 @@
 
 (define for-loop
   (fn (generator body)
-    (letfn (((loop thr)
-               (try-yield* (fn () thr)
-                           (fn (_ v k)
-                             (body v)
-                             (loop (k #f)))
-                           (fn (v) v))))
-      (loop (reset* (fn () (generator)))))))
+    (letfn (((loop generate)
+               (call-with-prompt default-prompt
+                                 generate
+                                 (fn (k v)
+                                   (body v)
+                                   (loop (fn () (call-delimited-continuation k #f)))))))
+      (loop generator))))
 
 (define ex7
   (fn ()

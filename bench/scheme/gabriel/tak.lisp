@@ -12,9 +12,9 @@
   (fn args
     (run-benchmark
       "tak"
-      2000
-      (fn (result) (= result 7))
+      1
+      (fn (result) (= result 12))
       (fn (x y z) (fn () (tak x y z)))
-      18
-      12
-      6)))
+      40
+      20
+      11)))

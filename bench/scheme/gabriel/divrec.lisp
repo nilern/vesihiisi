@@ -8,8 +8,6 @@
                 (loop (- n 1) (cons () xs))))) ; FIXME: Something very strange happens here
       (loop n ()))))
 
-(define *ll* (create-n 200))
-
 (define recursive-div2
   (fn (l)
     (if (identical? l ())
@@ -21,12 +19,6 @@
     (run-benchmark
       "divrec"
       1000000
-      (fn (result)
-        (= result
-           (quote (() () () () () () () () () () () () () () () () () () () ()
-                   () () () () () () () () () () () () () () () () () () () ()
-                   () () () () () () () () () () () () () () () () () () () ()
-                   () () () () () () () () () () () () () () () () () () () ()
-                   () () () () () () () () () () () () () () () () () () () ()))))
+      (fn (result) (= (count result) 500))
       (fn (l) (fn () (recursive-div2 l)))
-     *ll*)))
+      (create-n 1000))))

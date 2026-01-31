@@ -327,6 +327,7 @@ VMRes run(State* state, HRef<Closure> self) {
         while (trampoline) {
             // Do not need return value here as a call is set up even in case of error:
             calleeClosure(state, state->regs[calleeReg]);
+            assert(isClosure(state, state->regs[calleeReg]));
             auto closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
 
             ORef anyMethod = closure->method;
@@ -386,6 +387,7 @@ VMRes run(State* state, HRef<Closure> self) {
 
                 // TODO: DRY with loop head:
                 case PrimopRes::TAILAPPLY: {
+                    assert(isClosure(state, state->regs[calleeReg]));
                     closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
                     anyMethod = closure->method;
                     assert(isMethod(state, anyMethod));
@@ -393,7 +395,8 @@ VMRes run(State* state, HRef<Closure> self) {
                     if (isHeaped(method->code)) {
                         state->method = anyMethod;
                         state->code = HRef<ByteArray>::fromUnchecked(method->code)->flexData();
-                        state->pc = 0; HRef<ArrayMut>::fromUnchecked(method->consts)->flexData();
+                        state->pc = 0;
+                        state->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->flexData();
 
                         state->checkDomain = true;
 

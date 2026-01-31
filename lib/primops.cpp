@@ -89,6 +89,7 @@ PrimopRes primopApplyArray(State* state) {
     if (!calleeClosureForArgs(state, callee, args, argc)) {
         return PrimopRes::TAILCALL; // Finish panic setup
     }
+    assert(isClosure(state, state->regs[calleeReg]));
     HRef<Closure> const closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
 
     // Check domain (if not already checked by dispatch):

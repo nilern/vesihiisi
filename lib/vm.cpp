@@ -34,7 +34,7 @@ VMRes run(State* state, HRef<Closure> self) {
         state->method = anyMethod;
         state->code = HRef<ByteArray>::fromUnchecked(method->code)->flexData();
         state->pc = 0;
-        state->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->flexData();
+        state->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->flexDataMut();
         state->regs[calleeReg] = self;
         state->regs[retContReg] = state->singletons.exit; // Return continuation
         state->entryRegc = 2;
@@ -94,13 +94,13 @@ VMRes run(State* state, HRef<Closure> self) {
             uint8_t const constIdx = state->code[state->pc++];
             uint8_t const srcReg = state->code[state->pc++];
 
-            ORef const c = state->consts[constIdx];
-            if (!isSymbol(state, c)) {
-                assert(false); // TODO: Lazily linked Var
-            }
+            ORef c = state->consts[constIdx];
+            if (isSymbol(state, c)) { // Link:
+                c = getVar(state, state->ns, HRef<Symbol>::fromUnchecked(c));
 
-            HRef<Symbol> const name = HRef<Symbol>::fromUnchecked(c);
-            HRef<Var> var = getVar(state, state->ns, name);
+                state->consts[constIdx] = c;
+            }
+            HRef<Var> const var = HRef<Var>::fromUnchecked(c);
 
             var->val = state->regs[srcReg];
         }; VM_CONTINUE;
@@ -109,27 +109,28 @@ VMRes run(State* state, HRef<Closure> self) {
             uint8_t const constIdx = state->code[state->pc++];
             uint8_t const srcReg = state->code[state->pc++];
 
-            ORef const c = state->consts[constIdx];
-            if (!isSymbol(state, c)) {
-                assert(false); // TODO: Lazily linked Var
-            }
+            ORef c = state->consts[constIdx];
+            if (isSymbol(state, c)) { // Link:
+                auto const name = HRef<Symbol>::fromUnchecked(c);
+                FindVarRes const findRes = findVar(state->ns, name);
+                if (findRes.type != FindVarRes::NS_FOUND_VAR) {
+                    // FIXME: Signal that this is a "fatal" (i.e. noncontinuable) error as
+                    // constructing a working continuation at an arbitrary instruction like this
+                    // would take a lot of effort while actually using that to recover from this
+                    // would be a terrible idea. Currently `retContReg` probably holds the return
+                    // continuation of the current function; to support stack traces we probably
+                    // have to ensure that it does. But that continuation is definitely not a
+                    // correct current continuation.
+                    state->regs[calleeReg] = getErrorHandler(state);
+                    state->regs[firstArgReg] = createUnboundError(state, name);
+                    state->entryRegc = firstArgReg + 1;
+                    goto apply;
+                }
+                c = findRes.var;
 
-            HRef<Symbol> const name = HRef<Symbol>::fromUnchecked(c);
-            FindVarRes const findRes = findVar(state->ns, name);
-            if (findRes.type != FindVarRes::NS_FOUND_VAR) {
-                // FIXME: Signal that this is a "fatal" (i.e. noncontinuable) error as
-                // constructing a working continuation at an arbitrary instruction like this
-                // would take a lot of effort while actually using that to recover from this
-                // would be a terrible idea. Currently `retContReg` probably holds the return
-                // continuation of the current function; to support stack traces we probably
-                // have to ensure that it does. But that continuation is definitely not a
-                // correct current continuation.
-                state->regs[calleeReg] = getErrorHandler(state);
-                state->regs[firstArgReg] = createUnboundError(state, name);
-                state->entryRegc = firstArgReg + 1;
-                goto apply;
+                state->consts[constIdx] = c;
             }
-            HRef<Var> var = findRes.var;
+            auto const var = HRef<Var>::fromUnchecked(c);
 
             var->val = state->regs[srcReg];
         }; VM_CONTINUE;
@@ -138,27 +139,28 @@ VMRes run(State* state, HRef<Closure> self) {
             uint8_t const destReg = state->code[state->pc++];
             uint8_t const constIdx = state->code[state->pc++];
 
-            ORef const c = state->consts[constIdx];
-            if (!isSymbol(state, c)) {
-                assert(false); // TODO: Lazily linked Var
-            }
+            ORef c = state->consts[constIdx];
+            if (isSymbol(state, c)) { // Link:
+                HRef<Symbol> const name = HRef<Symbol>::fromUnchecked(c);
+                FindVarRes const findRes = findVar(state->ns, name);
+                if (findRes.type != FindVarRes::NS_FOUND_VAR) {
+                    // FIXME: Signal that this is a "fatal" (i.e. noncontinuable) error as
+                    // constructing a working continuation at an arbitrary instruction like this
+                    // would take a lot of effort while actually using that to recover from this
+                    // would be a terrible idea. Currently `retContReg` probably holds the return
+                    // continuation of the current function; to support stack traces we probably
+                    // have to ensure that it does. But that continuation is definitely not a
+                    // correct current continuation.
+                    state->regs[calleeReg] = getErrorHandler(state);
+                    state->regs[firstArgReg] = createUnboundError(state, name);
+                    state->entryRegc = firstArgReg + 1;
+                    goto apply;
+                }
+                c = findRes.var;
 
-            HRef<Symbol> const name = HRef<Symbol>::fromUnchecked(c);
-            FindVarRes const findRes = findVar(state->ns, name);
-            if (findRes.type != FindVarRes::NS_FOUND_VAR) {
-                // FIXME: Signal that this is a "fatal" (i.e. noncontinuable) error as
-                // constructing a working continuation at an arbitrary instruction like this
-                // would take a lot of effort while actually using that to recover from this
-                // would be a terrible idea. Currently `retContReg` probably holds the return
-                // continuation of the current function; to support stack traces we probably
-                // have to ensure that it does. But that continuation is definitely not a
-                // correct current continuation.
-                state->regs[calleeReg] = getErrorHandler(state);
-                state->regs[firstArgReg] = createUnboundError(state, name);
-                state->entryRegc = firstArgReg + 1;
-                goto apply;
+                state->consts[constIdx] = c;
             }
-            HRef<Var> var = findRes.var;
+            auto const var = HRef<Var>::fromUnchecked(c);
 
             ORef const v = var->val;
             if (eq(v, state->singletons.unbound)) {
@@ -262,7 +264,7 @@ VMRes run(State* state, HRef<Closure> self) {
                 state->method = method;
                 state->code = HRef<ByteArray>::fromUnchecked(method->code)->flexData();
                 state->pc = (size_t)ret->pc.val();
-                state->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->flexData();
+                state->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->flexDataMut();
             } else { // Exit
                 return VMRes{.val = state->regs[retReg], .success = true};
             }
@@ -375,7 +377,7 @@ VMRes run(State* state, HRef<Closure> self) {
                 state->method = anyMethod;
                 state->code = HRef<ByteArray>::fromUnchecked(method->code)->flexData();
                 state->pc = 0;
-                state->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->flexData();
+                state->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->flexDataMut();
 
                 ORef const maybeErr = checkDomain(state);
                 if (isHeaped(maybeErr)) {
@@ -414,7 +416,8 @@ VMRes run(State* state, HRef<Closure> self) {
                         state->method = anyMethod;
                         state->code = HRef<ByteArray>::fromUnchecked(methodPtr->code)->flexData();
                         state->pc = (size_t)ret->pc.val();
-                        state->consts = HRef<ArrayMut>::fromUnchecked(methodPtr->consts)->flexData();
+                        state->consts =
+                            HRef<ArrayMut>::fromUnchecked(methodPtr->consts)->flexDataMut();
 
                         VM_CONTINUE;
                     } else { // Exit
@@ -435,7 +438,8 @@ VMRes run(State* state, HRef<Closure> self) {
                         state->method = anyMethod;
                         state->code = HRef<ByteArray>::fromUnchecked(method->code)->flexData();
                         state->pc = 0;
-                        state->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->flexData();
+                        state->consts =
+                            HRef<ArrayMut>::fromUnchecked(method->consts)->flexDataMut();
 
                         state->checkDomain = true;
 

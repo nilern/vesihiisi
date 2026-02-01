@@ -82,7 +82,7 @@ struct State {
     uint8_t const* code;
     size_t pc;
     ORef regs[REG_COUNT];
-    ORef const* consts;
+    ORef* consts;
     HRef<Namespace> ns;
     uint8_t entryRegc;
     bool checkDomain;

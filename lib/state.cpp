@@ -131,7 +131,7 @@ void initSpecialPurposeRegs(State* state) {
     if (isHeaped(anyMethod)) {
         auto const methodPtr = HRef<Method>::fromUnchecked(anyMethod);
         state->code = HRef<ByteArray>::fromUnchecked(methodPtr->code)->flexData();
-        state->consts = HRef<Array>::fromUnchecked(methodPtr->consts)->flexData();
+        state->consts = HRef<ArrayMut>::fromUnchecked(methodPtr->consts)->flexDataMut();
     }
 }
 

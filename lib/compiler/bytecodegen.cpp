@@ -46,14 +46,21 @@ struct MethodBuilderLoc {
     }
 };
 
-typedef struct MethodBuilder {
+struct MethodBuilder {
+    struct Const {
+        ORef val;
+        enum { VALUE, GLOBAL_NAME } type;
+
+        bool operator==(Const const& that) const { return eq(val, that.val) && type == that.type; }
+    };
+
     uint8_t* code;
     size_t codeCount;
     size_t codeCap;
 
     LabelIdxs labelIdxs;
 
-    ORef* consts;
+    Const* consts;
     size_t constCount;
     size_t constCap;
 
@@ -66,12 +73,12 @@ typedef struct MethodBuilder {
     AVec<ORef> revFilenameRuns;
 
     struct MethodBuilder* parent;
-} MethodBuilder;
+};
 
 void markMethodBuilder(State* state, MethodBuilder* builder) {
     size_t const constCount = builder->constCount;
     for (size_t i = 0; i < constCount; ++i) {
-        builder->consts[i] = state->heap.mark(builder->consts[i]);
+        builder->consts[i].val = state->heap.mark(builder->consts[i].val);
     }
 
     builder->maybeFilename = state->heap.mark(builder->maybeFilename);
@@ -88,7 +95,7 @@ void markMethodBuilder(State* state, MethodBuilder* builder) {
 void assertMethodBuilderInTospace(State const* state,MethodBuilder const* builder) {
     size_t const constCount = builder->constCount;
     for (size_t i = 0; i < constCount; ++i) {
-        ORef const v = builder->consts[i];
+        ORef const v = builder->consts[i].val;
         if (isHeaped(v)) {
             assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(v)));
         }
@@ -138,7 +145,12 @@ HRef<Method> buildMethod(
     }
     HRef<ArrayMut> consts = HRef<ArrayMut>{maybeConsts};
     auto const constsG = state->pushRoot(&consts);
-    memcpy(maybeConsts, builder.consts, builder.constCount * sizeof *builder.consts); // Initialize
+    { // Initialize:
+        size_t const constCount = builder.constCount;
+        for (size_t i = 0; i < constCount; ++i) {
+            maybeConsts->flexDataMut()[i] = builder.consts[i].val;
+        }
+    }
 
     // Copy `revFilenameRuns` to GC heap:
     size_t const filenamesSlotCount = builder.revFilenameRuns.count();
@@ -232,7 +244,8 @@ MethodBuilder createMethodBuilder(
     uint8_t* const code = (uint8_t*)amalloc(&compiler->arena, codeCap * sizeof *code);
 
     size_t const constCap = 2;
-    ORef* const consts = (ORef*)amalloc(&compiler->arena, constCap * sizeof *consts);
+    MethodBuilder::Const* const consts =
+        static_cast<MethodBuilder::Const*>(amalloc(&compiler->arena, constCap * sizeof *consts));
 
     assert(fn.blockCount >= 1);
     IRBlock const* const lastBlock = fn.blocks[fn.blockCount -  1];
@@ -376,12 +389,12 @@ void emitClose(Compiler* compiler, MethodBuilder* builder, Args const* args) {
     emitRegBits(compiler, builder, args->names, args->count, false);
 }
 
-uint8_t constIndex(Compiler* compiler, MethodBuilder* builder, ORef c) {
+uint8_t constIndex(Compiler* compiler, MethodBuilder* builder, MethodBuilder::Const c) {
     // Linear search is actually good since there usually aren't that many constants per fn:
     size_t const constCount = builder->constCount;
     for (size_t i = 0; i < constCount; ++i) {
-        ORef const ic = builder->consts[i];
-        if (eq(ic, c)) {
+        MethodBuilder::Const const ic = builder->consts[i];
+        if (ic == c) {
             assert(i <= UINT8_MAX);
             return (uint8_t)i;
         }
@@ -389,9 +402,10 @@ uint8_t constIndex(Compiler* compiler, MethodBuilder* builder, ORef c) {
 
     if (builder->constCount == builder->constCap) {
         size_t const newCap = builder->constCap + builder->constCap / 2;
-        builder->consts = (ORef*)arealloc(&compiler->arena, builder->consts,
-                                   builder->constCap  * sizeof *builder->consts,
-                                   newCap * sizeof *builder->consts);
+        builder->consts = static_cast<MethodBuilder::Const*>(
+            arealloc(&compiler->arena, builder->consts,
+                     builder->constCap  * sizeof *builder->consts,
+                     newCap * sizeof *builder->consts));
         builder->constCap = newCap;
     }
 
@@ -401,14 +415,14 @@ uint8_t constIndex(Compiler* compiler, MethodBuilder* builder, ORef c) {
     return idx;
 }
 
-void emitConstArg(Compiler* compiler, MethodBuilder* builder, ORef c) {
+void emitConstArg(Compiler* compiler, MethodBuilder* builder, MethodBuilder::Const c) {
     uint8_t const idx = constIndex(compiler, builder, c);
     pushCodeByte(compiler, builder, idx);
 }
 
 void emitConstDef(
-    State const& state, Compiler* compiler, MethodBuilder* builder, IRName name, ORef c,
-    ORef maybeLoc
+    State const& state, Compiler* compiler, MethodBuilder* builder, IRName name,
+    MethodBuilder::Const c, ORef maybeLoc
 ) {
     emitConstArg(compiler, builder, c);
     pushReg(compiler, builder, name);
@@ -430,7 +444,7 @@ void emitStmt(
         Define const* const define = &stmt->define;
 
         pushReg(compiler, builder, define->val);
-        emitConstArg(compiler, builder, define->name);
+        emitConstArg(compiler, builder, {define->name, MethodBuilder::Const::GLOBAL_NAME});
         pushOp(*state, compiler, builder, OP_DEFINE, stmt->maybeLoc);
     }; break;
 
@@ -438,21 +452,22 @@ void emitStmt(
         GlobalSet const* const globalSet = &stmt->globalSet;
 
         pushReg(compiler, builder, globalSet->val);
-        emitConstArg(compiler, builder, globalSet->name);
+        emitConstArg(compiler, builder, {globalSet->name, MethodBuilder::Const::GLOBAL_NAME});
         pushOp(*state, compiler, builder, OP_GLOBAL_SET, stmt->maybeLoc);
     }; break;
 
     case IRStmt::GLOBAL: {
         IRGlobal const* const global = &stmt->global;
 
-        emitConstArg(compiler, builder, global->name);
+        emitConstArg(compiler, builder, {global->name, MethodBuilder::Const::GLOBAL_NAME});
         pushReg(compiler, builder, global->tmpName);
         pushOp(*state, compiler, builder, OP_GLOBAL, stmt->maybeLoc);
     }; break;
 
     case IRStmt::CONST_DEF: {
         ConstDef const* const constDef = &stmt->constDef;
-        emitConstDef(*state, compiler, builder, constDef->name, constDef->v, stmt->maybeLoc);
+        emitConstDef(*state, compiler, builder, constDef->name,
+                     {constDef->v, MethodBuilder::Const::VALUE}, stmt->maybeLoc);
     }; break;
 
     case IRStmt::METHOD_DEF: {
@@ -462,10 +477,11 @@ void emitStmt(
         HRef<Method> const method = emitMethod(state, compiler, toplevelFn, builder, fn);
 
         if (fn->domain.count == 0) {
-            emitConstDef(*state, compiler, builder, methodDef->name, method, stmt->maybeLoc);
+            emitConstDef(*state, compiler, builder, methodDef->name,
+                         {method, MethodBuilder::Const::VALUE}, stmt->maybeLoc);
         } else {
             emitRegBits(compiler, builder, fn->domain.vals, fn->domain.count, true);
-            emitConstArg(compiler, builder, method);
+            emitConstArg(compiler, builder, {method, MethodBuilder::Const::VALUE});
             pushReg(compiler, builder, methodDef->name);
             pushOp(*state, compiler, builder, OP_SPECIALIZE, stmt->maybeLoc);
         }

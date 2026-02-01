@@ -156,4 +156,6 @@ private:
     void rehash();
 };
 
+HRef<Method> specialize(State* state, HRef<Method> generic, HRef<ArrayMut> types);
+
 } // namespace

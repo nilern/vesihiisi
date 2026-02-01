@@ -19,6 +19,6 @@
     (run-benchmark
       "divrec"
       1000000
-      (fn (result) (= (count result) 500))
+      (fn (result) (= (count result) 100))
       (fn (l) (fn () (recursive-div2 l)))
-      (create-n 1000))))
+      (create-n 200))))

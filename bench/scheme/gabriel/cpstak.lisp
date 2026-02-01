@@ -25,9 +25,9 @@
   (fn args
     (run-benchmark
       "cpstak"
-      1
-      (fn (result) (= result 12))
+      1000
+      (fn (result) (= result 7))
       (fn (x y z) (fn () (cpstak x y z)))
-      40
-      20
-      11)))
+      18
+      12
+      6)))

@@ -1,4 +1,5 @@
-BASER_FLAGS := -Wall -Wextra -Wconversion -fno-strict-aliasing # -Wpedantic (using stmt exprs)
+BASER_FLAGS := -Wall -Wextra -Wconversion -fno-strict-aliasing
+	# -Wpedantic (using stmt exprs & computed gotos)
 BASE_CPP_FLAGS := -std=c++20 $(BASER_FLAGS) -Werror
 BASE_C_FLAGS := -std=c23 $(BASER_FLAGS) -Werror
 OPT_FLAGS := -O2 -DNDEBUG

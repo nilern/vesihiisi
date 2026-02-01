@@ -11,6 +11,14 @@
 
 namespace {
 
+#if !defined(VSHS_COMPUTED_GOTO)
+#if defined(__GNUC__)
+#define VSHS_COMPUTED_GOTO true
+#else
+#define VSHS_COMPUTED_GOTO false
+#endif
+#endif
+
 typedef struct VMRes {
     ORef val;
     bool success;
@@ -32,25 +40,57 @@ VMRes run(State* state, HRef<Closure> self) {
         state->entryRegc = 2;
     }
 
+#if VSHS_COMPUTED_GOTO
+    // The order is vital. Too bad we cannot use e.g. `[OP_MOVE] = &&L_OP_MOVE` like in C since '99:
+    static constexpr void const* opcode_handlers[] = {
+        &&L_OP_MOVE,
+        &&L_OP_SWAP,
+        &&L_OP_DEFINE,
+        &&L_OP_GLOBAL_SET,
+        &&L_OP_GLOBAL,
+        &&L_OP_CONST,
+        &&L_OP_SPECIALIZE,
+        &&L_OP_KNOT,
+        &&L_OP_KNOT_INIT,
+        &&L_OP_KNOT_GET,
+        &&L_OP_BRF,
+        &&L_OP_BR,
+        &&L_OP_RET,
+        &&L_OP_CLOSURE,
+        &&L_OP_CLOVER,
+        // TODO: &&L_OP_OP_CONT_CLOVER / &&L_OP_OP_RESTORE
+        &&L_OP_CALL,
+        &&L_OP_TAILCALL
+    };
+
+#define VM_DISPATCH(opcode) goto* opcode_handlers[opcode];
+#define VM_CASE(opcode) L_##opcode:
+#define VM_CONTINUE VM_DISPATCH((Opcode)state->code[state->pc++])
+#else
+#define VM_DISPATCH(opcode) switch (opcode)
+#define VM_CASE(opcode) case opcode:
+#define VM_CONTINUE continue
+#endif
+
     for (;/*ever*/;) {
-        switch ((Opcode)state->code[state->pc++]) {
-        case OP_MOVE: {
+        VM_DISPATCH((Opcode)state->code[state->pc++]) {
+        VM_CASE(OP_MOVE) {
             uint8_t const destReg = state->code[state->pc++];
             uint8_t const srcReg = state->code[state->pc++];
 
             state->regs[destReg] = state->regs[srcReg];
-        }; continue;
+        }; VM_CONTINUE;
 
-        case OP_SWAP: {
+        VM_CASE(OP_SWAP) {
             uint8_t const reg1 = state->code[state->pc++];
             uint8_t const reg2 = state->code[state->pc++];
 
             ORef const tmp = state->regs[reg1];
             state->regs[reg1] = state->regs[reg2];
             state->regs[reg2] = tmp;
-        }; continue;
+        }; VM_CONTINUE;
 
-        case OP_DEFINE: {
+        VM_CASE(OP_DEFINE) {
             uint8_t const constIdx = state->code[state->pc++];
             uint8_t const srcReg = state->code[state->pc++];
 
@@ -63,9 +103,9 @@ VMRes run(State* state, HRef<Closure> self) {
             HRef<Var> var = getVar(state, state->ns, name);
 
             var->val = state->regs[srcReg];
-        }; continue;
+        }; VM_CONTINUE;
 
-        case OP_GLOBAL_SET: {
+        VM_CASE(OP_GLOBAL_SET) {
             uint8_t const constIdx = state->code[state->pc++];
             uint8_t const srcReg = state->code[state->pc++];
 
@@ -92,9 +132,9 @@ VMRes run(State* state, HRef<Closure> self) {
             HRef<Var> var = findRes.var;
 
             var->val = state->regs[srcReg];
-        }; continue;
+        }; VM_CONTINUE;
 
-        case OP_GLOBAL: {
+        VM_CASE(OP_GLOBAL) {
             uint8_t const destReg = state->code[state->pc++];
             uint8_t const constIdx = state->code[state->pc++];
 
@@ -125,16 +165,16 @@ VMRes run(State* state, HRef<Closure> self) {
                 assert(false); // FIXME: use of unbound var
             }
             state->regs[destReg] = v;
-        }; continue;
+        }; VM_CONTINUE;
 
-        case OP_CONST: {
+        VM_CASE(OP_CONST) {
             uint8_t const destReg = state->code[state->pc++];
             uint8_t const constIdx = state->code[state->pc++];
 
             state->regs[destReg] = state->consts[constIdx];
-        }; continue;
+        }; VM_CONTINUE;
 
-        case OP_SPECIALIZE: {
+        VM_CASE(OP_SPECIALIZE) {
             uint8_t const destReg = state->code[state->pc++];
             uint8_t const constIdx = state->code[state->pc++];
             uint8_t const typeSetByteCount = state->code[state->pc++];
@@ -168,40 +208,40 @@ VMRes run(State* state, HRef<Closure> self) {
             HRef<Method> const method = specialize(state, generic, types);
 
             state->regs[destReg] = method;
-        }; continue;
+        }; VM_CONTINUE;
 
-        case OP_KNOT: {
+        VM_CASE(OP_KNOT) {
             uint8_t const destReg = state->code[state->pc++];
 
             state->regs[destReg] = allocKnot(state);
-        }; continue;
+        }; VM_CONTINUE;
 
-        case OP_KNOT_INIT: {
+        VM_CASE(OP_KNOT_INIT) {
             uint8_t const knotReg = state->code[state->pc++];
             uint8_t const srcReg = state->code[state->pc++];
 
             assert(isa(state, state->types.knot, state->regs[knotReg]));
             auto const knot = HRef<Knot>::fromUnchecked(state->regs[knotReg]);
             knot->val = state->regs[srcReg];
-        }; continue;
+        }; VM_CONTINUE;
 
-        case OP_KNOT_GET: {
+        VM_CASE(OP_KNOT_GET) {
             uint8_t const destReg = state->code[state->pc++];
             uint8_t const knotReg = state->code[state->pc++];
 
             assert(isa(state, state->types.knot, state->regs[knotReg]));
             auto const knot = HRef<Knot>::fromUnchecked(state->regs[knotReg]);
             state->regs[destReg] = knot->val;
-        }; continue;
+        }; VM_CONTINUE;
 
-        case OP_BR: {
+        VM_CASE(OP_BR) {
             uint16_t displacement = state->code[state->pc++];
             displacement = (uint16_t)(displacement << UINT8_WIDTH) | state->code[state->pc++];
 
             state->pc += displacement;
-        }; continue;
+        }; VM_CONTINUE;
 
-        case OP_BRF: {
+        VM_CASE(OP_BRF) {
             uint8_t const condReg = state->code[state->pc++];
             uint16_t displacement = state->code[state->pc++];
             displacement = (uint16_t)(displacement << UINT8_WIDTH) | state->code[state->pc++];
@@ -209,9 +249,9 @@ VMRes run(State* state, HRef<Closure> self) {
             if (eq(state->regs[condReg], False)) {
                 state->pc += displacement;
             }
-        }; continue;
+        }; VM_CONTINUE;
 
-        case OP_RET: {
+        VM_CASE(OP_RET) {
             assert(eq(typeOf(state, state->regs[retContReg]),
                       state->types.continuation));
             auto const ret = HRef<Continuation>::fromUnchecked(state->regs[retContReg]);
@@ -226,9 +266,9 @@ VMRes run(State* state, HRef<Closure> self) {
             } else { // Exit
                 return VMRes{.val = state->regs[retReg], .success = true};
             }
-        }; continue;
+        }; VM_CONTINUE;
 
-        case OP_CLOSURE: {
+        VM_CASE(OP_CLOSURE) {
             uint8_t const destReg = state->code[state->pc++];
             uint8_t const methodReg = state->code[state->pc++];
             uint8_t const cloverSetByteCount = state->code[state->pc++];
@@ -259,9 +299,9 @@ VMRes run(State* state, HRef<Closure> self) {
             }
 
             state->regs[destReg] = closure;
-        }; continue;
+        }; VM_CONTINUE;
 
-        case OP_CLOVER: {
+        VM_CASE(OP_CLOVER) {
             uint8_t const destReg = state->code[state->pc++];
             uint8_t const closureReg = state->code[state->pc++];
             uint8_t const cloverIdx = state->code[state->pc++];
@@ -275,9 +315,9 @@ VMRes run(State* state, HRef<Closure> self) {
                 auto const closure = HRef<Closure>::fromUnchecked(anyClosure);
                 state->regs[destReg] = closure->clovers()[cloverIdx];
             }
-        }; continue;
+        }; VM_CONTINUE;
 
-        case OP_CALL: {
+        VM_CASE(OP_CALL) {
             uint8_t const regCount  = state->code[state->pc++];
             uint8_t const cloverSetByteCount = state->code[state->pc++];
             size_t cloverCount = 0;
@@ -312,19 +352,17 @@ VMRes run(State* state, HRef<Closure> self) {
 
             state->entryRegc = regCount;
             goto apply;
-        }; continue;
+        }; VM_CONTINUE;
 
-        case OP_TAILCALL: {
+        VM_CASE(OP_TAILCALL) {
             uint8_t const regCount = state->code[state->pc++];
 
             state->entryRegc = regCount;
             goto apply;
-        }; continue;
+        }; VM_CONTINUE;
         }
 
-        apply:
-        bool trampoline = true;
-        while (trampoline) {
+        apply: {
             // Do not need return value here as a call is set up even in case of error:
             calleeClosure(state, state->regs[calleeReg]);
             assert(isClosure(state, state->regs[calleeReg]));
@@ -344,7 +382,7 @@ VMRes run(State* state, HRef<Closure> self) {
                     state->regs[calleeReg] = getErrorHandler(state);
                     state->regs[firstArgReg] = maybeErr;
                     state->entryRegc = firstArgReg + 1;
-                    continue;
+                    goto apply;
                 }
 
                 if (method->hasVarArg.val()) {
@@ -361,7 +399,7 @@ VMRes run(State* state, HRef<Closure> self) {
                     state->regs[firstArgReg + minArity] = varargsRef;
                 }
 
-                trampoline = false;
+                VM_CONTINUE;
             } else {
                 applyPrimop:
                 switch (method->nativeCode(state)) {
@@ -377,13 +415,14 @@ VMRes run(State* state, HRef<Closure> self) {
                         state->code = HRef<ByteArray>::fromUnchecked(methodPtr->code)->flexData();
                         state->pc = (size_t)ret->pc.val();
                         state->consts = HRef<ArrayMut>::fromUnchecked(methodPtr->consts)->flexData();
-                        trampoline = false;
+
+                        VM_CONTINUE;
                     } else { // Exit
                         return VMRes{.val = state->regs[retReg], .success = true};
                     }
-                }; break;
+                }; goto apply;
 
-                case PrimopRes::TAILCALL: break; // All is in place, just keep trampolining
+                case PrimopRes::TAILCALL: goto apply; // All is in place, just keep trampolining
 
                 // TODO: DRY with loop head:
                 case PrimopRes::TAILAPPLY: {
@@ -400,11 +439,11 @@ VMRes run(State* state, HRef<Closure> self) {
 
                         state->checkDomain = true;
 
-                        trampoline = false;
+                        VM_CONTINUE;
                     } else {
                         goto applyPrimop;
                     }
-                }; break;
+                }; goto apply;
 
                 case PrimopRes::ABORT: return VMRes{};
                 }

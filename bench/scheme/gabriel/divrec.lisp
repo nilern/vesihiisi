@@ -5,7 +5,7 @@
     (letfn (((loop n xs)
               (if (= n 0)
                 xs
-                (loop (- n 1) (cons () xs))))) ; FIXME: Something very strange happens here
+                (loop (- n 1) (cons () xs)))))
       (loop n ()))))
 
 (define recursive-div2

@@ -952,7 +952,7 @@ PrimopRes primopArrayMutToString(State* state) {
     ssize_t stringSize = 0;
     for (size_t i = 0; i < cpCount; ++i) {
         ORef const v = cps[i];
-        if (!isChar(v)) {
+        if (!Char::contains(v)) {
             return primopError(state, createTypeError(state, state->types.charr, v));
         }
         auto const cp = Char::fromUnchecked(v).val();
@@ -980,7 +980,7 @@ PrimopRes primopStringIteratorPeek(State* state) {
     }
     auto const string = HRef<String>::fromUnchecked(maybeString);
     ORef const maybeByteIdx = iter->byteIdx;
-    if (!isFixnum(maybeByteIdx)) {
+    if (!Fixnum::contains(maybeByteIdx)) {
         return primopError(state, createTypeError(state, state->types.fixnum, maybeString));
     }
     ssize_t const byteIdx = Fixnum::fromUnchecked(maybeByteIdx).val();
@@ -1015,7 +1015,7 @@ PrimopRes primopStringIteratorNext(State* state) {
     }
     auto const string = HRef<String>::fromUnchecked(maybeString);
     ORef const maybeByteIdx = iter->byteIdx;
-    if (!isFixnum(maybeByteIdx)) {
+    if (!Fixnum::contains(maybeByteIdx)) {
         return primopError(state, createTypeError(state, state->types.fixnum, maybeString));
     }
     ssize_t const byteIdx = Fixnum::fromUnchecked(maybeByteIdx).val();
@@ -1269,7 +1269,7 @@ PrimopRes primopExit(State* state) {
 
     ORef const v = state->regs[firstArgReg];
 
-    int const exitCode = isFixnum(v)
+    int const exitCode = Fixnum::contains(v)
         ? int(Fixnum::fromUnchecked(v).val())
         : !eq(v, False) ? EXIT_SUCCESS : EXIT_FAILURE;
 

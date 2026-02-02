@@ -172,7 +172,7 @@ void* nextGrey(void* const scan) {
 
     while (eq(*orefScan, AlignmentHole)) { ++orefScan; } // Skip <alignmentHole>*
 
-    if (isFixnum(*orefScan)) { ++orefScan; } // Skip <flexCount>?
+    if (Fixnum::contains(*orefScan)) { ++orefScan; } // Skip <flexCount>?
 
     ++orefScan; // Skip <header>
 

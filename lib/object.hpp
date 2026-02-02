@@ -48,6 +48,8 @@ struct Scalar : public ORef {
 static_assert(sizeof(Scalar) == sizeof(ORef));
 
 struct Fixnum : public Scalar {
+    static bool contains(ORef v) { return (v.bits & tagMask) == fixnumTag; }
+
     static constexpr int64_t max = ((int64_t)1 << (payloadWidth - 1)) - 1;
     static constexpr int64_t min = -(Fixnum::max + 1);
 
@@ -66,6 +68,11 @@ private:
 };
 
 struct Flonum : public Scalar {
+    static bool contains(ORef v) {
+        return v.bits == nonFlonumTag // Actual NaN OPTIMIZE: Is this necessary?
+               || (v.bits & nonFlonumTag) != nonFlonumTag; // OPTIMIZE: Do not short-circuit?
+    }
+
     constexpr explicit Flonum(double n) : Flonum{std::bit_cast<uint64_t>(n)} {}
 
     static Flonum fromUnchecked(ORef v) { return Flonum{v.bits}; }
@@ -77,6 +84,8 @@ private:
 };
 
 struct Char : public Scalar {
+    static bool contains(ORef v) { return (v.bits & tagMask) == charTag; }
+
     constexpr explicit Char(uint32_t c) : Char{charTag | uint64_t(c)} {}
 
     static Char fromUnchecked(ORef v) { return Char{v.bits}; }
@@ -88,6 +97,8 @@ private:
 };
 
 struct Bool : public Scalar {
+    static bool contains(ORef v) { return (v.bits & tagMask) == boolTag; }
+
     constexpr explicit Bool(bool b) : Bool{boolTag | (uint64_t)b} {}
 
     static Bool fromUnchecked(ORef v) { return Bool{v.bits}; }
@@ -98,17 +109,6 @@ private:
     constexpr explicit Bool(uint64_t t_bits) : Scalar{t_bits} {}
 };
 
-inline bool isFixnum(ORef v) { return (v.bits & tagMask) == fixnumTag; }
-
-inline bool isFlonum(ORef v) {
-    return v.bits == nonFlonumTag // Actual NaN OPTIMIZE: Is this necessary?
-           || (v.bits & nonFlonumTag) != nonFlonumTag; // OPTIMIZE: Do not short-circuit?
-}
-
-inline bool isChar(ORef v) { return (v.bits & tagMask) == charTag; }
-
-inline bool isBool(ORef v) { return (v.bits & tagMask) == boolTag; }
-
 inline bool isHeaped(ORef v) {
     return v.bits != nonFlonumTag // Not a NaN OPTIMIZE: Is this necessary?
            && (v.bits & tagMask) == heapedTag; // OPTIMIZE: Do not short-circuit?
@@ -116,7 +116,7 @@ inline bool isHeaped(ORef v) {
 
 inline TaggedType getTag(ORef v) {
     if (isHeaped(v)) { return TaggedType::HEAPED; }
-    if (isFlonum(v)) { return TaggedType::FLONUM; }
+    if (Flonum::contains(v)) { return TaggedType::FLONUM; }
     return (TaggedType)((v.bits >> payloadWidth) & 0b11);
 }
 

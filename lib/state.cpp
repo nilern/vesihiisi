@@ -642,7 +642,7 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
         dest->errorHandler = varRes.var;
     }
     {
-        HRef<Method> const abortMethod =
+        HRef<Method> const abortMethod = // TODO: `PrimopAbort::install(*dest);`
             createPrimopMethod(dest, strLit("abort"), (MethodCode)primopAbort,
                                false, Fixnum{1l}, dest->types.any);
         HRef<Closure> abortClosure = allocClosure(dest, abortMethod, Fixnum{0l});
@@ -661,111 +661,58 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
                                              strlen(vshsHome)}));
     installPrimordial(dest, strLit("*command-line*"), createCommandLine(dest, argc, argv));
 
-    installPrimop(dest, strLit("apply-array"), (MethodCode)primopApplyArray,
-                  false, Fixnum{2l}, dest->types.any, dest->types.array);
-    // TODO: `array!` -> `array-mut` (everywhere):
-    installPrimop(dest, strLit("apply-array!"), (MethodCode)primopApplyArray,
-                  false, Fixnum{2l}, dest->types.any, dest->types.arrayMut);
-    installPrimop(dest, strLit("apply-list"), (MethodCode)primopApplyList,
-                  false, Fixnum{2l}, dest->types.any, dest->types.any);
-    installPrimop(dest, strLit("call-with-current-continuation"), (MethodCode)primopCallCC,
-                  false, Fixnum{1l}, dest->types.closure);
-    installPrimop(dest, strLit("continue"), (MethodCode)primopContinue,
-                  false, Fixnum{2l}, dest->types.continuation, dest->types.any);
-    installPrimop(dest, strLit("identical?"), (MethodCode)primopIdentical,
-                  false, Fixnum{2l}, dest->types.any, dest->types.any);
-    installPrimop(dest, strLit("type-of"), (MethodCode)primopTypeOf,
-                  false, Fixnum{1l}, dest->types.any);
-    installPrimop(dest, strLit("make-slots-type"), (MethodCode)primopMakeSlotsType,
-                  true, Fixnum{3l}, dest->types.symbol, dest->types.fixnum, dest->types.booll);
-    installPrimop(dest, strLit("make"), (MethodCode)primopMake,
-                  true, Fixnum{2l}, dest->types.type, dest->types.any);
-    installPrimop(dest, strLit("slot-get"), (MethodCode)primopSlotGet,
-                  false, Fixnum{2l}, dest->types.any, dest->types.fixnum);
-    installPrimop(dest, strLit("slot-set!"), (MethodCode)primopSlotSet,
-                  false, Fixnum{3l}, dest->types.any, dest->types.fixnum, dest->types.any);
-    installPrimop(dest, strLit("make-flex"), (MethodCode)primopMakeFlex,
-                  true, Fixnum{2l}, dest->types.type, dest->types.fixnum);
-    installPrimop(dest, strLit("flex-count"), (MethodCode)primopFlexCount,
-                  false, Fixnum{1l}, dest->types.any);
-    installPrimop(dest, strLit("flex-get"), (MethodCode)primopFlexGet,
-                  false, Fixnum{2l}, dest->types.any, dest->types.fixnum);
-    installPrimop(dest, strLit("flex-set!"), (MethodCode)primopFlexSet,
-                  false, Fixnum{3l}, dest->types.any, dest->types.fixnum, dest->types.any);
-    installPrimop(dest, strLit("flex-copy!"), (MethodCode)primopFlexCopy,
-                  false, Fixnum{5l}, dest->types.any, dest->types.fixnum,
-                  dest->types.any, dest->types.fixnum, dest->types.fixnum);
-    installPrimop(dest, strLit("flex-copy"), (MethodCode)primopFlexClone,
-                  false, Fixnum{3l}, dest->types.any, dest->types.fixnum, dest->types.fixnum);
-    installPrimop(dest, strLit("fx+"), (MethodCode)primopFxAdd,
-                  false, Fixnum{2l}, dest->types.fixnum, dest->types.fixnum);
-    installPrimop(dest, strLit("fx-"), (MethodCode)primopFxSub,
-                  false, Fixnum{2l}, dest->types.fixnum, dest->types.fixnum);
-    installPrimop(dest, strLit("fx*"), (MethodCode)primopFxMul,
-                  false, Fixnum{2l}, dest->types.fixnum, dest->types.fixnum);
-    installPrimop(dest, strLit("fx-quot"), (MethodCode)primopFxQuot,
-                  false, Fixnum{2l}, dest->types.fixnum, dest->types.fixnum);
-    installPrimop(dest, strLit("fx<"), (MethodCode)primopFxLt,
-                  false, Fixnum{2l}, dest->types.fixnum, dest->types.fixnum);
-    installPrimop(dest, strLit("fixnum->flonum"), (MethodCode)primopFixnumToFlonum,
-                  false, Fixnum{1l}, dest->types.fixnum);
-    installPrimop(dest, strLit("fl+"), (MethodCode)primopFlAdd,
-                  false, Fixnum{2l}, dest->types.flonum, dest->types.flonum);
-    installPrimop(dest, strLit("fl-"), (MethodCode)primopFlSub,
-                  false, Fixnum{2l}, dest->types.flonum, dest->types.flonum);
-    installPrimop(dest, strLit("fl*"), (MethodCode)primopFlMul,
-                  false, Fixnum{2l}, dest->types.flonum, dest->types.flonum);
-    installPrimop(dest, strLit("fl/"), (MethodCode)primopFlDiv,
-                  false, Fixnum{2l}, dest->types.flonum, dest->types.flonum);
-    installPrimop(dest, strLit("char->integer"), (MethodCode)primopCharToInteger,
-                  false, Fixnum{1l}, dest->types.charr);
-    installPrimop(dest, strLit("char<"), (MethodCode)primopCharLt,
-                  false, Fixnum{2l}, dest->types.charr, dest->types.charr);
-    installPrimop(dest, strLit("char-alphabetic?"), (MethodCode)primopCharIsAlphabetic,
-                  false, Fixnum{1l}, dest->types.charr);
-    installPrimop(dest, strLit("char-numeric?"), (MethodCode)primopCharIsNumeric,
-                  false, Fixnum{1l}, dest->types.charr);
-    installPrimop(dest, strLit("char-whitespace?"), (MethodCode)primopCharIsWhitespace,
-                  false, Fixnum{1l}, dest->types.charr);
-    installPrimop(dest, strLit("array!->string"), (MethodCode)primopArrayMutToString,
-                  false, Fixnum{1l}, dest->types.arrayMut);
-    installPrimop(dest, strLit("string-iterator-peek"), (MethodCode)primopStringIteratorPeek,
-                  false, Fixnum{1l}, dest->types.stringIterator);
-    installPrimop(dest, strLit("string-iterator-next!"), (MethodCode)primopStringIteratorNext,
-                  false, Fixnum{1l}, dest->types.stringIterator);
-    installPrimop(dest, strLit("string->symbol"), (MethodCode)primopStringToSymbol,
-                  false, Fixnum{1l}, dest->types.string);
-    installPrimop(dest, strLit("file-exists?"), (MethodCode)primopFileExists,
-                  false, Fixnum{1l}, dest->types.string);
-    installPrimop(dest, strLit("open-input-file"), (MethodCode)primopOpenInputFile,
-                  false, Fixnum{1l}, dest->types.string);
-    installPrimop(dest, strLit("close-port"), (MethodCode)primopClosePort,
-                  false, Fixnum{1l}, dest->types.inputFile);
-    installPrimop(dest, strLit("peek-char"), (MethodCode)primopPeekChar,
-                  false, Fixnum{1l}, dest->types.inputFile);
-    installPrimop(dest, strLit("read-char"), (MethodCode)primopReadChar,
-                  false, Fixnum{1l}, dest->types.inputFile);
-    installPrimop(dest, strLit("write"), (MethodCode)primopWrite,
-                  false, Fixnum{1l}, dest->types.any);
-    installPrimop(dest, strLit("write-char"), (MethodCode)primopWriteChar,
-                  false, Fixnum{1l}, dest->types.charr);
-    installPrimop(dest, strLit("write-string"), (MethodCode)primopWriteString,
-                  false, Fixnum{1l}, dest->types.string);
-    installPrimop(dest, strLit("flush-output-port"), (MethodCode)primopFlushOutputPort,
-                  false, Fixnum{0l});
-    installPrimop(dest, strLit("current-second"), (MethodCode)primopCurrentSecond,
-                  false, Fixnum{0l});
-    installPrimop(dest, strLit("current-jiffy"), (MethodCode)primopCurrentJiffy, false, Fixnum{0l});
-    installPrimop(dest, strLit("jiffies-per-second"), (MethodCode)primopJiffiesPerSecond,
-                  false, Fixnum{0l});
-    installPrimop(dest, strLit("resolve"), (MethodCode)primopResolve,
-                  false, Fixnum{1l}, dest->types.symbol);
-    installPrimop(dest, strLit("eval"), (MethodCode)primopEval,
-                  false, Fixnum{3l}, dest->types.any, dest->types.loc, dest->types.booll);
-    installPrimop(dest, strLit("continuation-call-loc"), (MethodCode)primopContinuationCallLoc,
-                  false, Fixnum{1l}, dest->types.continuation);
-    installPrimop(dest, strLit("exit"), (MethodCode)primopExit,
-                  false, Fixnum{1l}, dest->types.any);
+    PrimopApplyArray::install(*dest);
+    PrimopApplyArrayMut::install(*dest);
+    PrimopApplyList::install(*dest);
+    PrimopCallCC::install(*dest);
+    PrimopContinue::install(*dest);
+    PrimopIdentical::install(*dest);
+    PrimopTypeOf::install(*dest);
+    PrimopMakeSlotsType::install(*dest);
+    PrimopMake::install(*dest);
+    PrimopSlotGet::install(*dest);
+    PrimopSlotSet::install(*dest);
+    PrimopMakeFlex::install(*dest);
+    PrimopFlexCount::install(*dest);
+    PrimopFlexGet::install(*dest);
+    PrimopFlexSet::install(*dest);
+    PrimopFlexCopy::install(*dest);
+    PrimopFlexClone::install(*dest);
+    PrimopFxAdd::install(*dest);
+    PrimopFxSub::install(*dest);
+    PrimopFxMul::install(*dest);
+    PrimopFxQuot::install(*dest);
+    PrimopFxLt::install(*dest);
+    PrimopFixnumToFlonum::install(*dest);
+    PrimopFlAdd::install(*dest);
+    PrimopFlSub::install(*dest);
+    PrimopFlMul::install(*dest);
+    PrimopFlDiv::install(*dest);
+    PrimopCharLt::install(*dest);
+    PrimopCharToInteger::install(*dest);
+    PrimopCharIsAlphabetic::install(*dest);
+    PrimopCharIsNumeric::install(*dest);
+    PrimopCharIsWhitespace::install(*dest);
+    PrimopArrayMutToString::install(*dest);
+    PrimopStringIteratorPeek::install(*dest);
+    PrimopStringIteratorNext::install(*dest);
+    PrimopStringToSymbol::install(*dest);
+    PrimopFileExists::install(*dest);
+    PrimopOpenInputFile::install(*dest);
+    PrimopClosePort::install(*dest);
+    PrimopPeekChar::install(*dest);
+    PrimopReadChar::install(*dest);
+    PrimopWrite::install(*dest);
+    PrimopWriteChar::install(*dest);
+    PrimopWriteString::install(*dest);
+    PrimopFlushOutputPort::install(*dest);
+    PrimopCurrentSecond::install(*dest);
+    PrimopCurrentJiffy::install(*dest);
+    PrimopJiffiesPerSecond::install(*dest);
+    PrimopResolve::install(*dest);
+    PrimopEval::install(*dest);
+    PrimopContinuationCallLoc::install(*dest);
+    PrimopExit::install(*dest);
 
     return dest;
 }

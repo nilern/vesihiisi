@@ -113,6 +113,12 @@ struct State {
     [[nodiscard]]
     RootGuard pushRoot(ORef* handle) { return RootGuard{this, handle}; } // RVO => not even move
 
+    template<typename T>
+    HRef<Type> reify() const { return T::reify(*this); }
+    // HACK: `ORef` is a C type, so it cannot have `static HRef<Type> reify`:
+    template<typename T> requires (std::is_same<T, ORef>{}())
+    HRef<Type> reify() const { return this->types.any; }
+
 private:
     State(Heap heap, NamedTypes types, NamedSingletons singletons, HRef<Namespace> ns,
           HRef<Var> debug, HRef<Var> errorHandler);
@@ -123,6 +129,8 @@ Type const* typePtrOf(State const* state, ORef v);
 
 template<typename T>
 bool isa(State const& state, ORef v) { return T::contains(state, v); }
+template<typename T> requires (std::is_same<T, ORef>{}())
+bool isa(State const& /*state*/, ORef /*v*/) { return true; }
 
 bool isa(State const* state, HRef<Type> type, ORef v);
 

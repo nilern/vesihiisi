@@ -8,7 +8,6 @@ namespace {
 [[nodiscard]]
 ORef checkDomainForArgs(State* state, HRef<Closure> calleeRef, ORef const* args, size_t argc);
 
-// OPTIMIZE: We know the domain of primops at VM compile time so going through this is suboptimal:
 /// Like `checkDomainForArgs` but assumes args are in `state->regs[firstArgReg...]`.
 [[nodiscard]]
 ORef checkDomain(State* state);

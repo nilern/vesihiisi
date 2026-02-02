@@ -39,6 +39,21 @@ constexpr uint64_t boolTag = nonFlonumTag | ((uint64_t)TaggedType::BOOL << paylo
 // pointers anyway:
 constexpr uint64_t heapedTag = nonFlonumTag | ((uint64_t)0b00 << payloadWidth);
 
+/// Reference to `Object` of type `T`
+template<typename T>
+struct HRef : public ORef {
+    constexpr explicit HRef(T* ptr) : HRef{heapedTag | (uint64_t)ptr} {}
+
+    static HRef<T> fromUnchecked(ORef v) { return std::bit_cast<HRef<T>>(v); }
+
+    T* operator->() const { return std::bit_cast<T*>(bits & payloadMask); }
+
+    T& operator*() const { return *std::bit_cast<T*>(bits & payloadMask); }
+
+private:
+    constexpr explicit HRef(uint64_t t_bits) : ORef{t_bits} {}
+};
+
 struct Scalar : public ORef {
     constexpr explicit Scalar(uint64_t t_bits) : ORef{t_bits} {}
 
@@ -48,7 +63,11 @@ struct Scalar : public ORef {
 static_assert(sizeof(Scalar) == sizeof(ORef));
 
 struct Fixnum : public Scalar {
+    static HRef<struct Type> reify(struct State const& state);
+
     static bool contains(ORef v) { return (v.bits & tagMask) == fixnumTag; }
+
+    static bool contains(struct State const& /*state*/, ORef v) { return contains(v); }
 
     static constexpr int64_t max = ((int64_t)1 << (payloadWidth - 1)) - 1;
     static constexpr int64_t min = -(Fixnum::max + 1);
@@ -68,10 +87,15 @@ private:
 };
 
 struct Flonum : public Scalar {
+    [[maybe_unused]] // TODO: certainly use
+    static HRef<struct Type> reify(struct State const& state);
+
     static bool contains(ORef v) {
         return v.bits == nonFlonumTag // Actual NaN
             || (v.bits & nonFlonumTag) != nonFlonumTag;
     }
+
+    static bool contains(struct State const& /*state*/, ORef v) { return contains(v); }
 
     constexpr explicit Flonum(double n) : Flonum{std::bit_cast<uint64_t>(n)} {}
 
@@ -84,7 +108,14 @@ private:
 };
 
 struct Char : public Scalar {
-    static bool contains(ORef v) { return (v.bits & tagMask) == charTag; }
+    [[maybe_unused]] // TODO: certainly use
+    static HRef<struct Type> reify(struct State const& state);
+
+    static bool contains(ORef v) {
+        return (v.bits & tagMask) == charTag;
+    }
+
+    static bool contains(struct State const& /*state*/, ORef v) { return contains(v); }
 
     constexpr explicit Char(uint32_t c) : Char{charTag | uint64_t(c)} {}
 
@@ -97,7 +128,13 @@ private:
 };
 
 struct Bool : public Scalar {
-    static bool contains(ORef v) { return (v.bits & tagMask) == boolTag; }
+    static HRef<struct Type> reify(struct State const& state);
+
+    static bool contains(ORef v) {
+        return (v.bits & tagMask) == boolTag;
+    }
+
+    static bool contains(struct State const& /*state*/, ORef v) { return contains(v); }
 
     constexpr explicit Bool(bool b) : Bool{boolTag | (uint64_t)b} {}
 
@@ -141,21 +178,6 @@ struct Object {
     Object* tryForwarded() const;
 
     void forwardTo(Object* copy);
-};
-
-/// Reference to `Object` of type `T`
-template<typename T>
-struct HRef : public ORef {
-    constexpr explicit HRef(T* ptr) : HRef{heapedTag | (uint64_t)ptr} {}
-
-    static HRef<T> fromUnchecked(ORef v) { return std::bit_cast<HRef<T>>(v); }
-
-    T* operator->() const { return std::bit_cast<T*>(bits & payloadMask); }
-
-    T& operator*() const { return *std::bit_cast<T*>(bits & payloadMask); }
-
-private:
-    constexpr explicit HRef(uint64_t t_bits) : ORef{t_bits} {}
 };
 
 inline ORef tagHeaped(Object* ptr) { return ORef{heapedTag | (uint64_t)ptr}; }

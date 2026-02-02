@@ -12,16 +12,16 @@ ORef doCheckDomain(
     assert(isa<Method>(*state, callee->method));
     HRef<Method> const method = HRef<Method>::fromUnchecked(callee->method);
     size_t const arity = (uint64_t)method->flexCount().val();
+    bool const hasVarArg = method->hasVarArg.val();
 
     if (argc != arity) {
-        if (!(method->hasVarArg.val() && argc >= arity - 1)) {
+        if (!(hasVarArg && argc >= arity - 1)) {
             return createArityError(state, callee, Fixnum((intptr_t)argc));
         }
     }
 
     // OPTIMIZE: Skip these loops if no typed params (= not a specialization):
 
-    bool const hasVarArg = method->hasVarArg.val();
     size_t const minArity = !hasVarArg ? arity : arity - 1;
 
     for (size_t i = 0; i < minArity; ++i) {
@@ -55,16 +55,16 @@ bool closureIsApplicable(
     assert(isa<Method>(*state, callee->method));
     HRef<Method> const method = HRef<Method>::fromUnchecked(callee->method);
     size_t const arity = (uint64_t)method->flexCount().val();
+    bool const hasVarArg = method->hasVarArg.val();
 
     if (argc != arity) {
-        if (!(method->hasVarArg.val() && argc >= arity - 1)) {
+        if (!(hasVarArg && argc >= arity - 1)) {
             return false;
         }
     }
 
     // OPTIMIZE: Skip these loops if no typed params (= not a specialization):
 
-    bool const hasVarArg = method->hasVarArg.val();
     size_t const minArity = !hasVarArg ? arity : arity - 1;
 
     // Fixed args:

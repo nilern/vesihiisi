@@ -4,57 +4,65 @@
 
 namespace {
 
-HRef<Type> Type::reify(struct State const& state) { return state.types.type; }
+HRef<Type> Flonum::reify(State const& state) { return state.types.flonum; }
 
-HRef<Type> String::reify(struct State const& state) { return state.types.string; }
+HRef<Type> Fixnum::reify(State const& state) { return state.types.fixnum; }
 
-HRef<Type> StringIterator::reify(struct State const& state) { return state.types.stringIterator; }
+HRef<Type> Char::reify(State const& state) { return state.types.charr; }
 
-HRef<Type> Symbol::reify(struct State const& state) { return state.types.symbol; }
+HRef<Type> Bool::reify(State const& state) { return state.types.booll; }
 
-HRef<Type> Array::reify(struct State const& state) { return state.types.array; }
+HRef<Type> Type::reify(State const& state) { return state.types.type; }
 
-HRef<Type> ArrayMut::reify(struct State const& state) { return state.types.arrayMut; }
+HRef<Type> String::reify(State const& state) { return state.types.string; }
 
-HRef<Type> ByteArray::reify(struct State const& state) { return state.types.byteArray; }
+HRef<Type> StringIterator::reify(State const& state) { return state.types.stringIterator; }
 
-HRef<Type> ByteArrayMut::reify(struct State const& state) { return state.types.byteArrayMut; }
+HRef<Type> Symbol::reify(State const& state) { return state.types.symbol; }
 
-HRef<Type> Loc::reify(struct State const& state) { return state.types.loc; }
+HRef<Type> Array::reify(State const& state) { return state.types.array; }
 
-HRef<Type> Pair::reify(struct State const& state) { return state.types.pair; }
+HRef<Type> ArrayMut::reify(State const& state) { return state.types.arrayMut; }
 
-HRef<Type> EmptyList::reify(struct State const& state) { return state.types.emptyList; }
+HRef<Type> ByteArray::reify(State const& state) { return state.types.byteArray; }
 
-HRef<Type> Method::reify(struct State const& state) { return state.types.method; }
+HRef<Type> ByteArrayMut::reify(State const& state) { return state.types.byteArrayMut; }
 
-HRef<Type> Closure::reify(struct State const& state) { return state.types.closure; }
+HRef<Type> Loc::reify(State const& state) { return state.types.loc; }
 
-HRef<Type> Multimethod::reify(struct State const& state) { return state.types.multimethod; }
+HRef<Type> Pair::reify(State const& state) { return state.types.pair; }
 
-HRef<Type> Continuation::reify(struct State const& state) { return state.types.continuation; }
+HRef<Type> EmptyList::reify(State const& state) { return state.types.emptyList; }
 
-HRef<Type> Unbound::reify(struct State const& state) { return state.types.unbound; }
+HRef<Type> Method::reify(State const& state) { return state.types.method; }
 
-HRef<Type> Var::reify(struct State const& state) { return state.types.var; }
+HRef<Type> Closure::reify(State const& state) { return state.types.closure; }
 
-HRef<Type> Knot::reify(struct State const& state) { return state.types.knot; }
+HRef<Type> Multimethod::reify(State const& state) { return state.types.multimethod; }
 
-HRef<Type> Namespace::reify(struct State const& state) { return state.types.ns; }
+HRef<Type> Continuation::reify(State const& state) { return state.types.continuation; }
 
-HRef<Type> End::reify(struct State const& state) { return state.types.end; }
+HRef<Type> Unbound::reify(State const& state) { return state.types.unbound; }
 
-HRef<Type> InputFile::reify(struct State const& state) { return state.types.inputFile; }
+HRef<Type> Var::reify(State const& state) { return state.types.var; }
 
-HRef<Type> FatalError::reify(struct State const& state) { return state.types.fatalError; }
+HRef<Type> Knot::reify(State const& state) { return state.types.knot; }
 
-HRef<Type> UnboundError::reify(struct State const& state) { return state.types.unboundError; }
+HRef<Type> Namespace::reify(State const& state) { return state.types.ns; }
 
-HRef<Type> TypeError::reify(struct State const& state) { return state.types.typeError; }
+HRef<Type> End::reify(State const& state) { return state.types.end; }
 
-HRef<Type> ArityError::reify(struct State const& state) { return state.types.arityError; }
+HRef<Type> InputFile::reify(State const& state) { return state.types.inputFile; }
 
-HRef<Type> InapplicableError::reify(struct State const& state) {
+HRef<Type> FatalError::reify(State const& state) { return state.types.fatalError; }
+
+HRef<Type> UnboundError::reify(State const& state) { return state.types.unboundError; }
+
+HRef<Type> TypeError::reify(State const& state) { return state.types.typeError; }
+
+HRef<Type> ArityError::reify(State const& state) { return state.types.arityError; }
+
+HRef<Type> InapplicableError::reify(State const& state) {
     return state.types.inapplicableError;
 }
 

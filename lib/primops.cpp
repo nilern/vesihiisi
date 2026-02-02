@@ -26,12 +26,19 @@ ORef getErrorHandler(State const* state) {
     return v;
 }
 
-[[nodiscard]]
 PrimopRes primopError(State* state, ORef err) {
     state->regs[calleeReg] = getErrorHandler(state);
     state->regs[firstArgReg] = err;
     state->entryRegc = firstArgReg + 1;
     return PrimopRes::TAILCALL;
+}
+
+PrimopRes primopArityError(State* state, HRef<Closure> callee, size_t argc) {
+    return primopError(state, createArityError(state, callee, Fixnum{int64_t(argc)}));
+}
+
+PrimopRes primopTypeError(State* state, HRef<Type> type, ORef v) {
+    return primopError(state, createTypeError(state, type, v));
 }
 
 PrimopRes callBytecode(State* /*state*/) { return PrimopRes::TAILCALL; }
@@ -74,10 +81,7 @@ PrimopRes primopAbort(State* state) {
     return PrimopRes::ABORT;
 }
 
-PrimopRes primopApplyArray(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopApplyArray::uncheckedInvoke(State* state) {
     ORef const callee = state->regs[firstArgReg];
     // Could also be an `<array!>`, but we "illegally" cast that here to avoid duplicating this
     // function for no actual benefit:
@@ -132,10 +136,11 @@ PrimopRes primopApplyArray(State* state) {
     return PrimopRes::TAILAPPLY;
 }
 
-PrimopRes primopApplyList(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+PrimopRes PrimopApplyArrayMut::uncheckedInvoke(State* state) {
+    return PrimopApplyArray::uncheckedInvoke(state);
+}
 
+PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
     ORef const callee = state->regs[firstArgReg];
     ORef args = state->regs[firstArgReg + 1];
 
@@ -375,29 +380,20 @@ PrimopRes primopApplyList(State* state) {
     return PrimopRes::TAILAPPLY;
 }
 
-PrimopRes primopCallCC(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopCallCC::uncheckedInvoke(State* state) {
     state->regs[calleeReg] = state->regs[firstArgReg];
     state->regs[firstArgReg] = state->regs[retContReg];
     state->entryRegc = firstArgReg + 1;
     return PrimopRes::TAILCALL;
 }
 
-PrimopRes primopContinue(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopContinue::uncheckedInvoke(State* state) {
     state->regs[retContReg] = state->regs[firstArgReg];
     state->regs[retReg] = state->regs[firstArgReg + 1];
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopIdentical(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopIdentical::uncheckedInvoke(State* state) {
     ORef const x = state->regs[firstArgReg];
     ORef const y = state->regs[firstArgReg + 1];
 
@@ -406,19 +402,13 @@ PrimopRes primopIdentical(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopTypeOf(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopTypeOf::uncheckedInvoke(State* state) {
     state->regs[retReg] = typeOf(state, state->regs[firstArgReg]);
 
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopMakeSlotsType(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopMakeSlotsType::uncheckedInvoke(State* state) {
     auto const name = HRef<Symbol>::fromUnchecked(state->regs[firstArgReg]);
     auto const slotCount = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]);
     auto const isFlex = Bool::fromUnchecked(state->regs[firstArgReg + 2]);
@@ -428,10 +418,7 @@ PrimopRes primopMakeSlotsType(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopMake(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopMake::uncheckedInvoke(State* state) {
     HRef<Type> type = HRef<Type>::fromUnchecked(state->regs[firstArgReg]);
     uint8_t const callArity = state->entryRegc - firstArgReg;
 
@@ -470,10 +457,7 @@ PrimopRes primopMake(State* state) {
     }
 }
 
-PrimopRes primopSlotGet(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopSlotGet::uncheckedInvoke(State* state) {
     ORef const v = state->regs[firstArgReg];
     size_t const slotIdx = (uint64_t)Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -493,10 +477,7 @@ PrimopRes primopSlotGet(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopSlotSet(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopSlotSet::uncheckedInvoke(State* state) {
     ORef const v = state->regs[firstArgReg];
     size_t const slotIdx = (uint64_t)Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
     ORef const slotV = state->regs[firstArgReg + 2];
@@ -519,10 +500,7 @@ PrimopRes primopSlotSet(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopMakeFlex(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopMakeFlex::uncheckedInvoke(State* state) {
     HRef<Type> type = HRef<Type>::fromUnchecked(state->regs[firstArgReg]);
     Fixnum const count = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]);
 
@@ -542,10 +520,7 @@ PrimopRes primopMakeFlex(State* state) {
     }
 }
 
-PrimopRes primopFlexCount(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopFlexCount::uncheckedInvoke(State* state) {
     ORef const v = state->regs[firstArgReg];
 
     Type const* const type = typePtrOf(state, v);
@@ -558,10 +533,7 @@ PrimopRes primopFlexCount(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopFlexGet(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopFlexGet::uncheckedInvoke(State* state) {
     ORef const v = state->regs[firstArgReg];
     int64_t const i = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -585,10 +557,7 @@ PrimopRes primopFlexGet(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopFlexSet(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopFlexSet::uncheckedInvoke(State* state) {
     ORef const v = state->regs[firstArgReg];
     int64_t const i = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
     ORef const iv = state->regs[firstArgReg + 2];
@@ -614,10 +583,7 @@ PrimopRes primopFlexSet(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopFlexCopy(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopFlexCopy::uncheckedInvoke(State* state) {
     ORef const dest = state->regs[firstArgReg];
     intptr_t const offsetS = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
     ORef const src = state->regs[firstArgReg + 2];
@@ -657,10 +623,7 @@ PrimopRes primopFlexCopy(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopFlexClone(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopFlexClone::uncheckedInvoke(State* state) {
     ORef src = state->regs[firstArgReg];
     intptr_t const startS = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
     intptr_t const endS = Fixnum::fromUnchecked(state->regs[firstArgReg + 2]).val();
@@ -697,10 +660,7 @@ PrimopRes primopFlexClone(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopFxAdd(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopFxAdd::uncheckedInvoke(State* state) {
     int64_t const x = Fixnum::fromUnchecked(state->regs[firstArgReg]).val();
     int64_t const y = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -721,10 +681,7 @@ PrimopRes primopFxAdd(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopFxSub(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopFxSub::uncheckedInvoke(State* state) {
     int64_t const x = Fixnum::fromUnchecked(state->regs[firstArgReg]).val();
     int64_t const y = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -745,10 +702,7 @@ PrimopRes primopFxSub(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopFxMul(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopFxMul::uncheckedInvoke(State* state) {
     int64_t const x = Fixnum::fromUnchecked(state->regs[firstArgReg]).val();
     int64_t const y = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -775,10 +729,7 @@ PrimopRes primopFxMul(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopFxQuot(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopFxQuot::uncheckedInvoke(State* state) {
     intptr_t const x = Fixnum::fromUnchecked(state->regs[firstArgReg]).val();
     intptr_t const y = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -804,10 +755,7 @@ PrimopRes primopFxQuot(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopFxLt(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopFxLt::uncheckedInvoke(State* state) {
     intptr_t const x = Fixnum::fromUnchecked(state->regs[firstArgReg]).val();
     intptr_t const y = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -816,10 +764,7 @@ PrimopRes primopFxLt(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopFixnumToFlonum(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopFixnumToFlonum::uncheckedInvoke(State* state) {
     intptr_t const n = Fixnum::fromUnchecked(state->regs[firstArgReg]).val();
 
     state->regs[retReg] = Flonum((double)n);
@@ -827,10 +772,7 @@ PrimopRes primopFixnumToFlonum(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopFlAdd(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopFlAdd::uncheckedInvoke(State* state) {
     double const x = Flonum::fromUnchecked(state->regs[firstArgReg]).val();
     double const y = Flonum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -839,10 +781,7 @@ PrimopRes primopFlAdd(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopFlSub(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopFlSub::uncheckedInvoke(State* state) {
     double const x = Flonum::fromUnchecked(state->regs[firstArgReg]).val();
     double const y = Flonum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -851,10 +790,7 @@ PrimopRes primopFlSub(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopFlMul(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopFlMul::uncheckedInvoke(State* state) {
     double const x = Flonum::fromUnchecked(state->regs[firstArgReg]).val();
     double const y = Flonum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -863,10 +799,7 @@ PrimopRes primopFlMul(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopFlDiv(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopFlDiv::uncheckedInvoke(State* state) {
     double const x = Flonum::fromUnchecked(state->regs[firstArgReg]).val();
     double const y = Flonum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -875,21 +808,7 @@ PrimopRes primopFlDiv(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopCharToInteger(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
-    uint32_t const c = Char::fromUnchecked(state->regs[firstArgReg]).val();
-
-    state->regs[retReg] = Fixnum{int64_t(c)};
-
-    return PrimopRes::CONTINUE;
-}
-
-PrimopRes primopCharLt(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopCharLt::uncheckedInvoke(State* state) {
     uint32_t const c1 = Char::fromUnchecked(state->regs[firstArgReg]).val();
     uint32_t const c2 = Char::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -898,10 +817,15 @@ PrimopRes primopCharLt(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopCharIsAlphabetic(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+PrimopRes PrimopCharToInteger::uncheckedInvoke(State* state) {
+    uint32_t const c = Char::fromUnchecked(state->regs[firstArgReg]).val();
 
+    state->regs[retReg] = Fixnum{int64_t(c)};
+
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes PrimopCharIsAlphabetic::uncheckedInvoke(State* state) {
     auto const c = int32_t(Char::fromUnchecked(state->regs[firstArgReg]).val());
 
     utf8proc_category_t const cat = utf8proc_category(c);
@@ -912,20 +836,14 @@ PrimopRes primopCharIsAlphabetic(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopCharIsNumeric(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopCharIsNumeric::uncheckedInvoke(State* state) {
     auto const c = Char::fromUnchecked(state->regs[firstArgReg]).val();
 
     state->regs[retReg] = Bool{utf8proc_category(int32_t(c)) == UTF8PROC_CATEGORY_ND};
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopCharIsWhitespace(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopCharIsWhitespace::uncheckedInvoke(State* state) {
     auto const c = Char::fromUnchecked(state->regs[firstArgReg]).val();
 
     utf8proc_category_t const cat = utf8proc_category(int32_t(c));
@@ -937,10 +855,7 @@ PrimopRes primopCharIsWhitespace(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopArrayMutToString(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopArrayMutToString::uncheckedInvoke(State* state) {
     auto vs = HRef<ArrayMut>::fromUnchecked(state->regs[firstArgReg]);
     auto const vsG = state->pushRoot(&vs);
 
@@ -968,10 +883,7 @@ PrimopRes primopArrayMutToString(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopStringIteratorPeek(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopStringIteratorPeek::uncheckedInvoke(State* state) {
     auto const iter = HRef<StringIterator>::fromUnchecked(state->regs[firstArgReg]);
 
     ORef const maybeString = iter->string;
@@ -1003,10 +915,7 @@ PrimopRes primopStringIteratorPeek(State* state) {
 
 // TODO: Very similar to `primopStringIteratorPeek`, but would it make sense to abstract out what is
 // mostly sanity checks on the iterator?
-PrimopRes primopStringIteratorNext(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopStringIteratorNext::uncheckedInvoke(State* state) {
     auto const iter = HRef<StringIterator>::fromUnchecked(state->regs[firstArgReg]);
 
     ORef const maybeString = iter->string;
@@ -1036,10 +945,7 @@ PrimopRes primopStringIteratorNext(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopStringToSymbol(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopStringToSymbol::uncheckedInvoke(State* state) {
     auto const str = HRef<String>::fromUnchecked(state->regs[firstArgReg]);
 
     state->regs[retReg] = internHeaped(state, str);
@@ -1047,10 +953,7 @@ PrimopRes primopStringToSymbol(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopFileExists(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopFileExists::uncheckedInvoke(State* state) {
     auto const filename = HRef<String>::fromUnchecked(state->regs[firstArgReg]);
 
     // TODO: Avoid copy (with null termination of String?):
@@ -1065,10 +968,7 @@ PrimopRes primopFileExists(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopOpenInputFile(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopOpenInputFile::uncheckedInvoke(State* state) {
     auto const filename = HRef<String>::fromUnchecked(state->regs[firstArgReg]);
 
     ORef port = Default;
@@ -1081,10 +981,7 @@ PrimopRes primopOpenInputFile(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopClosePort(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopClosePort::uncheckedInvoke(State* state) {
     auto const port = HRef<InputFile>::fromUnchecked(state->regs[firstArgReg]);
 
     port->file.close();
@@ -1092,10 +989,7 @@ PrimopRes primopClosePort(State* state) {
     return PrimopRes::CONTINUE; // Implicitly returns `port`
 }
 
-PrimopRes primopPeekChar(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopPeekChar::uncheckedInvoke(State* state) {
     auto const port = HRef<InputFile>::fromUnchecked(state->regs[firstArgReg]);
 
     auto const maybeCp = port->file.peec();
@@ -1110,10 +1004,7 @@ PrimopRes primopPeekChar(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopReadChar(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopReadChar::uncheckedInvoke(State* state) {
     auto const port = HRef<InputFile>::fromUnchecked(state->regs[firstArgReg]);
 
     auto const maybeCp = port->file.getc();
@@ -1129,19 +1020,13 @@ PrimopRes primopReadChar(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopWrite(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopWrite::uncheckedInvoke(State* state) {
     print(state, stdout, state->regs[firstArgReg]);
 
     return PrimopRes::CONTINUE; // TODO: Maybe do not return written value?
 }
 
-PrimopRes primopWriteChar(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopWriteChar::uncheckedInvoke(State* state) {
     uint32_t const c = Char::fromUnchecked(state->regs[firstArgReg]).val();
 
     uint8_t buf[4];
@@ -1152,10 +1037,7 @@ PrimopRes primopWriteChar(State* state) {
     return PrimopRes::CONTINUE; // TODO: Maybe do not return written value?
 }
 
-PrimopRes primopWriteString(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopWriteString::uncheckedInvoke(State* state) {
     auto const str = HRef<String>::fromUnchecked(state->regs[firstArgReg]);
 
     // TODO: Avoid POSIX format spec extension:
@@ -1164,10 +1046,7 @@ PrimopRes primopWriteString(State* state) {
     return PrimopRes::CONTINUE; // TODO: Maybe do not return written value?
 }
 
-PrimopRes primopFlushOutputPort(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopFlushOutputPort::uncheckedInvoke(State* state) {
     if (fflush(stdout) == EOF) {
         state->regs[retReg] = False;
         return PrimopRes::CONTINUE;
@@ -1177,37 +1056,25 @@ PrimopRes primopFlushOutputPort(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopCurrentSecond(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopCurrentSecond::uncheckedInvoke(State* state) {
     state->regs[retReg] = Fixnum{(int64_t)time(nullptr)};
 
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopCurrentJiffy(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopCurrentJiffy::uncheckedInvoke(State* state) {
     state->regs[retReg] = Fixnum{(int64_t)clock()};
 
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopJiffiesPerSecond(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopJiffiesPerSecond::uncheckedInvoke(State* state) {
     state->regs[retReg] = Fixnum{(int64_t)CLOCKS_PER_SEC};
 
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopResolve(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopResolve::uncheckedInvoke(State* state) {
     auto const name = HRef<Symbol>::fromUnchecked(state->regs[firstArgReg]);
 
     FindVarRes const findRes = findVar(state->ns, name);
@@ -1222,10 +1089,7 @@ PrimopRes primopResolve(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopEval(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopEval::uncheckedInvoke(State* state) {
     ORef const expr = state->regs[firstArgReg];
     auto const loc = HRef<Loc>::fromUnchecked(state->regs[firstArgReg + 1]);
     bool const debug = Bool::fromUnchecked(state->regs[firstArgReg + 2]).val();
@@ -1242,10 +1106,7 @@ PrimopRes primopEval(State* state) {
     return PrimopRes::TAILCALL;
 }
 
-PrimopRes primopContinuationCallLoc(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopContinuationCallLoc::uncheckedInvoke(State* state) {
     auto const cont = HRef<Continuation>::fromUnchecked(state->regs[firstArgReg]);
 
     if (!isa<Method>(*state, cont->method)) { PANIC("TODO"); }
@@ -1263,10 +1124,7 @@ PrimopRes primopContinuationCallLoc(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes primopExit(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
-
+PrimopRes PrimopExit::uncheckedInvoke(State* state) {
     ORef const v = state->regs[firstArgReg];
 
     int const exitCode = Fixnum::contains(v)

@@ -75,6 +75,8 @@ typedef struct Heap {
     bool isValid() const { return tospace.isValid() && fromspace.isValid(); }
 
     [[nodiscard]]
+    Object* mark(Object* obj);
+    [[nodiscard]]
     ORef mark(ORef oref);
 
     void collect();

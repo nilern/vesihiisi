@@ -121,6 +121,7 @@ private:
 // redundantly:
 
 HRef<Type> typeOf(State const* state, ORef v);
+Type const* typePtrOf(State const* state, ORef v);
 
 bool isa(State const* state, HRef<Type> type, ORef v);
 

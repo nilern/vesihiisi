@@ -477,7 +477,7 @@ PrimopRes primopSlotGet(State* state) {
     ORef const v = state->regs[firstArgReg];
     size_t const slotIdx = (uint64_t)Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
-    HRef<Type> const type = typeOf(state, v);
+    Type const* const type = typePtrOf(state, v);
     if (!type->isBytes.val()) {
         size_t const slotCount = (uintptr_t)type->minSize.val() / sizeof(ORef);
         if (slotIdx >= slotCount) {
@@ -501,7 +501,7 @@ PrimopRes primopSlotSet(State* state) {
     size_t const slotIdx = (uint64_t)Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
     ORef const slotV = state->regs[firstArgReg + 2];
 
-    HRef<Type> const type = typeOf(state, v);
+    Type const* const type = typePtrOf(state, v);
     if (!type->isBytes.val()) {
         size_t const slotCount = (uintptr_t)type->minSize.val() / sizeof(ORef);
         if (slotIdx >= slotCount) {
@@ -548,7 +548,7 @@ PrimopRes primopFlexCount(State* state) {
 
     ORef const v = state->regs[firstArgReg];
 
-    HRef<Type> const type = typeOf(state, v);
+    Type const* const type = typePtrOf(state, v);
     if (!type->isFlex.val()) {
         assert(false); // TODO: Proper nonflex error
     }
@@ -565,7 +565,7 @@ PrimopRes primopFlexGet(State* state) {
     ORef const v = state->regs[firstArgReg];
     int64_t const i = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
-    HRef<Type> const type = typeOf(state, v);
+    Type const* const type = typePtrOf(state, v);
     if (!type->isFlex.val()) {
         assert(false); // TODO: Proper nonflex error
     }
@@ -593,7 +593,7 @@ PrimopRes primopFlexSet(State* state) {
     int64_t const i = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
     ORef const iv = state->regs[firstArgReg + 2];
 
-    HRef<Type> const type = typeOf(state, v);
+    Type const* const type = typePtrOf(state, v);
     if (!type->isFlex.val()) {
         assert(false); // TODO: Proper nonflex error
     }
@@ -623,8 +623,8 @@ PrimopRes primopFlexCopy(State* state) {
     ORef const src = state->regs[firstArgReg + 2];
     intptr_t const startS = Fixnum::fromUnchecked(state->regs[firstArgReg + 3]).val();
     intptr_t const endS = Fixnum::fromUnchecked(state->regs[firstArgReg + 4]).val();
-    HRef<Type> const destType = typeOf(state, dest);
-    HRef<Type> const srcType = typeOf(state, src);
+    Type const* const destType = typePtrOf(state, dest);
+    Type const* const srcType = typePtrOf(state, src);
 
     if (!destType->isFlex.val()) { PANIC("TODO: Proper nonflex error"); }
     Bool const isBytesRef = destType->isBytes;

@@ -246,10 +246,12 @@ struct Type : FixedObject {
 struct Header {
     explicit Header(Type const* type) : Header{std::bit_cast<uint64_t>(type)} {}
 
-    // Cannot work on broken hearts (as they have relocation pointer instead):
-    HRef<Type> type() const {
-        return HRef{std::bit_cast<Type*>(heapedTag | (bits & payloadMask))};
+    Type* typePtr() const {
+        assert(!isRelocation());
+        return std::bit_cast<Type*>(bits);
     }
+
+    HRef<Type> type() const { return HRef{typePtr()}; }
 
     static Header relocation(Object* obj) { return Header{markBit | std::bit_cast<uint64_t>(obj)}; }
 
@@ -290,14 +292,14 @@ FlexHeader const* uncheckedFlexHeader(ORef v) {
 // TODO: Align result if we go beyond 'either all slots or all bytes':
 void const* uncheckedUntypedFlexPtr(ORef v) {
     Object const* const obj = &*HRef<Object>::fromUnchecked(v);
-    size_t const minSize = (uint64_t)obj->header()->type()->minSize.val();
+    size_t const minSize = (uint64_t)obj->header()->typePtr()->minSize.val();
     return static_cast<void const*>(std::bit_cast<char const*>(obj) + minSize);
 }
 
 // TODO: Align result if we go beyond 'either all slots or all bytes':
 void* uncheckedUntypedFlexPtrMut(ORef v) {
     Object* const obj = &*HRef<Object>::fromUnchecked(v);
-    size_t const minSize = (uint64_t)obj->header()->type()->minSize.val();
+    size_t const minSize = (uint64_t)obj->header()->typePtr()->minSize.val();
     return static_cast<void*>(std::bit_cast<char*>(obj) + minSize);
 }
 

@@ -775,6 +775,13 @@ HRef<Type> typeOf(State const* state, ORef v) {
         : state->typesArray[(size_t)tag];
 }
 
+Type const* typePtrOf(State const* state, ORef v) {
+    TaggedType const tag = getTag(v);
+    return tag == TaggedType::HEAPED
+        ? HRef<Object>::fromUnchecked(v)->header()->typePtr()
+        : &*state->typesArray[(size_t)tag];
+}
+
 bool isa(State const* state, HRef<Type> type, ORef v) {
     if (eq(type, state->types.any)) { return true; }
 

@@ -43,21 +43,21 @@ Object* Semispace::tryAlloc(Type const* type) {
     assert(!type->isFlex.val());
 
     uintptr_t address = (uintptr_t)(void*)free;
-    
+
     address += sizeof(Header); // Reserve header
     // Align oref:
     uintptr_t const align = (uintptr_t)type->align.val();
     address = (address + align - 1) & ~(align - 1);
-    
+
     // Check bound and commit reservation:
     uintptr_t const size = (uintptr_t)type->minSize.val();
     char* const free = (char*)(void*)(address + size);
     if (free >= limit) { return nullptr; }
     this->free = free;
-    
+
     Object* const ptr = (Object*)(void*)address;
     *((Header*)(void*)address - 1) = Header{type}; // Init header
-    
+
     return ptr;
 }
 
@@ -74,12 +74,12 @@ Object* Semispace::tryAllocFlex(Type const* type, Fixnum length) {
     assert(type->isFlex.val());
 
     uintptr_t address = (uintptr_t)(void*)free;
-    
+
     address += sizeof(FlexHeader); // Reserve header
     // Align oref:
     uintptr_t const align = (uintptr_t)type->align.val();
     address = (address + align - 1) & ~(align - 1);
-    
+
     // Check bound and commit reservation:
     uintptr_t len = (uintptr_t)length.val();
     uintptr_t const flexSize = type->isBytes.val() ? len : len * sizeof(ORef);
@@ -87,10 +87,10 @@ Object* Semispace::tryAllocFlex(Type const* type, Fixnum length) {
     char* const free = (char*)(void*)(address + size);
     if (free >= limit) { return nullptr; }
     this->free = free;
-    
+
     Object* const ptr = (Object*)(void*)address;
     *((FlexHeader*)(void*)address - 1) = FlexHeader{length, type}; // Init header
-    
+
     return ptr;
 }
 
@@ -107,7 +107,7 @@ Object* Heap::tryShallowCopy(void* ptr) {
            || allocatedInSemispace(&fromspace, ptr)); // GC
 
     Header const header = *((Header*)ptr - 1);
-    Type const* const type = &*header.type(); // OPTIMIZE: tag-untag
+    Type const* const type = header.typePtr();
 
     Object* copy = nullptr;
     size_t size = (uintptr_t)type->minSize.val();
@@ -137,24 +137,29 @@ Object* Heap::tryShallowCopy(void* ptr) {
 Heap Heap::tryCreate(size_t size) { return Heap{size}; }
 
 [[nodiscard]]
+Object* Heap::mark(Object* obj) {
+    Object* const fwdPtr = obj->tryForwarded();
+    if (fwdPtr) { return fwdPtr; }
+
+    Object* const copy = tryShallowCopy(obj);
+    assert(copy); // Copying should always succeed since tospace is at least as big as fromspace.
+    obj->forwardTo(copy);
+    return copy;
+}
+
+[[nodiscard]]
 ORef Heap::mark(ORef oref) {
     if (!isHeaped(oref)) { return oref; }
 
     Object* const ptr = uncheckedORefToPtr(oref);
-
-    Object* const fwdPtr = ptr->tryForwarded();
-    if (fwdPtr) { return tagHeaped(fwdPtr); }
-
-    Object* const copy = tryShallowCopy(ptr);
-    assert(copy); // Copying should always succeed since tospace is at least as big as fromspace.
-    ptr->forwardTo(copy);
+    Object* const copy = mark(ptr);
     return tagHeaped(copy);
 }
 
 [[nodiscard]]
 Header Heap::markHeader(Header header) {
-    auto const type = HRef<Type>::fromUnchecked(mark(header.type()));
-    return Header{&*type};
+    auto const type = static_cast<Type*>(mark(header.typePtr()));
+    return Header{type};
 }
 
 [[nodiscard]]
@@ -181,7 +186,7 @@ void* Heap::scanObj(void* const scan) {
 
     Header* const header = (Header*)scan - 1;
     *header = markHeader(*header);
-    Type* const type = &*header->type(); // OPTIMIZE: tag-untag
+    Type* const type = header->typePtr();
 
     char* byteScan = (char*)scan;
 

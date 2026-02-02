@@ -117,52 +117,16 @@ private:
           HRef<Var> debug, HRef<Var> errorHandler);
 };
 
-// OPTIMIZE: If we already know that `isHeaped(v)`, the calls to `isa` -> `typeOf` recheck that
-// redundantly:
-
 HRef<Type> typeOf(State const* state, ORef v);
 Type const* typePtrOf(State const* state, ORef v);
 
+template<typename T>
+bool isa(State const& state, ORef v) { return T::contains(state, v); }
+
 bool isa(State const* state, HRef<Type> type, ORef v);
-
-inline bool isString(State const* state, ORef v) {
-    return isHeaped(v) && isa(state, state->types.string, v);
-}
-
-inline bool isSymbol(State const* state, ORef v) {
-    return isHeaped(v) && isa(state, state->types.symbol, v);
-}
-
-inline bool isPair(State const* state, ORef v) {
-    return isHeaped(v) && isa(state, state->types.pair, v);
-}
 
 inline bool isEmptyList(State const* state, ORef v) {
     return eq(v, state->singletons.emptyList);
-}
-
-inline bool isMethod(State const* state, ORef v) {
-    return isHeaped(v) && isa(state, state->types.method, v);
-}
-
-inline bool isClosure(State const* state, ORef v) {
-    return isHeaped(v) && isa(state, state->types.closure, v);
-}
-
-inline bool isMultimethod(State const* state, ORef v) {
-    return isHeaped(v) && isa(state, state->types.multimethod, v);
-}
-
-inline bool isContinuation(State const* state, ORef v) {
-    return isHeaped(v) && isa(state, state->types.continuation, v);
-}
-
-inline bool isType(State const* state, ORef v) {
-    return isHeaped(v) && isa(state, state->types.type, v);
-}
-
-inline bool isTypeError(State const* state, ORef v) {
-    return isHeaped(v) && isa(state, state->types.typeError, v);
 }
 
 HRef<Type> createSlotsType(State* state, HRef<Symbol> name, Fixnum slotCount, Bool isFlex);

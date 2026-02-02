@@ -48,14 +48,14 @@ PrimopRes primopAbort(State* state) {
     assert(isa(state, state->types.continuation, state->regs[retContReg]));
     auto const cont = HRef<Continuation>::fromUnchecked(state->regs[retContReg]);
     ORef const anyCaller = cont->method;
-    if (isMethod(state, anyCaller)) {
+    if (isa<Method>(*state, anyCaller)) {
         auto const caller = HRef<Method>::fromUnchecked(anyCaller);
 
         size_t const retPc = uint64_t(cont->pc.val());
         auto const maybeCallLoc = locateCallerPc(state, caller, retPc);
 
         ORef const maybeCallerName = caller->maybeName;
-        if (isSymbol(state, maybeCallerName)) {
+        if (isa<Symbol>(*state, maybeCallerName)) {
             fputs(" in ", stderr);
             print(state, stderr, HRef<Symbol>::fromUnchecked(maybeCallerName));
         }
@@ -89,7 +89,7 @@ PrimopRes primopApplyArray(State* state) {
     if (!calleeClosureForArgs(state, callee, args, argc)) {
         return PrimopRes::TAILCALL; // Finish panic setup
     }
-    assert(isClosure(state, state->regs[calleeReg]));
+    assert(isa<Closure>(*state, state->regs[calleeReg]));
     HRef<Closure> const closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
 
     // Check domain (if not already checked by dispatch):
@@ -102,7 +102,7 @@ PrimopRes primopApplyArray(State* state) {
     }
 
     ORef const method = closure->method;
-    assert(isMethod(state, method));
+    assert(isa<Method>(*state, method));
     auto const methodRef = HRef<Method>::fromUnchecked(method);
 
     // Put args in place:
@@ -146,7 +146,7 @@ PrimopRes primopApplyList(State* state) {
     HRef<Closure> const closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
 
     ORef const method = closure->method;
-    assert(isMethod(state, method));
+    assert(isa<Method>(*state, method));
     auto const methodRef = HRef<Method>::fromUnchecked(method);
 
     // Put args in place and check them (if not already checked by dispatch):
@@ -158,7 +158,7 @@ PrimopRes primopApplyList(State* state) {
 
         // Fixed args:
         for (; argc < minArity; ++argc) {
-            if (isPair(state, args)) {
+            if (isa<Pair>(*state, args)) {
                 auto const argsPair = HRef<Pair>::fromUnchecked(args);
 
                 ORef const arg = argsPair->car;
@@ -186,7 +186,7 @@ PrimopRes primopApplyList(State* state) {
         if (!hasVarArg){ // Fixed arity => check that no more args remain:
             if (!isEmptyList(state, args)) {
                 for (; true; ++argc) {
-                    if (isPair(state, args)) {
+                    if (isa<Pair>(*state, args)) {
                         auto const argsPair = HRef<Pair>::fromUnchecked(args);
                         args = argsPair->cdr;
                     } else if (isEmptyList(state, args)) {
@@ -204,7 +204,7 @@ PrimopRes primopApplyList(State* state) {
             assert(isa(state, state->types.type, methodRef->domain()[minArity]));
             HRef<Type> type = HRef<Type>::fromUnchecked(methodRef->domain()[minArity]);
             for (; true; ++argc) {
-                if (isPair(state, args)) {
+                if (isa<Pair>(*state, args)) {
                     auto const argsPair = HRef<Pair>::fromUnchecked(args);
 
                     ORef const arg = argsPair->car;
@@ -236,7 +236,7 @@ PrimopRes primopApplyList(State* state) {
             ORef* varargsBuf = varargsBufRef->flexDataMut();
             size_t varargCount = 0;
             for (size_t i = 0; true; ++i, ++varargCount) {
-                if (isPair(state, args)) {
+                if (isa<Pair>(*state, args)) {
                     auto argsPair = HRef<Pair>::fromUnchecked(args);
 
                     ORef arg = argsPair->car;
@@ -307,7 +307,7 @@ PrimopRes primopApplyList(State* state) {
         if (hasVarArg){ // Vararg:
             if (!isHeaped(methodRef->code)) { // Primop:
                 // Arity already checked to be correct so `args` *must* be a proper list:
-                for (size_t i = minArity; isPair(state, args); ++i) {
+                for (size_t i = minArity; isa<Pair>(*state, args); ++i) {
                     auto const argsPair = HRef<Pair>::fromUnchecked(args);
 
                     state->regs[firstArgReg + i] = argsPair->car;
@@ -323,7 +323,7 @@ PrimopRes primopApplyList(State* state) {
                 ORef* varargsBuf = varargsBufRef->flexDataMut();
                 size_t varargCount = 0;
                 for (size_t i = 0; true; ++i, ++varargCount) {
-                    if (isPair(state, args)) {
+                    if (isa<Pair>(*state, args)) {
                         auto argsPair = HRef<Pair>::fromUnchecked(args);
 
                         if (i == bufCap) {
@@ -975,7 +975,7 @@ PrimopRes primopStringIteratorPeek(State* state) {
     auto const iter = HRef<StringIterator>::fromUnchecked(state->regs[firstArgReg]);
 
     ORef const maybeString = iter->string;
-    if (!isString(state, maybeString)) {
+    if (!isa<String>(*state, maybeString)) {
         return primopError(state, createTypeError(state, state->types.string, maybeString));
     }
     auto const string = HRef<String>::fromUnchecked(maybeString);
@@ -1010,7 +1010,7 @@ PrimopRes primopStringIteratorNext(State* state) {
     auto const iter = HRef<StringIterator>::fromUnchecked(state->regs[firstArgReg]);
 
     ORef const maybeString = iter->string;
-    if (!isString(state, maybeString)) {
+    if (!isa<String>(*state, maybeString)) {
         return primopError(state, createTypeError(state, state->types.string, maybeString));
     }
     auto const string = HRef<String>::fromUnchecked(maybeString);
@@ -1248,12 +1248,12 @@ PrimopRes primopContinuationCallLoc(State* state) {
 
     auto const cont = HRef<Continuation>::fromUnchecked(state->regs[firstArgReg]);
 
-    if (!isMethod(state, cont->method)) { PANIC("TODO"); }
+    if (!isa<Method>(*state, cont->method)) { PANIC("TODO"); }
     auto const method = HRef<Method>::fromUnchecked(cont->method);
     Maybe<ZLoc> const maybeLoc = locateCallerPc(state, method, size_t(cont->pc.val()));
 
     state->regs[retReg] = [&]() -> ORef {
-        if (maybeLoc.hasVal && isString(state, maybeLoc.val.maybeFilename)) {
+        if (maybeLoc.hasVal && isa<String>(*state, maybeLoc.val.maybeFilename)) {
             return createLoc(state, HRef<String>::fromUnchecked(maybeLoc.val.maybeFilename),
                              Fixnum{int64_t(maybeLoc.val.srcByteIdx)});
         } else {

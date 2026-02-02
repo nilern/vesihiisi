@@ -285,7 +285,7 @@ IRName exprToIR(CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, O
 IRName bodyToCPS(
     CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef body, ToCpsCont k
 ) {
-    if (!isPair(pass.state, body)) {
+    if (!isa<Pair>(*pass.state, body)) {
         assert(false); // TODO: Proper empty/improper body error
     }
     auto argsPair = HRef<Pair>::fromUnchecked(body);
@@ -299,7 +299,7 @@ IRName bodyToCPS(
             IRName const bodyName = exprToIR(pass, fn, env, block, stmt, maybeLoc, k);
 
             return bodyName;
-        } else if (isPair(pass.state, body)){
+        } else if (isa<Pair>(*pass.state, body)){
             exprToIR(pass, fn, env, block, stmt, maybeLoc, ToCpsCont{{}, ToCpsCont::EFF});
 
             argsPair = HRef<Pair>::fromUnchecked(body);
@@ -314,7 +314,7 @@ bool paramToCPS(
     CPSConv& pass, IRFn* outerFn, ToCpsEnv const* outerEnv, IRBlock** outerBlock, IRFn* fn,
     ToCpsEnv* fnEnv, IRBlock* entryBlock, size_t idx, ORef param
 ) {
-    if (isSymbol(pass.state, param)) {
+    if (isa<Symbol>(*pass.state, param)) {
         HRef<Symbol> const paramSym = HRef<Symbol>::fromUnchecked(param);
 
         IRName const paramName = renameSymbol(pass.compiler, paramSym);
@@ -323,22 +323,22 @@ bool paramToCPS(
                      BINDINGS_PAR);
 
         return true;
-    } else if (isPair(pass.state, param)) {
+    } else if (isa<Pair>(*pass.state, param)) {
         auto const paramPair = HRef<Pair>::fromUnchecked(param);
 
         ORef const op = paramPair->car;
         if (!eq(op, pass.state->singletons.ofType)) { return false; }
 
         ORef anyArgs = paramPair->cdr;
-        if (!isPair(pass.state, anyArgs)) { return false; }
+        if (!isa<Pair>(*pass.state, anyArgs)) { return false; }
         auto args = HRef<Pair>::fromUnchecked(anyArgs);
 
         ORef const maybeSym = args->car;
-        if (!isSymbol(pass.state, maybeSym)) { return false; }
+        if (!isa<Symbol>(*pass.state, maybeSym)) { return false; }
         HRef<Symbol> const sym = HRef<Symbol>::fromUnchecked(maybeSym);
 
         anyArgs = args->cdr;
-        if (!isPair(pass.state, anyArgs)) { return false; }
+        if (!isa<Pair>(*pass.state, anyArgs)) { return false; }
         args = HRef<Pair>::fromUnchecked(anyArgs);
 
         ORef const type = args->car;
@@ -390,7 +390,7 @@ IRName fnToCPSimpl(
             break;
         }
 
-        if (isPair(pass.state, params)) {
+        if (isa<Pair>(*pass.state, params)) {
             auto const paramsPair = HRef<Pair>::fromUnchecked(params);
 
             if (!paramToCPS(pass, fn, env, block,
@@ -431,7 +431,7 @@ IRName fnToCPS(
     CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef args, ORef maybeLoc,
     ToCpsCont k
 ) {
-    if (!isPair(pass.state, args)) {
+    if (!isa<Pair>(*pass.state, args)) {
         assert(false); // TODO: Proper args error (`(fn)`)
     }
     auto const argsPair = HRef<Pair>::fromUnchecked(args);
@@ -447,7 +447,7 @@ IRName ifToCPS(
 ) {
     // OPTIMIZE: Avoid creating `goto`s to `goto`s:
 
-    if (!isPair(pass.state, args)) {
+    if (!isa<Pair>(*pass.state, args)) {
         assert(false); // TODO
     }
     auto argsPair = HRef<Pair>::fromUnchecked(args);
@@ -455,7 +455,7 @@ IRName ifToCPS(
     ORef const cond = argsPair->car;
     ORef const condLoc = argsPair->maybeLoc;
     args = argsPair->cdr;
-    if (!isPair(pass.state, args)) {
+    if (!isa<Pair>(*pass.state, args)) {
         assert(false); // TODO
     }
     argsPair = HRef<Pair>::fromUnchecked(args);
@@ -463,7 +463,7 @@ IRName ifToCPS(
     ORef const conseq = argsPair->car;
     ORef const conseqLoc = argsPair->maybeLoc;
     args = argsPair->cdr;
-    if (!isPair(pass.state, args)) {
+    if (!isa<Pair>(*pass.state, args)) {
         assert(false); // TODO
     }
     argsPair = HRef<Pair>::fromUnchecked(args);
@@ -513,7 +513,7 @@ IRName ifToCPS(
 }
 
 IRName quoteToCPS(CPSConv& pass, IRBlock** block, ORef args, ToCpsCont k) {
-    if (!isPair(pass.state, args)) {
+    if (!isa<Pair>(*pass.state, args)) {
         assert(false); // TODO
     }
     auto const argsPair = HRef<Pair>::fromUnchecked(args);
@@ -529,18 +529,18 @@ IRName defToCPS(
     CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef args, ORef maybeLoc,
     ToCpsCont k
 ) {
-    if (!isPair(pass.state, args)) {
+    if (!isa<Pair>(*pass.state, args)) {
         assert(false); // TODO
     }
     auto argsPair = HRef<Pair>::fromUnchecked(args);
 
     ORef const pat = argsPair->car;
-    if (!isSymbol(pass.state, pat)) {
+    if (!isa<Symbol>(*pass.state, pat)) {
         pass.error({argsPair->maybeLoc, INVALID_DEFINIEND});
     }
     HRef<Symbol> const name = HRef<Symbol>::fromUnchecked(pat);
     args = argsPair->cdr;
-    if (!isPair(pass.state, args)) {
+    if (!isa<Pair>(*pass.state, args)) {
         assert(false); // TODO
     }
     argsPair = HRef<Pair>::fromUnchecked(args);
@@ -571,18 +571,18 @@ IRName setToCPS(
     CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef args, ORef maybeLoc,
     ToCpsCont k
 ) {
-    if (!isPair(pass.state, args)) {
+    if (!isa<Pair>(*pass.state, args)) {
         assert(false); // TODO
     }
     auto argsPair = HRef<Pair>::fromUnchecked(args);
 
     ORef const pat = argsPair->car;
-    if (!isSymbol(pass.state, pat)) {
+    if (!isa<Symbol>(*pass.state, pat)) {
         pass.error({argsPair->maybeLoc, INVALID_DEFINIEND});
     }
     HRef<Symbol> const name = HRef<Symbol>::fromUnchecked(pat);
     args = argsPair->cdr;
-    if (!isPair(pass.state, args)) {
+    if (!isa<Pair>(*pass.state, args)) {
         assert(false); // TODO
     }
     argsPair = HRef<Pair>::fromUnchecked(args);
@@ -613,29 +613,29 @@ IRName letToCPS(
 ) {
     ToCpsEnv letEnv = createToCpsEnv(env);
 
-    if (!isPair(pass.state, args)) {
+    if (!isa<Pair>(*pass.state, args)) {
         assert(false); // TODO: Proper invalid args error
     }
     auto const argsPair = HRef<Pair>::fromUnchecked(args);
 
     for (ORef bindings = argsPair->car;;) {
-        if (isPair(pass.state, bindings)) {
+        if (isa<Pair>(*pass.state, bindings)) {
             auto const bindingsPair = HRef<Pair>::fromUnchecked(bindings);
 
             ORef const binding = bindingsPair->car;
-            if (!isPair(pass.state, binding)) {
+            if (!isa<Pair>(*pass.state, binding)) {
                 pass.error({bindingsPair->maybeLoc, INVALID_BINDING});
             }
             auto const bindingPair = HRef<Pair>::fromUnchecked(binding);
 
             ORef const pat = bindingPair->car;
-            if (!isSymbol(pass.state, pat)) {
+            if (!isa<Symbol>(*pass.state, pat)) {
                 assert(false); // TODO: Proper invalid binder error
             }
             HRef<Symbol> const binder = HRef<Symbol>::fromUnchecked(pat);
 
             ORef const bindingArgs = bindingPair->cdr;
-            if (!isPair(pass.state, bindingArgs)) {
+            if (!isa<Pair>(*pass.state, bindingArgs)) {
                 pass.error({bindingPair->maybeLoc, INVALID_BINDER});
             }
             auto const bindingArgsPair = HRef<Pair>::fromUnchecked(bindingArgs);
@@ -673,19 +673,19 @@ IRName letToCPS(
 }
 
 void knotCreation(CPSConv& pass, IRBlock* block, ToCpsEnv* letfnEnv, ORef binding, ORef maybeLoc) {
-    if (!isPair(pass.state, binding)) {
+    if (!isa<Pair>(*pass.state, binding)) {
         pass.error({maybeLoc, INVALID_BINDING});
     }
     auto const bindingPair = HRef<Pair>::fromUnchecked(binding); // `((f x) ...)`
 
     ORef const binder = bindingPair->car;
-    if (!isPair(pass.state, binder)) {
+    if (!isa<Pair>(*pass.state, binder)) {
         assert(false); // TODO: Proper invalid binder error
     }
     auto const binderPair = HRef<Pair>::fromUnchecked(binder); // `(f x)`
 
     ORef const pat = binderPair->car;
-    if (!isSymbol(pass.state, pat)) {
+    if (!isa<Symbol>(*pass.state, pat)) {
         pass.error({binderPair->maybeLoc, INVALID_BINDER});
     }
     HRef<Symbol> const fSym = HRef<Symbol>::fromUnchecked(pat); // `f`
@@ -701,7 +701,7 @@ ToCpsEnv knotCreations(CPSConv& pass, IRBlock* block, ToCpsEnv const* env, ORef 
     ToCpsEnv innerEnv = createToCpsEnv(env);
 
     for (;/*ever*/;) {
-        if (isPair(pass.state, bindings)) {
+        if (isa<Pair>(*pass.state, bindings)) {
             auto const bindingsPair = HRef<Pair>::fromUnchecked(bindings);
 
             knotCreation(pass, block, &innerEnv, bindingsPair->car, bindingsPair->maybeLoc);
@@ -716,18 +716,18 @@ ToCpsEnv knotCreations(CPSConv& pass, IRBlock* block, ToCpsEnv const* env, ORef 
 }
 
 void knotInit(CPSConv& pass, IRFn* fn, ToCpsEnv* env, IRBlock** block, ORef binding) {
-    if (!isPair(pass.state, binding)) {
+    if (!isa<Pair>(*pass.state, binding)) {
     }
     auto const bindingPair = HRef<Pair>::fromUnchecked(binding); // `((f x) ...)`
 
     ORef const binder = bindingPair->car;
-    if (!isPair(pass.state, binder)) {
+    if (!isa<Pair>(*pass.state, binder)) {
         assert(false); // TODO: Proper invalid binder error (actually unreachable tho)
     }
     auto const binderPair = HRef<Pair>::fromUnchecked(binder); // `(f x)`
 
     ORef const pat = binderPair->car;
-    if (!isSymbol(pass.state, pat)) {
+    if (!isa<Symbol>(*pass.state, pat)) {
         assert(false); // TODO: Proper invalid fn name error (actually unreachable tho)
     }
     HRef<Symbol> const fSym = HRef<Symbol>::fromUnchecked(pat); // `f`
@@ -754,7 +754,7 @@ void knotInit(CPSConv& pass, IRFn* fn, ToCpsEnv* env, IRBlock** block, ORef bind
 
 void knotInits(CPSConv& pass, IRFn* fn, ToCpsEnv* env, IRBlock** block, ORef bindings) {
     for (;/*ever*/;) {
-        if (isPair(pass.state, bindings)) {
+        if (isa<Pair>(*pass.state, bindings)) {
             auto const bindingsPair = HRef<Pair>::fromUnchecked(bindings);
 
             knotInit(pass, fn, env, block, bindingsPair->car);
@@ -771,7 +771,7 @@ void knotInits(CPSConv& pass, IRFn* fn, ToCpsEnv* env, IRBlock** block, ORef bin
 IRName letfnToCPS(
     CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef args, ToCpsCont k
 ) {
-    if (!isPair(pass.state, args)) {
+    if (!isa<Pair>(*pass.state, args)) {
         assert(false); // TODO: Proper invalid args error
     }
     auto const argsPair = HRef<Pair>::fromUnchecked(args);
@@ -795,7 +795,7 @@ IRName callToCPS(
         exprToIR(pass, fn, env, block, callee, calleeLoc, ToCpsCont{{}, ToCpsCont::VAL});
     Args cpsArgs = createArgs(pass.compiler);
     for (;/*ever*/;) {
-        if (isPair(pass.state, args)) {
+        if (isa<Pair>(*pass.state, args)) {
             auto const argsPair = HRef<Pair>::fromUnchecked(args);
 
             ORef const arg = argsPair->car;
@@ -876,12 +876,12 @@ IRName exprToIR(
     ToCpsCont k
 ) {
     if (isHeaped(expr)) {
-        if (isPair(pass.state, expr)) {
+        if (isa<Pair>(*pass.state, expr)) {
             auto const callPair = HRef<Pair>::fromUnchecked(expr);
             ORef const callee = callPair->car;
             ORef const args = callPair->cdr;
 
-            if (isSymbol(pass.state, callee)) {
+            if (isa<Symbol>(*pass.state, callee)) {
                 HRef<Symbol> const calleeSym = HRef<Symbol>::fromUnchecked(callee);
 
                 // OPTIMIZE: Symbol comparisons instead of `strEq`:
@@ -903,7 +903,7 @@ IRName exprToIR(
             }
 
             return callToCPS(pass, fn, env, block, callee, callPair->maybeLoc, args, maybeLoc, k);
-        } else if (isSymbol(pass.state, expr)) {
+        } else if (isa<Symbol>(*pass.state, expr)) {
             HRef<Symbol> const sym = HRef<Symbol>::fromUnchecked(expr);
 
             return useToCPS(pass, env, block, sym, maybeLoc, k);

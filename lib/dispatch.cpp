@@ -9,7 +9,7 @@ namespace {
 ORef doCheckDomain(
     State* state, HRef<Closure> callee, ORef const* args, size_t argc
 ) {
-    assert(isMethod(state, callee->method));
+    assert(isa<Method>(*state, callee->method));
     HRef<Method> const method = HRef<Method>::fromUnchecked(callee->method);
     size_t const arity = (uint64_t)method->flexCount().val();
 
@@ -25,7 +25,7 @@ ORef doCheckDomain(
     size_t const minArity = !hasVarArg ? arity : arity - 1;
 
     for (size_t i = 0; i < minArity; ++i) {
-        assert(isType(state, method->domain()[i]));
+        assert(isa<Type>(*state, method->domain()[i]));
         HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[i]);
         ORef const v = args[i];
         if (!isa(state, type, v)) {
@@ -34,7 +34,7 @@ ORef doCheckDomain(
     }
 
     if (hasVarArg) {
-        assert(isType(state, method->domain()[minArity]));
+        assert(isa<Type>(*state, method->domain()[minArity]));
         HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[minArity]);
         for (size_t i = minArity; i < argc; ++i) {
             ORef const v = args[i];
@@ -52,7 +52,7 @@ ORef doCheckDomain(
 bool closureIsApplicable(
     State const* state, Closure const* callee, ORef const* args, size_t argc
 ) {
-    assert(isMethod(state, callee->method));
+    assert(isa<Method>(*state, callee->method));
     HRef<Method> const method = HRef<Method>::fromUnchecked(callee->method);
     size_t const arity = (uint64_t)method->flexCount().val();
 
@@ -69,7 +69,7 @@ bool closureIsApplicable(
 
     // Fixed args:
     for (size_t i = 0; i < minArity; ++i) {
-        assert(isType(state, method->domain()[i]));
+        assert(isa<Type>(*state, method->domain()[i]));
         HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[i]);
         ORef const v = args[i];
         if (!isa(state, type, v)) {
@@ -78,7 +78,7 @@ bool closureIsApplicable(
     }
 
     if (hasVarArg) { // Vararg:
-        assert(isType(state, method->domain()[minArity]));
+        assert(isa<Type>(*state, method->domain()[minArity]));
         HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[minArity]);
         for (size_t i = minArity; i < argc; ++i) {
             ORef const v = args[i];
@@ -94,7 +94,7 @@ bool closureIsApplicable(
 // TODO: DRY wrt. `closureIsApplicable`:
 [[nodiscard]]
 bool closureIsApplicableToList(State const* state, Closure const* callee, ORef args) {
-    assert(isMethod(state, callee->method));
+    assert(isa<Method>(*state, callee->method));
     HRef<Method> const method = HRef<Method>::fromUnchecked(callee->method);
     size_t const arity = (uint64_t)method->flexCount().val();
 
@@ -103,10 +103,10 @@ bool closureIsApplicableToList(State const* state, Closure const* callee, ORef a
 
     // Fixed args:
     for (size_t i = 0; i < minArity; ++i) {
-        if (isPair(state, args)) {
+        if (isa<Pair>(*state, args)) {
             auto const argsPair = HRef<Pair>::fromUnchecked(args);
 
-            assert(isType(state, method->domain()[i]));
+            assert(isa<Type>(*state, method->domain()[i]));
             HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[i]);
             ORef const v = argsPair->car;
             if (!isa(state, type, v)) {
@@ -122,10 +122,10 @@ bool closureIsApplicableToList(State const* state, Closure const* callee, ORef a
     }
 
     if (hasVarArg) { // Vararg:
-        assert(isType(state, method->domain()[minArity]));
+        assert(isa<Type>(*state, method->domain()[minArity]));
         HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[minArity]);
         for (;/*ever*/;) {
-            if (isPair(state, args)) {
+            if (isa<Pair>(*state, args)) {
                 auto const argsPair = HRef<Pair>::fromUnchecked(args);
 
                 ORef const v = argsPair->car;
@@ -168,7 +168,7 @@ ORef checkDomain(State* state) {
         return Default;
     }
 
-    assert(isClosure(state, state->regs[calleeReg]));
+    assert(isa<Closure>(*state, state->regs[calleeReg]));
     HRef<Closure> const calleeRef = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
     ORef const* const args = state->regs + firstArgReg;
     size_t const argc = state->entryRegc - firstArgReg;
@@ -220,10 +220,10 @@ bool calleeClosureForArgs(State* state, ORef callee, ORef const* args, size_t ar
     // TODO: Make continuations directly callable?
     // TODO: Make this extensible (à la JVM `invokedynamic`)?:
 
-    if (isClosure(state, callee)) {
+    if (isa<Closure>(*state, callee)) {
         state->regs[calleeReg] = callee;
         return true;
-    } else if (isMultimethod(state, callee)) {
+    } else if (isa<Multimethod>(*state, callee)) {
         HRef<Multimethod> const multiCalleeRef = HRef<Multimethod>::fromUnchecked(callee);
 
         ORef const maybeClosure =
@@ -236,7 +236,7 @@ bool calleeClosureForArgs(State* state, ORef callee, ORef const* args, size_t ar
             state->regs[firstArgReg] = createInapplicableError(state, multiCalleeRef);
             state->entryRegc = firstArgReg + 1;
 
-            assert(isClosure(state, state->regs[calleeReg]));
+            assert(isa<Closure>(*state, state->regs[calleeReg]));
             return false;
         }
     } else { // TODO: DRY with "inapplicable" directly above:
@@ -245,7 +245,7 @@ bool calleeClosureForArgs(State* state, ORef callee, ORef const* args, size_t ar
         state->regs[firstArgReg] = createTypeError(state, state->types.closure, callee);
         state->entryRegc = firstArgReg + 1;
 
-        assert(isClosure(state, state->regs[calleeReg]));
+        assert(isa<Closure>(*state, state->regs[calleeReg]));
         return false;
     }
 }
@@ -255,10 +255,10 @@ bool calleeClosureForArglist(State* state, ORef callee, ORef args) {
     // TODO: Make continuations directly callable?
     // TODO: Make this extensible (à la JVM `invokedynamic`)?:
 
-    if (isClosure(state, callee)) {
+    if (isa<Closure>(*state, callee)) {
         state->regs[calleeReg] = callee;
         return true;
-    } else if (isMultimethod(state, callee)) {
+    } else if (isa<Multimethod>(*state, callee)) {
         HRef<Multimethod> const multiCalleeRef = HRef<Multimethod>::fromUnchecked(callee);
 
         ORef const maybeClosure =
@@ -271,7 +271,7 @@ bool calleeClosureForArglist(State* state, ORef callee, ORef args) {
             state->regs[firstArgReg] = createInapplicableError(state, multiCalleeRef);
             state->entryRegc = firstArgReg + 1;
 
-            assert(isClosure(state, state->regs[calleeReg]));
+            assert(isa<Closure>(*state, state->regs[calleeReg]));
             return false;
         }
     } else { // TODO: DRY with "inapplicable" directly above:
@@ -280,7 +280,7 @@ bool calleeClosureForArglist(State* state, ORef callee, ORef args) {
         state->regs[firstArgReg] = createTypeError(state, state->types.closure, callee);
         state->entryRegc = firstArgReg + 1;
 
-        assert(isClosure(state, state->regs[calleeReg]));
+        assert(isa<Closure>(*state, state->regs[calleeReg]));
         return false;
     }
 }

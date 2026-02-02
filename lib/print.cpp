@@ -30,24 +30,24 @@ void print(State const* state, FILE* dest, ORef v) {
         break;
         
     case TaggedType::HEAPED:
-        if (isString(state, v)) {
+        if (isa<String>(*state, v)) {
             HRef<String> const s = HRef<String>::fromUnchecked(v);
             
             Str const str = s->str();
             fprintf(dest, "\"%.*s\"", (int)str.len, str.data);
-        } else if (isSymbol(state, v)) {
+        } else if (isa<Symbol>(*state, v)) {
             HRef<Symbol> const s = HRef<Symbol>::fromUnchecked(v);
 
             Str const name = s->name();
             fprintf(dest, "%.*s", (int)name.len, name.data);
-        } else if (isPair(state, v)) {
+        } else if (isa<Pair>(*state, v)) {
             auto pair = HRef<Pair>::fromUnchecked(v);
             
             fputc('(', dest);
             print(state, dest, pair->car);
             
             for (ORef tail = pair->cdr; true; tail = pair->cdr) {
-                if (isPair(state, tail)) {
+                if (isa<Pair>(*state, tail)) {
                     pair = HRef<Pair>::fromUnchecked(tail);
                     fputc(' ', dest);
                     print(state, dest, pair->car);
@@ -97,13 +97,13 @@ void print(State const* state, FILE* dest, ORef v) {
                 print(state, dest, maybeName);
             }
             putc('>', dest);
-        } else if (isClosure(state, v)) {
+        } else if (isa<Closure>(*state, v)) {
             auto const closure = HRef<Closure>::fromUnchecked(v);
 
             fprintf(dest, "#<fn");
 
             // TODO: DRY with #<method ... directly above:
-            if (isMethod(state, closure->method)) {
+            if (isa<Method>(*state, closure->method)) {
                 auto const method = HRef<Method>::fromUnchecked(closure->method);
                 ORef const maybeName = method->maybeName;
                 if (isHeaped(maybeName)) {
@@ -113,7 +113,7 @@ void print(State const* state, FILE* dest, ORef v) {
             }
 
             putc('>', dest);
-        } else if (isMultimethod(state, v)) {
+        } else if (isa<Multimethod>(*state, v)) {
             auto const multimethod = HRef<Multimethod>::fromUnchecked(v);
 
             fputs("#<multimethod", dest);
@@ -124,7 +124,7 @@ void print(State const* state, FILE* dest, ORef v) {
             }
 
             putc('>', dest);
-        } else if (isType(state, v)) {
+        } else if (isa<Type>(*state, v)) {
             auto const type = HRef<Type>::fromUnchecked(v);
 
             fprintf(dest, "#<type ");
@@ -151,7 +151,7 @@ void print(State const* state, FILE* dest, ORef v) {
             fputs("#<unbound-error ", dest);
             print(state, dest, err->name);
             putc('>', dest);
-        } else if (isTypeError(state, v)) {
+        } else if (isa<TypeError>(*state, v)) {
             auto const err = HRef<TypeError>::fromUnchecked(v);
 
             fputs("#<type-error ", dest);

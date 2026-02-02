@@ -317,7 +317,7 @@ HRef<Method> specialize(State* state, HRef<Method> generic, HRef<ArrayMut> types
         Slice<ORef const> const typesSlice = types->items();
         size_t const typeCount = typesSlice.count;
         for (size_t i = 0; i < typeCount; ++i) {
-            assert(isType(state, typesSlice[i]));
+            assert(isa<Type>(*state, typesSlice[i]));
         }
     }
 #endif

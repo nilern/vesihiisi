@@ -338,7 +338,7 @@ typedef void (PrintIRNameFn)(State const* state, FILE* dest, Compiler const* com
 void printIRName(State const* state, FILE* dest, Compiler const* compiler, IRName name) {
     assert(name.index < compiler->nameSyms.count());
     ORef const maybeSym = compiler->nameSyms[name.index];
-    if (isSymbol(state, maybeSym)) {
+    if (isa<Symbol>(*state, maybeSym)) {
         print(state, dest, maybeSym);
     }
     fprintf(dest, "$%ld", name.index);

@@ -24,7 +24,7 @@ int64_t decodeVarInt(size_t* i, Slice<uint8_t const> src) {
 
 void ZLoc::print(State const& state, FILE *dest) const {
     bool posPrinted = false;
-    if (isString(&state, maybeFilename)) {
+    if (isa<String>(*&state, maybeFilename)) {
         auto const filename = HRef<String>::fromUnchecked(maybeFilename);
 
         printFilename(dest, filename->str());
@@ -341,7 +341,7 @@ void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t co
         fprintf(dest, "%u", constIdx);
         ORef const c = consts[constIdx]; // FIXME: Bounds check
 
-        if (!isMethod(state, c)) {
+        if (!isa<Method>(*state, c)) {
             fprintf(dest, "\t; ");
             ORef const c = consts[constIdx]; // FIXME: Bounds check
             print(state, dest, c);
@@ -364,7 +364,7 @@ void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t co
 
         fputc('\n', dest);
 
-        assert(isMethod(state, c));
+        assert(isa<Method>(*state, c));
         HRef<Method> const innerMethod = HRef<Method>::fromUnchecked(c);
         disassembleNested(state, dest, innerMethod, nesting + 1);
     }; break;
@@ -471,7 +471,7 @@ void disassembleNested(State const* state, FILE* dest, HRef<Method> methodRef, s
                         for (size_t j = 0; j < nesting; ++j) { putc('\t', dest); }
                         fputs(";; In ", dest);
 
-                        if (isString(state, maybeFilename)) {
+                        if (isa<String>(*state, maybeFilename)) {
                             auto const filename = HRef<String>::fromUnchecked(maybeFilename);
 
                             printFilename(dest, filename->str());

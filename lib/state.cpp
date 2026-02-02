@@ -17,10 +17,11 @@
 namespace {
 
 char const* const typeNames[] = {
-    "<flonum>",
+    "",
     "<fixnum>",
     "<char>",
     "<bool>",
+    "<flonum>",
     "<any>",
     "<type>",
     "<string>",
@@ -570,10 +571,11 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
     State* const dest = new (std::nothrow) State{
         std::move(heap),
         {
-            .flonum = HRef(flonumType),
+            .paddington = HRef{anyType}, // The closest thing, although it matters not
             .fixnum = HRef(fixnumType),
             .charr = HRef(charType),
             .booll = HRef(boolType),
+            .flonum = HRef(flonumType),
 
             .any = HRef(anyType),
             .type = HRef(typeType),

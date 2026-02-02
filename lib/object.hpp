@@ -17,11 +17,11 @@ static_assert(sizeof(void*) == sizeof(uint64_t)); // Only 64-bit supported (for 
 inline bool eq(ORef x, ORef y) { return x.bits == y.bits; }
 
 enum class TaggedType : uint64_t {
-    FLONUM = 0,
+    HEAPED = 0,
     FIXNUM = 1,
     CHAR = 2,
     BOOL = 3,
-    HEAPED = 4
+    FLONUM = 4
 };
 
 constexpr uint64_t payloadWidth = 48;
@@ -69,8 +69,8 @@ private:
 
 struct Flonum : public Scalar {
     static bool contains(ORef v) {
-        return v.bits == nonFlonumTag // Actual NaN OPTIMIZE: Is this necessary?
-               || (v.bits & nonFlonumTag) != nonFlonumTag; // OPTIMIZE: Do not short-circuit?
+        return v.bits == nonFlonumTag // Actual NaN
+            || (v.bits & nonFlonumTag) != nonFlonumTag;
     }
 
     constexpr explicit Flonum(double n) : Flonum{std::bit_cast<uint64_t>(n)} {}
@@ -110,14 +110,13 @@ private:
 };
 
 inline bool isHeaped(ORef v) {
-    return v.bits != nonFlonumTag // Not a NaN OPTIMIZE: Is this necessary?
-           && (v.bits & tagMask) == heapedTag; // OPTIMIZE: Do not short-circuit?
+    return v.bits != nonFlonumTag // Not an actual NaN
+        && (v.bits & tagMask) == heapedTag;
 }
 
 inline TaggedType getTag(ORef v) {
-    if (isHeaped(v)) { return TaggedType::HEAPED; }
     if (Flonum::contains(v)) { return TaggedType::FLONUM; }
-    return (TaggedType)((v.bits >> payloadWidth) & 0b11);
+    return static_cast<TaggedType>((v.bits >> payloadWidth) & 0b11);
 }
 
 constexpr ORef Default{0}; // 0.0

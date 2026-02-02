@@ -10,14 +10,15 @@ namespace {
 
 #define REG_COUNT 256
 
-#define BOOTSTRAP_TYPE_COUNT 31
+#define BOOTSTRAP_TYPE_COUNT 32
 #define BOOTSTRAP_SINGLETON_COUNT 6
 
 struct NamedTypes {
-    HRef<Type> flonum;
+    HRef<Type> paddington; // heapedTag = 0b00 = 0, DO NOT USE
     HRef<Type> fixnum; // fixnumTag = 0b01 = 1
     HRef<Type> charr; // charTag = 0b10 = 2
     HRef<Type> booll; // boolTag = 0b11 = 3
+    HRef<Type> flonum; // flonumTag = 0b04 = 4
 
     HRef<Type> any;
     HRef<Type> type;

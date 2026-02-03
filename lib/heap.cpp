@@ -151,7 +151,7 @@ Object* Heap::mark(Object* obj) {
 ORef Heap::mark(ORef oref) {
     if (!isHeaped(oref)) { return oref; }
 
-    Object* const ptr = uncheckedORefToPtr(oref);
+    Object* const ptr = &*HRef<Object>::fromUnchecked(oref);
     Object* const copy = mark(ptr);
     return tagHeaped(copy);
 }

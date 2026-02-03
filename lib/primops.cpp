@@ -18,7 +18,7 @@
 namespace {
 
 ORef getErrorHandler(State const* state) {
-    ORef const v = state->errorHandler->val;
+    ORef const v = state->errorHandler->val().get();
     if (eq(v, state->singletons.unbound)) {
         PANIC("Unbound *error-handler*");
     }
@@ -166,11 +166,11 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
             if (isa<Pair>(*state, args)) {
                 auto const argsPair = HRef<Pair>::fromUnchecked(args);
 
-                ORef const arg = argsPair->car;
+                ORef const arg = argsPair->car().get();
 
                 // OPTIMIZE: Skip type check if no typed params (= not a specialization):
-                assert(isa(state, state->types.type, methodRef->domain()[argc]));
-                HRef<Type> const type = HRef<Type>::fromUnchecked(methodRef->domain()[argc]);
+                assert(isa<Type>(*state, methodRef->domain()[argc].get()));
+                HRef<Type> const type = HRef<Type>::fromUnchecked(methodRef->domain()[argc].get());
                 if (!isa(state, type, arg)) {
                     ORef const err = createTypeError(state, type, arg);
                     return primopError(state, err);
@@ -178,7 +178,7 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
 
                 state->regs[firstArgReg + argc] = arg;
 
-                args = argsPair->cdr;
+                args = argsPair->cdr().get();
             } else if (isEmptyList(state, args)) {
                 ORef const err = // Insufficient args
                     createArityError(state, closure, Fixnum((intptr_t)argc));
@@ -193,7 +193,7 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
                 for (; true; ++argc) {
                     if (isa<Pair>(*state, args)) {
                         auto const argsPair = HRef<Pair>::fromUnchecked(args);
-                        args = argsPair->cdr;
+                        args = argsPair->cdr().get();
                     } else if (isEmptyList(state, args)) {
                         break;
                     } else {
@@ -206,13 +206,13 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
                 return primopError(state, err);
             }
         } else if (!isHeaped(methodRef->code)) { // Primop varargs:
-            assert(isa(state, state->types.type, methodRef->domain()[minArity]));
-            HRef<Type> type = HRef<Type>::fromUnchecked(methodRef->domain()[minArity]);
+            assert(isa<Type>(*state, methodRef->domain()[minArity].get()));
+            HRef<Type> type = HRef<Type>::fromUnchecked(methodRef->domain()[minArity].get());
             for (; true; ++argc) {
                 if (isa<Pair>(*state, args)) {
                     auto const argsPair = HRef<Pair>::fromUnchecked(args);
 
-                    ORef const arg = argsPair->car;
+                    ORef const arg = argsPair->car().get();
 
                     // OPTIMIZE: Skip type check if no typed params (= not a specialization):
                     if (!isa(state, type, arg)) {
@@ -222,7 +222,7 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
 
                     state->regs[firstArgReg + argc] = arg;
 
-                    args = argsPair->cdr;
+                    args = argsPair->cdr().get();
                 } else if (isEmptyList(state, args)) {
                     break;
                 } else {
@@ -232,19 +232,19 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
         } else { // Non-primop varargs:
             auto const argsG = state->pushRoot(&args);
 
-            assert(isa(state, state->types.type, methodRef->domain()[minArity]));
-            HRef<Type> type = HRef<Type>::fromUnchecked(methodRef->domain()[minArity]);
+            assert(isa<Type>(*state, methodRef->domain()[minArity].get()));
+            HRef<Type> type = HRef<Type>::fromUnchecked(methodRef->domain()[minArity].get());
             auto const typeG = state->pushRoot(&type);
             size_t bufCap = 10;
             HRef<ArrayMut> varargsBufRef = createArrayMut(state, Fixnum((intptr_t)bufCap));
             auto const varargsBufRefG = state->pushRoot(&varargsBufRef);
-            ORef* varargsBuf = varargsBufRef->flexDataMut();
+            auto varargsBuf = const_cast<ORef*>(varargsBufRef->items().data()); // Cast for init
             size_t varargCount = 0;
             for (size_t i = 0; true; ++i, ++varargCount) {
                 if (isa<Pair>(*state, args)) {
                     auto argsPair = HRef<Pair>::fromUnchecked(args);
 
-                    ORef arg = argsPair->car;
+                    ORef arg = argsPair->car().get();
 
                     // OPTIMIZE: Skip type check if no typed params (= not a specialization):
                     if (!isa(state, type, arg)) {
@@ -259,8 +259,10 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
                         HRef<ArrayMut> const newVarargsBufRef =
                             createArrayMut(state, Fixnum((intptr_t)newBufCap));
                         argsPair = HRef<Pair>::fromUnchecked(args); // Post-GC reload
-                        varargsBuf = varargsBufRef->flexDataMut(); // Post-GC reload
-                        ORef* const newVarargsBuf = newVarargsBufRef->flexDataMut();
+                        varargsBuf =
+                            const_cast<ORef*>(varargsBufRef->items().data()); // Post-GC reload
+                        ORef* const newVarargsBuf =
+                            const_cast<ORef*>(newVarargsBufRef->items().data()); // Cast for init
                         memcpy(newVarargsBuf, varargsBuf, bufCap * sizeof(ORef));
 
                         bufCap = newBufCap;
@@ -269,7 +271,7 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
                     }
                     varargsBuf[i] = arg;
 
-                    args = argsPair->cdr;
+                    args = argsPair->cdr().get();
                 } else if (isEmptyList(state, args)) {
                     break;
                 } else {
@@ -281,8 +283,8 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
                 if (varargCount != bufCap) {
                     HRef<ArrayMut> const varargsRef =
                         createArrayMut(state, Fixnum((intptr_t)varargCount));
-                    varargsBuf = varargsBufRef->flexDataMut(); // Post-GC reload
-                    memcpy((void*)varargsRef->flexData(), varargsBuf,
+                    varargsBuf = const_cast<ORef*>(varargsBufRef->items().data()); // Post-GC reload
+                    memcpy(const_cast<ORef*>(varargsRef->flexData()), varargsBuf,
                            varargCount * sizeof(ORef));
                     return varargsRef;
                 } else {
@@ -304,9 +306,9 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
             assert(isa(state, state->types.pair, args));
             auto const argsPair = HRef<Pair>::fromUnchecked(args);
 
-            state->regs[firstArgReg + i] = argsPair->car;
+            state->regs[firstArgReg + i] = argsPair->car().get();
 
-            args = argsPair->cdr;
+            args = argsPair->cdr().get();
         }
 
         if (hasVarArg){ // Vararg:
@@ -315,9 +317,9 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
                 for (size_t i = minArity; isa<Pair>(*state, args); ++i) {
                     auto const argsPair = HRef<Pair>::fromUnchecked(args);
 
-                    state->regs[firstArgReg + i] = argsPair->car;
+                    state->regs[firstArgReg + i] = argsPair->car().get();
 
-                    args = argsPair->cdr;
+                    args = argsPair->cdr().get();
                 }
             } else { // Non-primop:
                 auto const argsG = state->pushRoot(&args);
@@ -325,7 +327,8 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
                 size_t bufCap = 10;
                 HRef<ArrayMut> varargsBufRef = createArrayMut(state, Fixnum((intptr_t)bufCap));
                 auto const varargsBufRefG = state->pushRoot(&varargsBufRef);
-                ORef* varargsBuf = varargsBufRef->flexDataMut();
+                ORef* varargsBuf =
+                    const_cast<ORef*>(varargsBufRef->items().data()); // Cast for init
                 size_t varargCount = 0;
                 for (size_t i = 0; true; ++i, ++varargCount) {
                     if (isa<Pair>(*state, args)) {
@@ -337,17 +340,19 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
                             HRef<ArrayMut> const newVarargsBufRef =
                                 createArrayMut(state, Fixnum((intptr_t)newBufCap));
                             argsPair = HRef<Pair>::fromUnchecked(args); // Post-GC reload
-                            varargsBuf = varargsBufRef->flexDataMut(); // Post-GC reload
-                            ORef* const newVarargsBuf = newVarargsBufRef->flexDataMut();
+                            varargsBuf =
+                                const_cast<ORef*>(varargsBufRef->items().data()); // Post-GC reload
+                            ORef* const newVarargsBuf =
+                                const_cast<ORef*>(newVarargsBufRef->items().data());
                             memcpy(newVarargsBuf, varargsBuf, bufCap * sizeof(ORef));
 
                             bufCap = newBufCap;
                             varargsBufRef = newVarargsBufRef;
                             varargsBuf = newVarargsBuf;
                         }
-                        varargsBuf[i] = argsPair->car;
+                        varargsBuf[i] = argsPair->car().get();
 
-                        args = argsPair->cdr;
+                        args = argsPair->cdr().get();
                     } else if (isEmptyList(state, args)) {
                         break;
                     } else {
@@ -359,8 +364,9 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
                     if (varargCount != bufCap) {
                         HRef<ArrayMut> const varargsRef =
                             createArrayMut(state, Fixnum((intptr_t)varargCount));
-                        varargsBuf = varargsBufRef->flexDataMut(); // Post-GC reload
-                        memcpy(varargsRef->flexDataMut(), varargsBuf,
+                        varargsBuf =
+                            const_cast<ORef*>(varargsBufRef->items().data()); // Post-GC reload
+                        memcpy(const_cast<ORef*>(varargsRef->flexData()), varargsBuf,
                                varargCount * sizeof(ORef));
                         return varargsRef;
                     } else {
@@ -463,12 +469,14 @@ PrimopRes PrimopSlotGet::uncheckedInvoke(State* state) {
 
     Type const* const type = typePtrOf(state, v);
     if (!type->isBytes.val()) {
+        auto const obj = HRef<Object>::fromUnchecked(v);
+
         size_t const slotCount = (uintptr_t)type->minSize.val() / sizeof(ORef);
         if (slotIdx >= slotCount) {
             assert(false); // TODO: Proper bounds error
         }
 
-        ORef const* const slots = (ORef const*)uncheckedORefToPtr(v);
+        auto const slots = reinterpret_cast<ORef const*>(&*obj);
         state->regs[retReg] = slots[slotIdx];
     } else {
         assert(false); // TODO
@@ -484,13 +492,15 @@ PrimopRes PrimopSlotSet::uncheckedInvoke(State* state) {
 
     Type const* const type = typePtrOf(state, v);
     if (!type->isBytes.val()) {
+        auto const obj = HRef<Object>::fromUnchecked(v);
+
         size_t const slotCount = (uintptr_t)type->minSize.val() / sizeof(ORef);
         if (slotIdx >= slotCount) {
             assert(false); // TODO: Proper bounds error
         }
 
-        ORef* const slots = (ORef*)uncheckedORefToPtr(v);
-        slots[slotIdx] = slotV;
+        auto slots = SlotsMut{&*obj, reinterpret_cast<ORef*>(&*obj)};
+        slots[slotIdx].set(*state, slotV);
     } else {
         assert(false); // TODO
     }
@@ -527,8 +537,9 @@ PrimopRes PrimopFlexCount::uncheckedInvoke(State* state) {
     if (!type->isFlex.val()) {
         assert(false); // TODO: Proper nonflex error
     }
+    auto const obj = HRef<Object>::fromUnchecked(v);
 
-    state->regs[retReg] = ((FlexHeader const*)uncheckedORefToPtr(v) - 1)->count;
+    state->regs[retReg] = uncheckedFlexHeader(obj)->count;
 
     return PrimopRes::CONTINUE;
 }
@@ -544,8 +555,9 @@ PrimopRes PrimopFlexGet::uncheckedInvoke(State* state) {
     if (type->isBytes.val()) {
         assert(false); // TODO: Proper nonslots error
     }
+    auto const obj = HRef<Object>::fromUnchecked(v);
 
-    void const* const ptr = uncheckedORefToPtr(v);
+    void const* const ptr = &*obj;
     int64_t const count = ((FlexHeader const*)ptr - 1)->count.val();
     if (i < 0 || i >= count) {
         assert(false); // TODO: Proper bounds error
@@ -570,14 +582,14 @@ PrimopRes PrimopFlexSet::uncheckedInvoke(State* state) {
         assert(false); // TODO: Proper nonslots error
     }
 
-    void const* const ptr = uncheckedORefToPtr(v);
+    Object* const ptr = &*HRef<Object>::fromUnchecked(v);
     int64_t const count = ((FlexHeader const*)ptr - 1)->count.val();
     if (i < 0 || i >= count) {
         assert(false); // TODO: Proper bounds error
     }
 
-    ORef* const flexSlots = (ORef*)((char const*)ptr + type->minSize.val());
-    flexSlots[i] = iv;
+    auto flexSlots = SlotsMut{ptr, (ORef*)((char const*)ptr + type->minSize.val())};
+    flexSlots[size_t(i)].set(*state, iv);
     state->regs[retReg] = iv; // Once again most convenient and consistent to just return this
 
     return PrimopRes::CONTINUE;
@@ -598,9 +610,11 @@ PrimopRes PrimopFlexCopy::uncheckedInvoke(State* state) {
     if (!eq(srcType->isBytes, isBytesRef)) {
         PANIC("TODO: Proper bytes-vs-slots error");
     }
+    auto const destObj = HRef<Object>::fromUnchecked(dest);
+    auto const srcObj = HRef<Object>::fromUnchecked(src);
 
-    size_t const destCount = (uintptr_t)uncheckedFlexHeader(dest)->count.val();
-    size_t const srcCount = (uintptr_t)uncheckedFlexHeader(src)->count.val();
+    size_t const destCount = (uintptr_t)uncheckedFlexHeader(destObj)->count.val();
+    size_t const srcCount = (uintptr_t)uncheckedFlexHeader(srcObj)->count.val();
 
     if (offsetS < 0) { PANIC("TODO: Proper bounds error"); } // Negative index
     size_t const offset = (uintptr_t)offsetS;
@@ -615,8 +629,12 @@ PrimopRes PrimopFlexCopy::uncheckedInvoke(State* state) {
     size_t const copySpace = destCount - offset;
     if (copyCount > copySpace) { PANIC("TODO: Proper bounds error"); }
 
-    char* const destVals = (char*)uncheckedUntypedFlexPtrMut(dest);
-    char const* const srcVals = (char const*)uncheckedUntypedFlexPtr(src);
+    if (!destType->isBytes.val()) {
+        state->heap.writeBarrier(&*destObj);
+    }
+
+    auto const destVals = (char*)uncheckedUntypedFlexPtr(destObj);
+    auto const srcVals = (char const*)uncheckedUntypedFlexPtr(srcObj);
     size_t const elemSize = isBytesRef.val() ? sizeof(uint8_t) : sizeof(ORef);
     memmove(destVals, srcVals, copyCount * elemSize);
 
@@ -624,14 +642,15 @@ PrimopRes PrimopFlexCopy::uncheckedInvoke(State* state) {
 }
 
 PrimopRes PrimopFlexClone::uncheckedInvoke(State* state) {
-    ORef src = state->regs[firstArgReg];
+    ORef const src = state->regs[firstArgReg];
     intptr_t const startS = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
     intptr_t const endS = Fixnum::fromUnchecked(state->regs[firstArgReg + 2]).val();
     HRef<Type> type = typeOf(state, src);
 
     if (!type->isFlex.val()) { PANIC("TODO: Proper nonflex error"); }
+    auto srcObj = HRef<Object>::fromUnchecked(src);
 
-    size_t const srcCount = (uintptr_t)uncheckedFlexHeader(src)->count.val();
+    size_t const srcCount = (uintptr_t)uncheckedFlexHeader(srcObj)->count.val();
 
     if (startS < 0) { PANIC("TODO: Proper bounds error"); } // Negative index
     size_t const start = (uintptr_t)startS;
@@ -644,7 +663,7 @@ PrimopRes PrimopFlexClone::uncheckedInvoke(State* state) {
 
     Object* dest = state->heap.tospace.tryAllocFlex(&*type, Fixnum{int64_t(copyCount)});
     if (mustCollect(dest)) {
-        auto const srcG = state->pushRoot(&src);
+        auto const srcObjG = state->pushRoot(&srcObj);
         auto const typeRefG = state->pushRoot(&type);
         collect(state);
         dest = state->heap.tospace.allocFlexOrDie(&*type, Fixnum{int64_t(copyCount)});
@@ -652,7 +671,7 @@ PrimopRes PrimopFlexClone::uncheckedInvoke(State* state) {
 
     auto const minSize = size_t(type->minSize.val());
     size_t const elemSize = type->isBytes.val() ? sizeof(uint8_t) : sizeof(ORef);
-    memcpy(dest, (char*)uncheckedUntypedFlexPtr(src) + start * elemSize,
+    memcpy(dest, (char*)uncheckedUntypedFlexPtr(srcObj) + start * elemSize,
            minSize + copyCount * elemSize);
 
     state->regs[retReg] = HRef{dest};
@@ -863,7 +882,7 @@ PrimopRes PrimopArrayMutToString::uncheckedInvoke(State* state) {
     auto tmp = createByteArrayMut(state, Fixnum{int64_t(cpCount * 4)});
     auto const tmpRefG = state->pushRoot(&tmp);
     auto const cps = vs->flexData();
-    auto const tmpData = tmp->flexDataMut();
+    auto const tmpData = const_cast<uint8_t*>(tmp->flexData());
     ssize_t stringSize = 0;
     for (size_t i = 0; i < cpCount; ++i) {
         ORef const v = cps[i];
@@ -891,7 +910,7 @@ PrimopRes PrimopStringIteratorPeek::uncheckedInvoke(State* state) {
         return primopError(state, createTypeError(state, state->types.string, maybeString));
     }
     auto const string = HRef<String>::fromUnchecked(maybeString);
-    ORef const maybeByteIdx = iter->byteIdx;
+    ORef const maybeByteIdx = iter->byteIdx().get();
     if (!Fixnum::contains(maybeByteIdx)) {
         return primopError(state, createTypeError(state, state->types.fixnum, maybeString));
     }
@@ -923,7 +942,7 @@ PrimopRes PrimopStringIteratorNext::uncheckedInvoke(State* state) {
         return primopError(state, createTypeError(state, state->types.string, maybeString));
     }
     auto const string = HRef<String>::fromUnchecked(maybeString);
-    ORef const maybeByteIdx = iter->byteIdx;
+    ORef const maybeByteIdx = iter->byteIdx().get();
     if (!Fixnum::contains(maybeByteIdx)) {
         return primopError(state, createTypeError(state, state->types.fixnum, maybeString));
     }
@@ -940,7 +959,7 @@ PrimopRes PrimopStringIteratorNext::uncheckedInvoke(State* state) {
     assert(cpWidth > 0); // Strings should always have been created from valid UTF-8
     auto const cp = uint32_t(maybeCp);
 
-    iter->byteIdx = Fixnum{int64_t(byteIdx) + cpWidth};
+    iter->byteIdx().set(*state, Fixnum{int64_t(byteIdx) + cpWidth});
     state->regs[retReg] = Char{cp};
     return PrimopRes::CONTINUE;
 }

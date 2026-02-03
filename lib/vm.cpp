@@ -34,7 +34,7 @@ VMRes run(State* state, HRef<Closure> self) {
         state->method = anyMethod;
         state->code = HRef<ByteArray>::fromUnchecked(method->code)->flexData();
         state->pc = 0;
-        state->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->flexDataMut();
+        state->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->itemsMut().data();
         state->regs[calleeReg] = self;
         state->regs[retContReg] = state->singletons.exit; // Return continuation
         state->entryRegc = 2;
@@ -94,22 +94,22 @@ VMRes run(State* state, HRef<Closure> self) {
             uint8_t const constIdx = state->code[state->pc++];
             uint8_t const srcReg = state->code[state->pc++];
 
-            ORef c = state->consts[constIdx];
+            ORef c = state->consts[constIdx].get();
             if (isa<Symbol>(*state, c)) { // Link:
                 c = getVar(state, state->ns, HRef<Symbol>::fromUnchecked(c));
 
-                state->consts[constIdx] = c;
+                state->consts[constIdx].set(*state, c);
             }
             HRef<Var> const var = HRef<Var>::fromUnchecked(c);
 
-            var->val = state->regs[srcReg];
+            var->val().set(*state, state->regs[srcReg]);
         }; VM_CONTINUE;
 
         VM_CASE(OP_GLOBAL_SET) {
             uint8_t const constIdx = state->code[state->pc++];
             uint8_t const srcReg = state->code[state->pc++];
 
-            ORef c = state->consts[constIdx];
+            ORef c = state->consts[constIdx].get();
             if (isa<Symbol>(*state, c)) { // Link:
                 auto const name = HRef<Symbol>::fromUnchecked(c);
                 FindVarRes const findRes = findVar(state->ns, name);
@@ -128,18 +128,18 @@ VMRes run(State* state, HRef<Closure> self) {
                 }
                 c = findRes.var;
 
-                state->consts[constIdx] = c;
+                state->consts[constIdx].set(*state, c);
             }
             auto const var = HRef<Var>::fromUnchecked(c);
 
-            var->val = state->regs[srcReg];
+            var->val().set(*state, state->regs[srcReg]);
         }; VM_CONTINUE;
 
         VM_CASE(OP_GLOBAL) {
             uint8_t const destReg = state->code[state->pc++];
             uint8_t const constIdx = state->code[state->pc++];
 
-            ORef c = state->consts[constIdx];
+            ORef c = state->consts[constIdx].get();
             if (isa<Symbol>(*state, c)) { // Link:
                 HRef<Symbol> const name = HRef<Symbol>::fromUnchecked(c);
                 FindVarRes const findRes = findVar(state->ns, name);
@@ -158,11 +158,11 @@ VMRes run(State* state, HRef<Closure> self) {
                 }
                 c = findRes.var;
 
-                state->consts[constIdx] = c;
+                state->consts[constIdx].set(*state, c);
             }
             auto const var = HRef<Var>::fromUnchecked(c);
 
-            ORef const v = var->val;
+            ORef const v = var->val().get();
             if (eq(v, state->singletons.unbound)) {
                 assert(false); // FIXME: use of unbound var
             }
@@ -173,7 +173,7 @@ VMRes run(State* state, HRef<Closure> self) {
             uint8_t const destReg = state->code[state->pc++];
             uint8_t const constIdx = state->code[state->pc++];
 
-            state->regs[destReg] = state->consts[constIdx];
+            state->regs[destReg] = state->consts[constIdx].get();
         }; VM_CONTINUE;
 
         VM_CASE(OP_SPECIALIZE) {
@@ -200,13 +200,13 @@ VMRes run(State* state, HRef<Closure> self) {
                             if (!isa<Type>(*state, maybeType)) {
                                 return VMRes{}; // TODO: Signal type error properly
                             }
-                            types->itemsMut()[typeIdx++] = maybeType;
+                            types->itemsMut()[typeIdx++].set(*state, maybeType);
                         }
                     }
                 }
             }
-            assert(isa<Method>(*state, state->consts[constIdx]));
-            HRef<Method> const generic = HRef<Method>::fromUnchecked(state->consts[constIdx]);
+            assert(isa<Method>(*state, state->consts[constIdx].get()));
+            HRef<Method> const generic = HRef<Method>::fromUnchecked(state->consts[constIdx].get());
             HRef<Method> const method = specialize(state, generic, types);
 
             state->regs[destReg] = method;
@@ -224,7 +224,7 @@ VMRes run(State* state, HRef<Closure> self) {
 
             assert(isa(state, state->types.knot, state->regs[knotReg]));
             auto const knot = HRef<Knot>::fromUnchecked(state->regs[knotReg]);
-            knot->val = state->regs[srcReg];
+            knot->val().set(*state,  state->regs[srcReg]);
         }; VM_CONTINUE;
 
         VM_CASE(OP_KNOT_GET) {
@@ -233,7 +233,7 @@ VMRes run(State* state, HRef<Closure> self) {
 
             assert(isa(state, state->types.knot, state->regs[knotReg]));
             auto const knot = HRef<Knot>::fromUnchecked(state->regs[knotReg]);
-            state->regs[destReg] = knot->val;
+            state->regs[destReg] = knot->val().get();
         }; VM_CONTINUE;
 
         VM_CASE(OP_BR) {
@@ -264,7 +264,7 @@ VMRes run(State* state, HRef<Closure> self) {
                 state->method = method;
                 state->code = HRef<ByteArray>::fromUnchecked(method->code)->flexData();
                 state->pc = (size_t)ret->pc.val();
-                state->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->flexDataMut();
+                state->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->itemsMut().data();
             } else { // Exit
                 return VMRes{.val = state->regs[retReg], .success = true};
             }
@@ -291,8 +291,8 @@ VMRes run(State* state, HRef<Closure> self) {
                     uint8_t const byte = state->code[start + byteIdx];
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
                         if ((byte >> (UINT8_WIDTH - 1 - bitIdx)) & 1) {
-                            ORef* const cloverPtr =
-                                (ORef*)closure->clovers().data + cloverIdx++;
+                            auto const cloverPtr = // `const_cast` for init:
+                                const_cast<ORef*>(closure->clovers().data()) + cloverIdx++;
                             size_t const regIdx = UINT8_WIDTH * byteIdx + bitIdx;
                             *cloverPtr = state->regs[regIdx];
                         }
@@ -341,8 +341,8 @@ VMRes run(State* state, HRef<Closure> self) {
                     uint8_t const byte = state->code[start + byteIdx];
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
                         if ((byte >> (UINT8_WIDTH - 1 - bitIdx)) & 1) {
-                            ORef* const cloverPtr =
-                                (ORef*)cont->saves().data + cloverIdx++;
+                            auto const cloverPtr = // `const_cast` for init:
+                                const_cast<ORef*>(cont->saves().data()) + cloverIdx++;
                             size_t const regIdx = UINT8_WIDTH * byteIdx + bitIdx;
                             *cloverPtr = state->regs[regIdx];
                         }
@@ -377,7 +377,7 @@ VMRes run(State* state, HRef<Closure> self) {
                 state->method = anyMethod;
                 state->code = HRef<ByteArray>::fromUnchecked(method->code)->flexData();
                 state->pc = 0;
-                state->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->flexDataMut();
+                state->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->itemsMut().data();
 
                 ORef const maybeErr = checkDomain(state);
                 if (isHeaped(maybeErr)) {
@@ -388,7 +388,7 @@ VMRes run(State* state, HRef<Closure> self) {
                 }
 
                 if (method->hasVarArg.val()) {
-                    size_t const arity = method->domain().count;
+                    size_t const arity = method->domain().size();
                     size_t const minArity = arity - 1;
                     uint8_t const callArgc = state->entryRegc - firstArgReg;
                     size_t const varargCount = callArgc - minArity;
@@ -417,7 +417,7 @@ VMRes run(State* state, HRef<Closure> self) {
                         state->code = HRef<ByteArray>::fromUnchecked(methodPtr->code)->flexData();
                         state->pc = (size_t)ret->pc.val();
                         state->consts =
-                            HRef<ArrayMut>::fromUnchecked(methodPtr->consts)->flexDataMut();
+                            HRef<ArrayMut>::fromUnchecked(methodPtr->consts)->itemsMut().data();
 
                         VM_CONTINUE;
                     } else { // Exit
@@ -439,7 +439,7 @@ VMRes run(State* state, HRef<Closure> self) {
                         state->code = HRef<ByteArray>::fromUnchecked(method->code)->flexData();
                         state->pc = 0;
                         state->consts =
-                            HRef<ArrayMut>::fromUnchecked(method->consts)->flexDataMut();
+                            HRef<ArrayMut>::fromUnchecked(method->consts)->itemsMut().data();
 
                         state->checkDomain = true;
 

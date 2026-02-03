@@ -25,8 +25,8 @@ ORef doCheckDomain(
     size_t const minArity = !hasVarArg ? arity : arity - 1;
 
     for (size_t i = 0; i < minArity; ++i) {
-        assert(isa<Type>(*state, method->domain()[i]));
-        HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[i]);
+        assert(isa<Type>(*state, method->domain()[i].get()));
+        HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[i].get());
         ORef const v = args[i];
         if (!isa(state, type, v)) {
             return createTypeError(state, type, v);
@@ -34,8 +34,8 @@ ORef doCheckDomain(
     }
 
     if (hasVarArg) {
-        assert(isa<Type>(*state, method->domain()[minArity]));
-        HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[minArity]);
+        assert(isa<Type>(*state, method->domain()[minArity].get()));
+        HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[minArity].get());
         for (size_t i = minArity; i < argc; ++i) {
             ORef const v = args[i];
             if (!isa(state, type, v)) {
@@ -69,8 +69,8 @@ bool closureIsApplicable(
 
     // Fixed args:
     for (size_t i = 0; i < minArity; ++i) {
-        assert(isa<Type>(*state, method->domain()[i]));
-        HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[i]);
+        assert(isa<Type>(*state, method->domain()[i].get()));
+        HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[i].get());
         ORef const v = args[i];
         if (!isa(state, type, v)) {
             return false;
@@ -78,8 +78,8 @@ bool closureIsApplicable(
     }
 
     if (hasVarArg) { // Vararg:
-        assert(isa<Type>(*state, method->domain()[minArity]));
-        HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[minArity]);
+        assert(isa<Type>(*state, method->domain()[minArity].get()));
+        HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[minArity].get());
         for (size_t i = minArity; i < argc; ++i) {
             ORef const v = args[i];
             if (!isa(state, type, v)) {
@@ -106,14 +106,14 @@ bool closureIsApplicableToList(State const* state, Closure const* callee, ORef a
         if (isa<Pair>(*state, args)) {
             auto const argsPair = HRef<Pair>::fromUnchecked(args);
 
-            assert(isa<Type>(*state, method->domain()[i]));
-            HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[i]);
-            ORef const v = argsPair->car;
+            assert(isa<Type>(*state, method->domain()[i].get()));
+            HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[i].get());
+            ORef const v = argsPair->car().get();
             if (!isa(state, type, v)) {
                 return false;
             }
 
-            args = argsPair->cdr;
+            args = argsPair->cdr().get();
         } else if (isEmptyList(state, args)) {
             return false; // Insufficient argc
         } else {
@@ -122,18 +122,18 @@ bool closureIsApplicableToList(State const* state, Closure const* callee, ORef a
     }
 
     if (hasVarArg) { // Vararg:
-        assert(isa<Type>(*state, method->domain()[minArity]));
-        HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[minArity]);
+        assert(isa<Type>(*state, method->domain()[minArity].get()));
+        HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[minArity].get());
         for (;/*ever*/;) {
             if (isa<Pair>(*state, args)) {
                 auto const argsPair = HRef<Pair>::fromUnchecked(args);
 
-                ORef const v = argsPair->car;
+                ORef const v = argsPair->car().get();
                 if (!isa(state, type, v)) {
                     return false;
                 }
 
-                args = argsPair->cdr;
+                args = argsPair->cdr().get();
             } else if (isEmptyList(state, args)) {
                 break;
             } else {
@@ -179,8 +179,8 @@ ORef checkDomain(State* state) {
 ORef applicableClosureForArgs(
     State* state, Multimethod const* callee, ORef const* args, size_t argc
 ) {
-    HRef<Array> const methodsRef = callee->methods;
-    Slice<ORef const> const methods = methodsRef->flexItems();
+    HRef<Array> const methodsRef = callee->methods().get();
+    ORefSpan const methods = methodsRef->flexItems();
 
     size_t const methodCount = (uint64_t)methodsRef->flexCount().val();
     for (size_t i = 0; i < methodCount; ++i) {
@@ -199,8 +199,8 @@ ORef applicableClosureForArgs(
 // TODO: DRY wrt. `applicableClosureForArgs`:
 /// Returns applicable closure from `callee`, `Default` if none is found.
 ORef applicableClosureForArglist(State* state, Multimethod const* callee, ORef args) {
-    HRef<Array> const methodsRef = callee->methods;
-    Slice<ORef const> const methods = methodsRef->flexItems();
+    HRef<Array> const methodsRef = callee->methods().get();
+    ORefSpan const methods = methodsRef->flexItems();
 
     size_t const methodCount = (uint64_t)methodsRef->flexCount().val();
     for (size_t i = 0; i < methodCount; ++i) {

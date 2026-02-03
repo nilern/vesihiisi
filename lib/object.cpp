@@ -4,6 +4,12 @@
 
 namespace {
 
+template<typename T>
+void SlotMut<T>::set(State& state, T v) {
+    state.heap.writeBarrier(obj_);
+    *slot_ = v;
+}
+
 HRef<Type> Flonum::reify(State const& state) { return state.types.flonum; }
 
 HRef<Type> Fixnum::reify(State const& state) { return state.types.fixnum; }

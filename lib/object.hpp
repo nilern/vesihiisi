@@ -4,17 +4,78 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <bit>
+#include <span>
 
 #include "util/util.hpp"
 #include "vesihiisi.h"
 
 namespace {
 
+struct State;
+
 static_assert(sizeof(void*) == sizeof(uint64_t)); // Only 64-bit supported (for now)
 // Could support 32-bit now that we NaN-tag. If we get native threads the non-atomicity of 64-bit
 // loads and stores would complicate synchronization primitives on 32-bit though.
 
 inline bool eq(ORef x, ORef y) { return x.bits == y.bits; }
+
+/// Access to mutable slot (of type `ORef` or `HRef<U>`) with write barrier. Because GC could move
+/// the underlying slot, to be safe always use this as a temporary e.g. `obj.slot().get/set(...`.
+template<typename T>
+class SlotMut {
+    struct Object* obj_;
+    T* slot_;
+public:
+    SlotMut(struct Object* obj, T& slot) : obj_{obj}, slot_{&slot} {}
+
+    /// Get value of slot.
+    T get() const { return *slot_; }
+
+    /// Set slot (with write barrier).
+    void set(State& state, T v);
+};
+
+/// Just to allow `const` values of types with `SlotMut`s e.g.
+///
+///     SlotMut<U> slot();
+///     Slot<U> slot() const;
+template<typename T>
+class Slot {
+    T const* slot_;
+public:
+    explicit Slot(T const& slot) : slot_{&slot} {}
+
+    T const& get() const { return *slot_; }
+};
+
+/// Effectively `ORefSpanMut` without range checking.
+template<typename T>
+class SlotsMut {
+    struct Object* obj_;
+    T* slots_;
+public:
+    explicit SlotsMut(struct Object* obj, T* slots) : obj_{obj}, slots_{slots} {}
+
+    SlotMut<T> operator[](size_t i) { return SlotMut{obj_, slots_[i]}; }
+    Slot<T> operator[](size_t i) const { return Slot{slots_[i]}; }
+};
+
+using ORefSpan = std::span<ORef const>;
+
+/// The moral equivalent of `SlotMut` for an indexed slot. Usage: `obj.items()[i].get/set(...`.
+class ORefSpanMut {
+    struct Object* obj_;
+    std::span<ORef> span_;
+
+public:
+    ORefSpanMut(struct Object* obj, ORef* begin, size_t count) : obj_{obj}, span_{begin, count} {}
+
+    size_t size() const { return span_.size(); }
+
+    SlotsMut<ORef> data() { return SlotsMut{obj_, span_.data()}; }
+
+    SlotMut<ORef> operator[](size_t i) { return SlotMut{obj_, span_[i]}; }
+};
 
 enum class TaggedType : uint64_t {
     HEAPED = 0,
@@ -48,7 +109,7 @@ struct HRef : public ORef {
 
     T* operator->() const { return std::bit_cast<T*>(bits & payloadMask); }
 
-    T& operator*() const { return *std::bit_cast<T*>(bits & payloadMask); }
+    T& operator*() const { return *operator->(); }
 
 private:
     constexpr explicit HRef(uint64_t t_bits) : ORef{t_bits} {}
@@ -167,10 +228,6 @@ constexpr ORef AlignmentHole{0};
 
 constexpr ORef Tombstone{boolTag | (uint64_t)false};
 
-inline int64_t uncheckedFixnumToInt(ORef v) { return Fixnum::fromUnchecked(v).val(); }
-
-inline uint32_t uncheckedORefToChar(ORef v) { return Char::fromUnchecked(v).val(); }
-
 struct Object {
     struct Header const* header() const;
     struct Header* header();
@@ -181,12 +238,6 @@ struct Object {
 };
 
 inline ORef tagHeaped(Object* ptr) { return ORef{heapedTag | (uint64_t)ptr}; }
-
-inline Object* uncheckedORefToPtr(ORef v) { return (Object*)(v.bits & payloadMask); }
-
-inline Object* tryORefToPtr(ORef oref) {
-    return isHeaped(oref) ? uncheckedORefToPtr(oref) : nullptr;
-}
 
 template<typename CRTPSub>
 struct BootstrapObject : public Object {
@@ -207,8 +258,8 @@ struct AnyIndexedObject : public BootstrapObject<CRTPSub> {
     Fixnum flexCount() const;
 
     // TODO: Align result `.data` if we go beyond 'either all slots or all bytes':
-    Slice<Item const> flexItems() const {
-        return Slice{
+    std::span<Item const> flexItems() const {
+        return std::span{
             static_cast<CRTPSub const*>(this)->flexData(),
             static_cast<size_t>(flexCount().val())
         };
@@ -218,9 +269,21 @@ struct AnyIndexedObject : public BootstrapObject<CRTPSub> {
 template<typename CRTPSub, typename Item>
 struct AnyIndexedMutObject : public AnyIndexedObject<CRTPSub, Item> {
     // TODO: Align result `.data` if we go beyond 'either all slots or all bytes':
-    Slice<Item> flexItemsMut() {
-        return Slice{
-            static_cast<CRTPSub*>(this)->flexDataMut(),
+    std::span<Item> flexItemsMut() {
+        return std::span{
+            const_cast<Item*>(static_cast<CRTPSub*>(this)->flexData()),
+            static_cast<size_t>(this->flexCount().val())
+        };
+    }
+};
+
+template<typename CRTPSub>
+struct AnyIndexedMutObject<CRTPSub, ORef> : public AnyIndexedObject<CRTPSub, ORef> {
+    // TODO: Align result `.data` if we go beyond 'either all slots or all bytes':
+    ORefSpanMut flexItemsMut() {
+        return ORefSpanMut{
+            this,
+            const_cast<ORef*>(static_cast<CRTPSub*>(this)->flexData()),
             static_cast<size_t>(this->flexCount().val())
         };
     }
@@ -237,8 +300,6 @@ struct IndexedObject : public AnyIndexedObject<CRTPSub, Item> {
 template<typename CRTPSub, typename Item>
 struct IndexedMutObject : public AnyIndexedMutObject<CRTPSub, Item> {
     Item const* flexData() const { return std::bit_cast<Item const*>(this); }
-
-    Item* flexDataMut() { return std::bit_cast<Item*>(this); }
 };
 
 /// GC-heap object with both fixed fields and flex field
@@ -254,20 +315,29 @@ struct FlexMutObject : public AnyIndexedMutObject<CRTPSub, Item> {
     Item const* flexData() const {
         return std::bit_cast<Item const*>(std::bit_cast<char const*>(this) + sizeof(CRTPSub));
     }
-
-    Item* flexDataMut() const {
-        return std::bit_cast<Item*>(std::bit_cast<char*>(this) + sizeof(CRTPSub));
-    }
 };
 
 struct Type : public FixedObject<Type> {
-    Fixnum minSize;
-    Fixnum align;
-    Bool isBytes;
-    Bool hasCodePtr;
-    Bool isFlex;
-    Fixnum hash;
-    HRef<struct Symbol> name;
+    Fixnum const minSize;
+    Fixnum const align;
+    Bool const isBytes;
+    Bool const hasCodePtr;
+    Bool const isFlex;
+    Fixnum const hash;
+    HRef<struct Symbol> const name;
+
+    Type(
+        Fixnum t_minSize, Fixnum t_align, Bool t_isBytes, Bool t_hasCodePtr, Bool t_isFlex,
+        Fixnum t_hash, HRef<struct Symbol> t_name
+    ) :
+        minSize{t_minSize}, align{t_align}, isBytes{t_isBytes}, hasCodePtr{t_hasCodePtr},
+        isFlex{t_isFlex}, hash{t_hash}, name{t_name}
+    {}
+
+    Type(Type const& that) :
+        minSize{that.minSize}, align{that.align}, isBytes{that.isBytes},
+        hasCodePtr{that.hasCodePtr}, isFlex{that.isFlex}, hash{that.hash}, name{that.name}
+    {}
 
     static HRef<Type> reify(struct State const& state);
 };
@@ -320,22 +390,15 @@ struct FlexHeader {
     Header base; // Cannot inherit from this since we want `count` to come first.
 };
 
-FlexHeader const* uncheckedFlexHeader(ORef v) {
-    return std::bit_cast<FlexHeader const*>(uncheckedORefToPtr(v)) - 1;
+FlexHeader const* uncheckedFlexHeader(HRef<Object> v) {
+    return std::bit_cast<FlexHeader const*>(&*v) - 1;
 }
 
 // TODO: Align result if we go beyond 'either all slots or all bytes':
-void const* uncheckedUntypedFlexPtr(ORef v) {
-    Object const* const obj = &*HRef<Object>::fromUnchecked(v);
+void const* uncheckedUntypedFlexPtr(HRef<Object> v) {
+    Object const* const obj = &*v;
     size_t const minSize = (uint64_t)obj->header()->typePtr()->minSize.val();
     return static_cast<void const*>(std::bit_cast<char const*>(obj) + minSize);
-}
-
-// TODO: Align result if we go beyond 'either all slots or all bytes':
-void* uncheckedUntypedFlexPtrMut(ORef v) {
-    Object* const obj = &*HRef<Object>::fromUnchecked(v);
-    size_t const minSize = (uint64_t)obj->header()->typePtr()->minSize.val();
-    return static_cast<void*>(std::bit_cast<char*>(obj) + minSize);
 }
 
 template<typename CRTPSub, typename Item>
@@ -353,15 +416,22 @@ struct String : public IndexedObject<String, uint8_t> {
 };
 
 struct StringIterator : public FixedObject<StringIterator> {
-    ORef string;
-    ORef byteIdx;
+    ORef const string;
+private:
+    ORef byteIdx_;
+public:
+    SlotMut<ORef> byteIdx() { return SlotMut{this, byteIdx_}; }
 
     [[maybe_unused]]
     static HRef<Type> reify(struct State const& state);
 };
 
 struct Symbol : public FlexObject<Symbol, uint8_t> {
-    Fixnum hash;
+    Fixnum const hash;
+
+    Symbol(Fixnum t_hash, Str name) : hash{t_hash} {
+        memcpy(const_cast<uint8_t*>(flexData()), name.data, name.len);
+    }
 
     static HRef<Type> reify(struct State const& state);
 
@@ -373,7 +443,7 @@ struct Array : public IndexedObject<Array, ORef> {
     [[maybe_unused]]
     static HRef<Type> reify(struct State const& state);
 
-    Slice<ORef const> items() const { return flexItems(); }
+    ORefSpan items() const { return flexItems(); }
 };
 
 // TODO: `template<typename T> struct Array<T> :`?
@@ -381,37 +451,45 @@ struct ArrayMut : public IndexedMutObject<ArrayMut, ORef> {
     [[maybe_unused]]
     static HRef<Type> reify(struct State const& state);
 
-    Slice<ORef const> items() const { return flexItems(); }
-    Slice<ORef> itemsMut() { return flexItemsMut(); }
+    ORefSpan items() const { return flexItems(); }
+    ORefSpanMut itemsMut() { return flexItemsMut(); }
 };
 
 struct ByteArray : public IndexedObject<ByteArray, uint8_t> {
     [[maybe_unused]]
     static HRef<Type> reify(struct State const& state);
 
-    Slice<uint8_t const> items() const { return flexItems(); }
+    std::span<uint8_t const> items() const { return flexItems(); }
 };
 
 struct ByteArrayMut : public IndexedMutObject<ByteArrayMut, uint8_t> {
     [[maybe_unused]]
     static HRef<Type> reify(struct State const& state);
 
-    Slice<uint8_t const> items() const { return flexItems(); }
-    Slice<uint8_t> itemsMut() { return flexItemsMut(); }
+    std::span<uint8_t const> items() const { return flexItems(); }
+    std::span<uint8_t> itemsMut() { return flexItemsMut(); }
 };
 
 struct Loc : public FixedObject<Loc> {
-    HRef<String> filename;
-    Fixnum byteIdx;
+    HRef<String> const filename;
+    Fixnum const byteIdx;
+
+    Loc(HRef<String> t_filename, Fixnum t_byteIdx) : filename{t_filename}, byteIdx{t_byteIdx} {}
 
     [[maybe_unused]]
     static HRef<Type> reify(struct State const& state);
 };
 
-struct Pair : public FixedObject<Pair> {
-    ORef car;
-    ORef cdr;
-    ORef maybeLoc;
+class Pair : public FixedObject<Pair> {
+    ORef car_;
+    ORef cdr_;
+    ORef maybeLoc_;
+public:
+    SlotMut<ORef> car() { return SlotMut{this, car_}; }
+    SlotMut<ORef> cdr() { return SlotMut{this, cdr_}; }
+    SlotMut<ORef> maybeLoc() { return SlotMut{this, maybeLoc_}; }
+
+    Pair(ORef car, ORef cdr, ORef maybeLoc) : car_{car}, cdr_{cdr}, maybeLoc_{maybeLoc} {}
 
     static HRef<Type> reify(struct State const& state);
 };
@@ -432,44 +510,59 @@ enum class PrimopRes : uintptr_t {
 using MethodCode = PrimopRes (*)(struct State*);
 
 struct Method : public FlexMutObject<Method, ORef> {
-    MethodCode nativeCode;
-    ORef code;
-    ORef consts;
-    Bool hasVarArg;
-    Fixnum hash;
-    ORef maybeName;
-    ORef maybeFilenames;
-    ORef maybeSrcByteIdxs;
+    MethodCode const nativeCode;
+    ORef const code;
+    ORef const consts;
+    Bool const hasVarArg;
+    Fixnum const hash;
+    ORef const maybeName;
+    ORef const maybeFilenames;
+    ORef const maybeSrcByteIdxs;
+
+    Method(
+        MethodCode t_nativeCode, ORef t_code, ORef t_consts, Bool t_hasVarArg, Fixnum t_hash,
+        ORef t_maybeName, ORef t_maybeFilenames, ORef t_maybeSrcByteIdxs, ORefSpan t_domain
+    ) :
+        nativeCode{t_nativeCode}, code{t_code}, consts{t_consts}, hasVarArg{t_hasVarArg},
+        hash{t_hash}, maybeName{t_maybeName}, maybeFilenames{t_maybeFilenames},
+        maybeSrcByteIdxs{t_maybeSrcByteIdxs}
+    {
+        memcpy(const_cast<ORef*>(flexData()), t_domain.data(), t_domain.size_bytes());
+    }
 
     static HRef<Type> reify(struct State const& state);
 
-    Slice<ORef const> domain() const { return flexItems(); }
-    Slice<ORef> domain() { return flexItemsMut(); }
+    ORefSpan domain() const { return flexItems(); }
+    ORefSpanMut domain() { return flexItemsMut(); }
 };
 
 struct Closure : public FlexObject<Closure, ORef> {
-    ORef method;
+    ORef const method;
 
     static HRef<Type> reify(struct State const& state);
 
-    Slice<ORef const> clovers() const { return flexItems(); }
+    ORefSpan clovers() const { return flexItems(); }
 };
 
-struct Multimethod : public FixedObject<Multimethod> {
-    HRef<Array> methods;
-    ORef maybeName;
+class Multimethod : public FixedObject<Multimethod> {
+    HRef<Array> methods_;
+public:
+    ORef const maybeName;
+
+    Slot<HRef<Array>> methods() const { return Slot{methods_}; }
+    SlotMut<HRef<Array>> methods() { return SlotMut{this, methods_}; }
 
     static HRef<Type> reify(struct State const& state);
 };
 
 struct Continuation : FlexObject<Continuation, ORef> {
-    ORef method;
-    Fixnum pc;
+    ORef const method;
+    Fixnum const pc;
 
     [[maybe_unused]]
     static HRef<Type> reify(struct State const& state);
 
-    Slice<ORef const> saves() const { return flexItems(); }
+    ORefSpan saves() const { return flexItems(); }
 };
 
 /// FIXME: Should have zero size but a byte is forced upon us :(
@@ -478,25 +571,38 @@ struct Unbound : public FixedObject<Unbound> {
     static HRef<Type> reify(struct State const& state);
 };
 
-struct Var : public FixedObject<Var> {
-    ORef val;
-    ORef macroCategory;
+class Var : public FixedObject<Var> {
+    ORef val_;
+    ORef macroCategory_;
+public:
+    SlotMut<ORef> val() { return SlotMut{this, val_}; }
+
+    Var(ORef val, ORef macroCategory) : val_{val}, macroCategory_{macroCategory} {}
 
     [[maybe_unused]]
     static HRef<Type> reify(struct State const& state);
 };
 
-struct Knot : public FixedObject<Knot> {
-    ORef val;
+class Knot : public FixedObject<Knot> {
+    ORef val_;
+public:
+    SlotMut<ORef> val() { return SlotMut{this, val_}; }
 
     [[maybe_unused]]
     static HRef<Type> reify(struct State const& state);
 };
 
-struct Namespace : public FixedObject<Namespace> {
-    HRef<ArrayMut> keys;
-    HRef<ArrayMut> vals;
+class Namespace : public FixedObject<Namespace> {
+    HRef<ArrayMut> keys_;
+    HRef<ArrayMut> vals_; // OPTIMIZE: Colocate with keys
+public:
     Fixnum count;
+
+    Namespace(HRef<ArrayMut> keys, HRef<ArrayMut> vals, Fixnum t_count) :
+        keys_{keys}, vals_{vals}, count{t_count} {}
+
+    SlotMut<HRef<ArrayMut>> keys() { return SlotMut{this, keys_}; }
+    SlotMut<HRef<ArrayMut>> vals() { return SlotMut{this, vals_}; }
 
     [[maybe_unused]]
     static HRef<Type> reify(struct State const& state);
@@ -514,45 +620,58 @@ struct InputFile : public FixedObject<InputFile> {
     [[maybe_unused]]
     static HRef<Type> reify(struct State const& state);
 
-    InputFile(UTF8InputFile&& t_file) : file{std::move(t_file)} {}
+    explicit InputFile(UTF8InputFile&& t_file) : file{std::move(t_file)} {}
 
     static bool open(State* state, HRef<InputFile>& res, HRef<String> filename);
 };
 
 // TODO: Eliminate all the other error types:
 struct FatalError : public FlexObject<FatalError, ORef> {
-    HRef<Symbol> name;
+    HRef<Symbol> const name;
+
+    FatalError(HRef<Symbol> t_name, ORefSpan irritants) : name{t_name} {
+        memcpy(const_cast<ORef*>(flexData()), irritants.data(), irritants.size_bytes());
+    }
 
     [[maybe_unused]]
     static HRef<Type> reify(struct State const& state);
 
-    Slice<ORef const> irritants() const { return flexItems(); }
+    ORefSpan irritants() const { return flexItems(); }
 };
 
 struct UnboundError : public FixedObject<UnboundError> {
-    HRef<Symbol> name;
+    HRef<Symbol> const name;
+
+    explicit UnboundError(HRef<Symbol> t_name) : name{t_name} {}
 
     [[maybe_unused]]
     static HRef<Type> reify(struct State const& state);
 };
 
 struct TypeError : public FixedObject<TypeError> {
-    HRef<Type> type;
-    ORef val;
+    HRef<Type> const type;
+    ORef const val;
+
+    TypeError(HRef<Type> t_type, ORef t_val) : type{t_type}, val{t_val} {}
 
     static HRef<Type> reify(struct State const& state);
 };
 
 struct ArityError : public FixedObject<ArityError> {
-    HRef<Closure> callee;
-    Fixnum callArgc;
+    HRef<Closure> const callee;
+    Fixnum const callArgc;
+
+    ArityError(HRef<Closure> t_callee, Fixnum t_callArgc) :
+        callee{t_callee}, callArgc{t_callArgc} {}
 
     [[maybe_unused]]
     static HRef<Type> reify(struct State const& state);
 };
 
 struct InapplicableError : public FixedObject<InapplicableError> {
-    HRef<Multimethod> callee;
+    HRef<Multimethod> const callee;
+
+    explicit InapplicableError(HRef<Multimethod> t_callee) : callee{t_callee} {}
 
     [[maybe_unused]]
     static HRef<Type> reify(struct State const& state);

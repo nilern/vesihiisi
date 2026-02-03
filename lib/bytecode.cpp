@@ -6,7 +6,7 @@
 
 namespace {
 
-int64_t decodeVarInt(size_t* i, Slice<uint8_t const> src) {
+int64_t decodeVarInt(size_t* i, std::span<uint8_t const> src) {
     assert(i);
 
     uint8_t byte = src[(*i)++];
@@ -45,7 +45,7 @@ class Disassembler {
 protected:
     State const* state;
     Method const* method;
-    Slice<uint8_t const> codeSlice;
+    std::span<uint8_t const> codeSlice;
     size_t pc;
 
 public:
@@ -69,7 +69,7 @@ public:
     virtual ~Disassembler() = default;
 
     virtual Maybe<MaybeLocatedCodeByte> next() {
-        if (pc < codeSlice.count) {
+        if (pc < codeSlice.size()) {
             return Maybe{MaybeLocatedCodeByte{codeSlice[pc++], {}}};
         } else {
             return Maybe<MaybeLocatedCodeByte>{};
@@ -98,9 +98,9 @@ class LocDisassembler : public Disassembler {
     size_t bytesToNextMaybeFilename;
     int64_t srcByteIdx;
     int64_t bytesToNextSrcByteIdx;
-    Slice<ORef const> filenames;
+    ORefSpan filenames;
     size_t filenameIdx;
-    Slice<uint8_t const> srcByteIdxs;
+    std::span<uint8_t const> srcByteIdxs;
     size_t srcByteIdxsIdx;
 
 private:
@@ -119,10 +119,10 @@ private:
         bytesToNextMaybeFilename = (uint64_t)Fixnum::fromUnchecked(filenames[filenameIdx++]).val();
 
         srcByteIdx += decodeVarInt(&srcByteIdxsIdx, srcByteIdxs);
-        if (srcByteIdxsIdx < srcByteIdxs.count) {
+        if (srcByteIdxsIdx < srcByteIdxs.size()) {
             bytesToNextSrcByteIdx = decodeVarInt(&srcByteIdxsIdx, srcByteIdxs);
         } else { // This is the last one:
-            bytesToNextSrcByteIdx = int64_t(codeSlice.count - pc);
+            bytesToNextSrcByteIdx = int64_t(codeSlice.size() - pc);
         }
     }
 
@@ -141,10 +141,10 @@ public:
 
             if (bytesToNextSrcByteIdx == 0) {
                 srcByteIdx += decodeVarInt(&srcByteIdxsIdx, srcByteIdxs);
-                if (srcByteIdxsIdx < srcByteIdxs.count) {
+                if (srcByteIdxsIdx < srcByteIdxs.size()) {
                     bytesToNextSrcByteIdx = decodeVarInt(&srcByteIdxsIdx, srcByteIdxs);
                 } else { // This is the last one:
-                    bytesToNextSrcByteIdx = int64_t(codeSlice.count - pc + 1);
+                    bytesToNextSrcByteIdx = int64_t(codeSlice.size() - pc + 1);
                 }
             }
             --bytesToNextSrcByteIdx;
@@ -448,7 +448,7 @@ void disassembleNested(State const* state, FILE* dest, HRef<Method> methodRef, s
             fputs(". ", dest);
         }
 
-        print(state, dest, methodRef->domain()[i]);
+        print(state, dest, methodRef->domain()[i].get());
     }
 
     fputs(")\n", dest); // TODO: Source location for function (not the same as for instr #1!)
@@ -518,13 +518,12 @@ Maybe<ZLoc> locatePc(HRef<Method> method, size_t pc) {
     if (!isHeaped(method->maybeFilenames) || !isHeaped(method->maybeSrcByteIdxs)) {
         return Maybe<ZLoc>{};
     }
-    Slice<ORef const> const filenames =
-        HRef<Array>::fromUnchecked(method->maybeFilenames)->items();
-    Slice<uint8_t const> const srcByteIdxs =
+    ORefSpan const filenames = HRef<Array>::fromUnchecked(method->maybeFilenames)->items();
+    std::span<uint8_t const> const srcByteIdxs =
         HRef<ByteArray>::fromUnchecked(method->maybeSrcByteIdxs)->items();
 
     ORef maybeFilename = Default;
-    for (size_t i = 1, filenameStartPc = 0; i < filenames.count; i += 2) {
+    for (size_t i = 1, filenameStartPc = 0; i < filenames.size(); i += 2) {
         size_t const filenameCount = uint64_t(Fixnum::fromUnchecked(filenames[i]).val());
         size_t const filenameEndPc = filenameStartPc + filenameCount;
 
@@ -535,7 +534,7 @@ Maybe<ZLoc> locatePc(HRef<Method> method, size_t pc) {
     }
 
     int64_t srcByteIdx = 0;
-    for (size_t i = 0, codeByteIdx = 0; i < srcByteIdxs.count;) {
+    for (size_t i = 0, codeByteIdx = 0; i < srcByteIdxs.size();) {
         srcByteIdx += decodeVarInt(&i, srcByteIdxs);
         size_t const newCodeByteIdx = size_t(int64_t(codeByteIdx) + decodeVarInt(&i, srcByteIdxs));
 

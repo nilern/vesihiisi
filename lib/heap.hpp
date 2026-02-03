@@ -74,6 +74,8 @@ typedef struct Heap {
     [[nodiscard]]
     bool isValid() const { return tospace.isValid() && fromspace.isValid(); }
 
+    void writeBarrier(Object* /*dest*/) { /*TODO*/ }
+
     [[nodiscard]]
     Object* mark(Object* obj);
     [[nodiscard]]

@@ -44,13 +44,13 @@ void print(State const* state, FILE* dest, ORef v) {
             auto pair = HRef<Pair>::fromUnchecked(v);
             
             fputc('(', dest);
-            print(state, dest, pair->car);
+            print(state, dest, pair->car().get());
             
-            for (ORef tail = pair->cdr; true; tail = pair->cdr) {
+            for (ORef tail = pair->cdr().get(); true; tail = pair->cdr().get()) {
                 if (isa<Pair>(*state, tail)) {
                     pair = HRef<Pair>::fromUnchecked(tail);
                     fputc(' ', dest);
-                    print(state, dest, pair->car);
+                    print(state, dest, pair->car().get());
                 } else if (isEmptyList(state, tail)) {
                     break;
                 } else {
@@ -64,11 +64,11 @@ void print(State const* state, FILE* dest, ORef v) {
         } else if (isEmptyList(state, v)) {
             fprintf(dest, "()");
         } else if (isa(state, state->types.array, v)) {
-            Slice<ORef const> const vs = HRef<Array>::fromUnchecked(v)->flexItems();
+            ORefSpan const vs = HRef<Array>::fromUnchecked(v)->flexItems();
 
             fprintf(dest, "#<array");
 
-            size_t const count = vs.count;
+            size_t const count = vs.size();
             for (size_t i = 0; i < count; ++i) {
                 fputc(' ', dest);
                 print(state, dest, vs[i]);
@@ -76,11 +76,11 @@ void print(State const* state, FILE* dest, ORef v) {
 
             putc('>', dest);
         } else if (isa(state, state->types.arrayMut, v)) {
-            Slice<ORef const> const vs = HRef<ArrayMut>::fromUnchecked(v)->flexItems();
+            ORefSpan const vs = HRef<ArrayMut>::fromUnchecked(v)->flexItems();
 
             fprintf(dest, "#<array!");
 
-            size_t const count = vs.count;
+            size_t const count = vs.size();
             for (size_t i = 0; i < count; ++i) {
                 fputc(' ', dest);
                 print(state, dest, vs[i]);
@@ -137,8 +137,8 @@ void print(State const* state, FILE* dest, ORef v) {
 
             print(state, dest, err->name);
 
-            Slice<ORef const> const irritants = err->irritants();
-            size_t const count = irritants.count;
+            ORefSpan const irritants = err->irritants();
+            size_t const count = irritants.size();
             for (size_t i = 0; i < count; ++i) {
                 putc(' ', dest);
                 print(state, dest, irritants[i]);

@@ -37,7 +37,7 @@ struct MethodBuilderLoc {
     size_t srcIdx;
 
     static MethodBuilderLoc fromORef(State const& state, ORef maybeLoc) {
-        if (isa(&state, state.types.loc, maybeLoc)) {
+        if (isa<Loc>(state, maybeLoc)) {
             auto const loc = HRef<Loc>::fromUnchecked(maybeLoc);
             return MethodBuilderLoc{loc->filename, (uint64_t)loc->byteIdx.val()};
         } else {
@@ -97,7 +97,7 @@ void assertMethodBuilderInTospace(State const* state,MethodBuilder const* builde
     for (size_t i = 0; i < constCount; ++i) {
         ORef const v = builder->consts[i].val;
         if (isHeaped(v)) {
-            assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(v)));
+            assert(allocatedInSemispace(&state->heap.tospace, &*HRef<Object>::fromUnchecked(v)));
         }
     }
 
@@ -105,7 +105,7 @@ void assertMethodBuilderInTospace(State const* state,MethodBuilder const* builde
     for (size_t i = 1; i < filenameRunCount; i += 2) { // Skip fixnums at 0, 2, 4...
         ORef const v = builder->revFilenameRuns[i];
         if (isHeaped(v)) {
-            assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(v)));
+            assert(allocatedInSemispace(&state->heap.tospace, &*HRef<Object>::fromUnchecked(v)));
         }
     }
 
@@ -148,7 +148,7 @@ HRef<Method> buildMethod(
     { // Initialize:
         size_t const constCount = builder.constCount;
         for (size_t i = 0; i < constCount; ++i) {
-            maybeConsts->flexDataMut()[i] = builder.consts[i].val;
+            const_cast<ORef*>(maybeConsts->flexData())[i] = builder.consts[i].val;
         }
     }
 
@@ -209,8 +209,8 @@ HRef<Method> buildMethod(
     size_t const arity = fn->blocks[0]->paramCount - 2;
     Fixnum const fxArity = Fixnum((intptr_t)arity);
     Bool const hasVarArg = Bool(fn->hasVarArg);
-    Slice<uint8_t const> const codeSlice = code->flexItems();
-    uintptr_t const hash = fnv1aHash_n(codeSlice.data, codeSlice.count);
+    std::span<uint8_t const> const codeSlice = code->flexItems();
+    uintptr_t const hash = fnv1aHash_n(codeSlice.data(), codeSlice.size());
     Fixnum const fxHash = Fixnum((intptr_t)hash);
     Method* maybeMethod =
         tryAllocBytecodeMethod(state, code, consts, fxArity, hasVarArg, fxHash, fn->maybeName,
@@ -222,13 +222,13 @@ HRef<Method> buildMethod(
     }
     if (fn->domain.count == 0) {
         for (size_t i = 0; i < arity; ++i) {
-            maybeMethod->domain()[i] = state->types.any;
+            const_cast<ORef*>(maybeMethod->flexData())[i] = state->types.any;
         }
     } else {
         for (size_t i = 0; i < arity; ++i) {
             IRName const typeName = fn->domain.vals[i];
             if (!irNameIsValid(typeName)) {
-                maybeMethod->domain()[i] = state->types.any;
+                const_cast<ORef*>(maybeMethod->flexData())[i] = state->types.any;
             } // else leave zeroed for specialization to fill in
         }
     }

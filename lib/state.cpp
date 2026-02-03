@@ -82,13 +82,7 @@ bool tryCreateNamespace(
     Namespace* const ptr = (Namespace*)semispace->tryAlloc(nsType);
     if (!ptr) { return false; }
 
-    *ptr = Namespace{
-        .keys = HRef(keys),
-        .vals = HRef(vals),
-        .count = count
-    };
-
-    *dest = HRef(ptr);
+    *dest = HRef{new (ptr) Namespace{HRef{keys}, HRef{vals}, count}};
     return true;
 }
 
@@ -132,250 +126,131 @@ void initSpecialPurposeRegs(State* state) {
     if (isHeaped(anyMethod)) {
         auto const methodPtr = HRef<Method>::fromUnchecked(anyMethod);
         state->code = HRef<ByteArray>::fromUnchecked(methodPtr->code)->flexData();
-        state->consts = HRef<ArrayMut>::fromUnchecked(methodPtr->consts)->flexDataMut();
+        state->consts = HRef<ArrayMut>::fromUnchecked(methodPtr->consts)->itemsMut().data();
     }
 }
 
 template<typename T, bool isBytes>
 Type* tryCreateFixedType(Semispace* semispace, Type const* typeType) {
-    Type* const type = reinterpret_cast<Type*>(semispace->tryAlloc(typeType));
+    Type* const type = static_cast<Type*>(semispace->tryAlloc(typeType));
     if (!type) { return nullptr; }
 
-    *type = Type{
-        .minSize = Fixnum((int64_t)sizeof(T)),
-        .align = Fixnum((int64_t)alignof(T)),
-        .isBytes = Bool{isBytes},
-        .hasCodePtr = False,
-        .isFlex = False,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
+    return new (type) Type{
+        Fixnum((int64_t)sizeof(T)), Fixnum((int64_t)alignof(T)), Bool{isBytes}, False, False,
+        Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
-
-    return type;
 }
 
 template<typename T> requires std::is_base_of_v<AnyIndexedObject<T, typename T::Item>, T>
 Type* tryCreateIndexedType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
+    auto const type = static_cast<Type*>(semispace->tryAlloc(typeType));
+    if (!type) { return nullptr; }
 
-    Type* const type = (Type*)maybeType;
-    bool const isBytes = !std::is_base_of_v<ORef, typename T::Item>;
-    size_t const align = isBytes
+    constexpr bool isBytes = !std::is_base_of_v<ORef, typename T::Item>;
+    constexpr size_t align = isBytes
         ? std::max(alignof(typename T::Item), objectMinAlign)
         : alignof(ORef);
-    *type = Type{
-        .minSize = Fixnum{0l},
-        .align = Fixnum{int64_t(align)},
-        .isBytes = Bool{isBytes},
-        .hasCodePtr = False,
-        .isFlex = True,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
-    };
 
-    return type;
+    return new (type) Type{
+        Fixnum{0l}, Fixnum{int64_t(align)}, Bool{isBytes}, False, True,
+        Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
+    };
 }
 
 Type* tryCreateTypeType(Semispace* semispace) {
-    Type const bootstrapTypeType = {
-        .minSize = Fixnum((intptr_t)sizeof(Type)),
-        .align = Fixnum((intptr_t)alignof(Type)),
-        .isBytes = False,
-        .hasCodePtr = False,
-        .isFlex = False,
-        .hash = Fixnum{0l},
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
+    auto const bootstrapTypeType = Type{
+        Fixnum((intptr_t)sizeof(Type)), Fixnum((intptr_t)alignof(Type)), False, False, False,
+        Fixnum{0l}, HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
     
-    void* const maybeTypeType = semispace->tryAlloc(&bootstrapTypeType);
-    if (!maybeTypeType) { return nullptr; }
-    
-    Type* const typeType = (Type*)maybeTypeType;
-    *((Header*)maybeTypeType - 1) = Header{typeType}; // Init header, closing loop
-    *typeType = bootstrapTypeType; // Init data
-    
-    return typeType;
+    auto const typeType = static_cast<Type*>(semispace->tryAlloc(&bootstrapTypeType));
+    if (!typeType) { return nullptr; }
+
+    *((Header*)typeType - 1) = Header{typeType}; // Init header, closing loop
+
+    return new (typeType) Type{bootstrapTypeType};
 }
 
 Type* tryCreateAnyType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
+    auto const type = static_cast<Type*>(semispace->tryAlloc(typeType));
+    if (!type) { return nullptr; }
 
-    Type* const type = (Type*)maybeType;
-    *type = Type{ // TODO: Avoid requiring some nonsensical values like this:
-        .minSize = Fixnum{0l},
-        .align = Fixnum((intptr_t)objectMinAlign),
-        .isBytes = True,
-        .hasCodePtr = False,
-        .isFlex = False,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
+    return new (type) Type{ // TODO: Avoid requiring some nonsensical values like this:
+        Fixnum{0l}, Fixnum((intptr_t)objectMinAlign), True, False, False,
+        Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
-
-    return type;
 }
 
 Type* tryCreateSymbolType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
-    
-    Type* const type = (Type*)maybeType;
-    *type = Type{
-        .minSize = Fixnum((intptr_t)sizeof(Symbol)),
-        .align = Fixnum((intptr_t)alignof(Symbol)),
-        .isBytes = True,
-        .hasCodePtr = False,
-        .isFlex = True,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
+    auto const type = static_cast<Type*>(semispace->tryAlloc(typeType));
+    if (!type) { return nullptr; }
+
+    return new (type) Type{
+        Fixnum((intptr_t)sizeof(Symbol)), Fixnum((intptr_t)alignof(Symbol)), True, False, True,
+        Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
-    
-    return type;
 }
 
-Type* tryCreateEmptyListType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
-    
-    Type* const type = (Type*)maybeType;
-    *type = Type{
-        .minSize = Fixnum{0l},
-        .align = Fixnum((intptr_t)objectMinAlign),
-        .isBytes = True,
-        .hasCodePtr = False,
-        .isFlex = False,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
+Type* tryCreateEmptyType(Semispace* semispace, Type const* typeType) {
+    auto const type = static_cast<Type*>(semispace->tryAlloc(typeType));
+    if (!type) { return nullptr; }
+
+    return new (type) Type{
+        Fixnum{0l}, Fixnum((intptr_t)objectMinAlign), True, False, False,
+        Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
-    
-    return type;
-}
-
-Type* tryCreateUnboundType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
-
-    Type* const type = (Type*)maybeType;
-    *type = Type{
-        .minSize = Fixnum{0l},
-        .align = Fixnum((intptr_t)objectMinAlign),
-        .isBytes = True,
-        .hasCodePtr = False,
-        .isFlex = False,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
-    };
-
-    return type;
 }
 
 Type* tryCreateMethodType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
+    auto const type = static_cast<Type*>(semispace->tryAlloc(typeType));
+    if (!type) { return nullptr; }
 
-    Type* const type = (Type*)maybeType;
-    *type = Type{
-        .minSize = Fixnum((int64_t)sizeof(Method)),
-        .align = Fixnum((int64_t)alignof(Method)),
-        .isBytes = False,
-        .hasCodePtr = True,
-        .isFlex = True,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
+    return new (type) Type{
+        Fixnum((int64_t)sizeof(Method)), Fixnum((int64_t)alignof(Method)), False, True, True,
+        Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
-
-    return type;
 }
 
 Type* tryCreateClosureType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
+    auto const type = static_cast<Type*>(semispace->tryAlloc(typeType));
+    if (!type) { return nullptr; }
 
-    Type* const type = (Type*)maybeType;
-    *type = Type{
-        .minSize = Fixnum((int64_t)sizeof(Closure)),
-        .align = Fixnum((int64_t)alignof(Closure)),
-        .isBytes = False,
-        .hasCodePtr = False,
-        .isFlex = True,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
+    return new (type) Type{
+        Fixnum((int64_t)sizeof(Closure)), Fixnum((int64_t)alignof(Closure)), False, False, True,
+        Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
-
-    return type;
 }
 
 Type* tryCreateContinuationType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
+    auto const type = static_cast<Type*>(semispace->tryAlloc(typeType));
+    if (!type) { return nullptr; }
 
-    Type* const type = (Type*)maybeType;
-    *type = Type{
-        .minSize = Fixnum((int64_t)sizeof(Continuation)),
-        .align = Fixnum((int64_t)alignof(Continuation)),
-        .isBytes = False,
-        .hasCodePtr = False,
-        .isFlex = True,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
+    return new (type) Type{
+        Fixnum((int64_t)sizeof(Continuation)), Fixnum((int64_t)alignof(Continuation)), False, False,
+        True,
+        Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
-
-    return type;
-}
-
-Type* tryCreateEndType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
-
-    Type* const type = (Type*)maybeType;
-    *type = Type{
-        .minSize = Fixnum{0l},
-        .align = Fixnum((intptr_t)objectMinAlign),
-        .isBytes = True,
-        .hasCodePtr = False,
-        .isFlex = False,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
-    };
-
-    return type;
 }
 
 Type* tryCreateFatalErrorType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
+    auto const type = static_cast<Type*>(semispace->tryAlloc(typeType));
+    if (!type) { return nullptr; }
 
-    Type* const type = (Type*)maybeType;
-    *type = Type{
-        .minSize = Fixnum((int64_t)sizeof(FatalError)),
-        .align = Fixnum((int64_t)alignof(FatalError)),
-        .isBytes = False,
-        .hasCodePtr = False,
-        .isFlex = True,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
+    return new (type) Type{
+        Fixnum((int64_t)sizeof(FatalError)), Fixnum((int64_t)alignof(FatalError)), False, False,
+        True,
+        Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
-
-    return type;
 }
 
 Type* tryCreateImmType(Semispace* semispace, Type const* typeType) {
-    void* const maybeType = semispace->tryAlloc(typeType);
-    if (!maybeType) { return nullptr; }
+    auto const type = static_cast<Type*>(semispace->tryAlloc(typeType));
+    if (!type) { return nullptr; }
     
-    Type* const type = (Type*)maybeType;
-    *type = Type{ // TODO: Avoid requiring some nonsensical values like this:
-        .minSize = Fixnum{0l},
-        .align = Fixnum((intptr_t)objectMinAlign),
-        .isBytes = True,
-        .hasCodePtr = False,
-        .isFlex = False,
-        .hash = Fixnum::fromUnchecked(ORef{0}), // HACK
-        .name = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
+    return new (type) Type{ // TODO: Avoid requiring some nonsensical values like this:
+        Fixnum{0l}, Fixnum((intptr_t)objectMinAlign), True, False, False,
+        Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
-    
-    return type;
 }
 
 HRef<Method> vcreatePrimopMethod(
@@ -395,7 +270,7 @@ void installPrimordial(State* state, Str name, ORef v) {
     HRef<Symbol> const symbol = intern(state, name);
     HRef<Var> const var = getVar(state, state->ns, symbol);
 
-    var->val =v;
+    var->val().set(*state, v);
 }
 
 void installPrimop(
@@ -417,8 +292,8 @@ void nameType(State* state, HRef<Type> type, Str name) {
     auto const typeRefG = state->pushRoot(&type);
     HRef<Symbol> const nameSym = intern(state, name);
 
-    type->hash = nameSym->hash;
-    type->name = nameSym;
+    const_cast<Fixnum&>(type->hash) = nameSym->hash; // HACK
+    SlotMut{&*type, const_cast<HRef<Symbol>&>(type->name)}.set(*state, nameSym); // HACK
 }
 
 bool debugFromArgv(int argc, char const* argv[]) {
@@ -460,7 +335,7 @@ State::State(
     code{nullptr},
     pc{0},
     regs{},
-    consts{nullptr},
+    consts{nullptr, nullptr},
     ns{ns},
     entryRegc{0}, // Intentionally invalid
     checkDomain{true},
@@ -505,7 +380,7 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
     if (!locType) { return nullptr; }
     Type* const pairType = tryCreateFixedType<Pair, false>(&heap.tospace, typeType);
     if (!pairType) { return nullptr; }
-    Type* const emptyListType = tryCreateEmptyListType(&heap.tospace, typeType);
+    Type* const emptyListType = tryCreateEmptyType(&heap.tospace, typeType);
     if (!emptyListType) { return nullptr; }
     Type* const methodType = tryCreateMethodType(&heap.tospace, typeType);
     if (!methodType) { return nullptr; }
@@ -515,7 +390,7 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
     if (!multimethodType) { return nullptr; }
     Type* const continuationType = tryCreateContinuationType(&heap.tospace, typeType);
     if (!continuationType) { return nullptr; }
-    Type* const unboundType = tryCreateUnboundType(&heap.tospace, typeType);
+    Type* const unboundType = tryCreateEmptyType(&heap.tospace, typeType);
     if (!unboundType) { return nullptr; }
     Type* const varType = tryCreateFixedType<Var, false>(&heap.tospace, typeType);
     if (!varType) { return nullptr; }
@@ -525,7 +400,7 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
     if (!nsType) { return nullptr; }
     Type* const inputFileType = tryCreateFixedType<InputFile, true>(&heap.tospace, typeType);
     if (!inputFileType) { return nullptr; }
-    Type* const endType = tryCreateEndType(&heap.tospace, typeType);
+    Type* const endType = tryCreateEmptyType(&heap.tospace, typeType);
     if (!endType) { return nullptr; }
     Type* const fatalErrorType = tryCreateFatalErrorType(&heap.tospace, typeType);
     if (!fatalErrorType) { return nullptr; }
@@ -557,7 +432,7 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
     Continuation* const exit =
         (Continuation*)heap.tospace.tryAllocFlex(continuationType, Fixnum{0l});
     if (!exit) { return nullptr; }
-    exit->pc = Fixnum{0l};
+    const_cast<Fixnum&>(exit->pc) = Fixnum{0l}; // HACK: Init
 
     // HACK:
     Var* const debugPlaceholder = tryCreateUnboundVar(&heap.tospace, varType, HRef(unbound));
@@ -740,9 +615,10 @@ bool isa(State const* state, HRef<Type> type, ORef v) {
 [[maybe_unused]]
 void assertStateInTospace(State const* state) {
     if (isHeaped(state->method)) {
-        assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(state->method)));
+        assert(allocatedInSemispace(&state->heap.tospace,
+                                    &*HRef<Object>::fromUnchecked(state->method)));
         assert(allocatedInSemispace(&state->heap.tospace, state->code));
-        assert(allocatedInSemispace(&state->heap.tospace, state->consts));
+        assert(allocatedInSemispace(&state->heap.tospace, &state->consts[0].get()));
     }
 
     // TODO: When we start only marking live regs, this has to only check those as well to avoid
@@ -750,7 +626,7 @@ void assertStateInTospace(State const* state) {
     for (size_t i = 0; i < REG_COUNT; ++i) {
         ORef const reg = state->regs[i];
         if (isHeaped(reg)) {
-            assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(reg)));
+            assert(allocatedInSemispace(&state->heap.tospace, &*HRef<Object>::fromUnchecked(reg)));
         }
     }
 
@@ -771,7 +647,7 @@ void assertStateInTospace(State const* state) {
     for (size_t i = 0; i < BOOTSTRAP_SINGLETON_COUNT; ++i) {
         ORef const v = state->singletonsArray[i];
         if (isHeaped(v)) {
-            assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(v)));
+            assert(allocatedInSemispace(&state->heap.tospace, &*HRef<Object>::fromUnchecked(v)));
         }
     }
 
@@ -780,7 +656,7 @@ void assertStateInTospace(State const* state) {
 
     for (ORef* const v : state->shadowstack) {
         if (isHeaped(*v)) {
-            assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(*v)));
+            assert(allocatedInSemispace(&state->heap.tospace, &*HRef<Object>::fromUnchecked(*v)));
         }
     }
 }
@@ -839,17 +715,9 @@ HRef<Type> createSlotsType(State* state, HRef<Symbol> name, Fixnum slotCount, Bo
         ? Fixnum{int64_t(size_t(slotCount.val()) * sizeof(ORef))}
         : Fixnum{int64_t(size_t(slotCount.val() - 1) * sizeof(ORef))};
 
-    *ptr = Type{
-        .minSize = minSize,
-        .align = Fixnum((int64_t)objectMinAlign),
-        .isBytes = False,
-        .hasCodePtr = False,
-        .isFlex = isFlex,
-        .hash = name->hash,
-        .name = name
-    };
-
-    return HRef{ptr};
+    return HRef{new (ptr) Type{
+        minSize, Fixnum((int64_t)objectMinAlign), False, False, isFlex, name->hash, name
+    }};
 }
 
 String* allocString(State* state, Fixnum byteCount) {
@@ -913,12 +781,7 @@ HRef<Loc> createLoc(State* state, HRef<String> filename, Fixnum byteIdx) {
         ptr = static_cast<Loc*>(state->heap.tospace.allocOrDie(&*state->types.loc));
     }
 
-    *ptr = Loc{
-        .filename = filename,
-        .byteIdx = byteIdx
-    };
-
-    return HRef{ptr};
+    return HRef{new (ptr) Loc{filename, byteIdx}};
 }
 
 HRef<Pair> allocPair(State* state) {
@@ -941,57 +804,41 @@ HRef<Pair> createPair(State *state, ORef car, ORef cdr, ORef maybeLoc) {
         ptr = (Pair*)state->heap.tospace.allocOrDie(&*state->types.pair);
     }
 
-    *ptr = Pair{.car = car, .cdr = cdr, .maybeLoc = maybeLoc};
-
-    return HRef(ptr);
+    return HRef{new (ptr) Pair{car, cdr, maybeLoc}};
 }
 
 Method* tryAllocBytecodeMethod(
     State* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
     Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs
 ) {
-    Method* ptr = (Method*)state->heap.tospace.tryAllocFlex(&*state->types.method, arity);
+    auto const ptr =
+        static_cast<Method*>(state->heap.tospace.tryAllocFlex(&*state->types.method, arity));
     if (!ptr) { return ptr; }
 
-    *ptr = Method{
-        .nativeCode = (MethodCode)callBytecode,
-        .code = code,
-        .consts = consts,
-        .hasVarArg = hasVarArg,
-        .hash = hash,
-        .maybeName = maybeName,
-        .maybeFilenames = maybeFilenames,
-        .maybeSrcByteIdxs = maybeSrcByteIdxs
+    return new (ptr) Method{
+        reinterpret_cast<MethodCode>(callBytecode), code, consts, hasVarArg, hash, maybeName,
+        maybeFilenames, maybeSrcByteIdxs, ORefSpan{} // leave `domain` to `Default`s
     };
-
-    return ptr;
 }
 
 Method* allocBytecodeMethodOrDie(
     State* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
     Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs
 ) {
-    Method* ptr = (Method*)state->heap.tospace.allocFlexOrDie(&*state->types.method, arity);
+    auto const ptr =
+        static_cast<Method*>(state->heap.tospace.allocFlexOrDie(&*state->types.method, arity));
 
-    *ptr = Method{
-        .nativeCode = (MethodCode)callBytecode,
-        .code = code,
-        .consts = consts,
-        .hasVarArg = hasVarArg,
-        .hash = hash,
-        .maybeName = maybeName,
-        .maybeFilenames = maybeFilenames,
-        .maybeSrcByteIdxs = maybeSrcByteIdxs
+    return new (ptr) Method{
+        reinterpret_cast<MethodCode>(callBytecode), code, consts, hasVarArg, hash, maybeName,
+        maybeFilenames, maybeSrcByteIdxs, ORefSpan{} // leave `domain` to `Default`s
     };
-
-    return ptr;
 }
 
 HRef<Method> allocBytecodeMethod(
     State* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
     Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs
 ) {
-    Method* ptr = (Method*)state->heap.tospace.tryAllocFlex(&*state->types.method, arity);
+    auto ptr = static_cast<Method*>(state->heap.tospace.tryAllocFlex(&*state->types.method, arity));
     if (mustCollect(ptr)) {
         auto const codeG = state->pushRoot(&code);
         auto const constsG = state->pushRoot(&consts);
@@ -999,21 +846,14 @@ HRef<Method> allocBytecodeMethod(
         auto const maybeFilenamesG = state->pushRoot(&maybeFilenames);
         auto const maybeSrcByteIdxsG = state->pushRoot(&maybeSrcByteIdxs);
         collect(state);
-        ptr = (Method*)state->heap.tospace.allocFlexOrDie(&*state->types.method, arity);
+        ptr =
+            static_cast<Method*>(state->heap.tospace.allocFlexOrDie(&*state->types.method, arity));
     }
 
-    *ptr = Method{
-        .nativeCode = (MethodCode)callBytecode,
-        .code = code,
-        .consts = consts,
-        .hasVarArg = hasVarArg,
-        .hash = hash,
-        .maybeName = maybeName,
-        .maybeFilenames = maybeFilenames,
-        .maybeSrcByteIdxs = maybeSrcByteIdxs
-    };
-
-    return HRef(ptr);
+    return HRef{new (ptr) Method{
+            reinterpret_cast<MethodCode>(callBytecode), code, consts, hasVarArg, hash, maybeName,
+            maybeFilenames, maybeSrcByteIdxs, ORefSpan{} // leave `domain` to `Default`s
+    }};
 }
 
 HRef<Method> vcreatePrimopMethod(
@@ -1042,23 +882,16 @@ HRef<Method> vcreatePrimopMethod(
 
     uintptr_t const hash = fnv1aHash_n((uint8_t*)&nativeCode, sizeof nativeCode); // HACK
 
-    *ptr = Method{
-        .nativeCode = nativeCode,
-        .code = Default,
-        .consts = Default,
-        .hasVarArg = Bool(hasVarArg),
-        .hash = Fixnum((intptr_t)hash),
-        .maybeName = Default,
-        .maybeFilenames = Default,
-        .maybeSrcByteIdxs = Default
+    new (ptr) Method{
+        nativeCode, Default, Default, Bool{hasVarArg}, Fixnum{int64_t(hash)}, Default, Default,
+        Default, ORefSpan{static_cast<ORef*>(domain), arity}
     };
-    memcpy(ptr->flexDataMut(), domain, arity * sizeof *domain); // Side benefit of the array: `memcpy`
 
     HRef<Method> method = HRef(ptr);
     auto const methodG = state->pushRoot(&method);
     HRef<Symbol> const nameSym = intern(state, name);
     ptr = &*method; // Post-GC reload
-    ptr->maybeName = nameSym;
+    SlotMut{ptr, const_cast<ORef&>(ptr->maybeName)}.set(*state, nameSym); // HACK
 
     free(domain);
     return method;
@@ -1084,7 +917,7 @@ HRef<Closure> allocClosure(State* state, HRef<Method> method, Fixnum cloverCount
         ptr = (Closure*)state->heap.tospace.allocFlexOrDie(&*state->types.closure, cloverCount);
     }
 
-    ptr->method = method;
+    const_cast<ORef&>(ptr->method) = method; // Initing so `const_cast` and no write barrier
 
     return HRef(ptr);
 }
@@ -1101,8 +934,8 @@ HRef<Continuation> allocContinuation(
             &*state->types.continuation, cloverCount);
     }
 
-    ptr->method = method;
-    ptr->pc = pc;
+    const_cast<ORef&>(ptr->method) = method; // Initing so `const_cast` and no write barrier
+    const_cast<Fixnum&>(ptr->pc) = pc; // Initing so `const_cast`
 
     return HRef(ptr);
 }
@@ -1126,9 +959,7 @@ HRef<InputFile> createInputFile(State* state, UTF8InputFile&& file) {
             state->heap.tospace.allocOrDie(&*state->types.inputFile));
     }
 
-    *ptr = InputFile{std::move(file)};
-
-    return HRef{ptr};
+    return HRef{new (ptr) InputFile{std::move(file)}};
 }
 
 HRef<UnboundError> createUnboundError(State* state, HRef<Symbol> name) {
@@ -1139,9 +970,7 @@ HRef<UnboundError> createUnboundError(State* state, HRef<Symbol> name) {
         ptr = (UnboundError*)state->heap.tospace.allocOrDie(&*state->types.unboundError);
     }
 
-    *ptr = UnboundError{.name = name};
-
-    return HRef(ptr);
+    return HRef{new (ptr) UnboundError{name}};
 }
 
 HRef<TypeError> createTypeError(State* state, HRef<Type> type, ORef val) {
@@ -1153,9 +982,7 @@ HRef<TypeError> createTypeError(State* state, HRef<Type> type, ORef val) {
         ptr = (TypeError*)state->heap.tospace.allocOrDie(&*state->types.typeError);
     }
 
-    *ptr = TypeError{.type = type, .val = val};
-
-    return HRef(ptr);
+    return HRef{new (ptr) TypeError{type, val}};
 }
 
 HRef<ArityError> createArityError(State* state, HRef<Closure> callee, Fixnum callArgc) {
@@ -1166,9 +993,7 @@ HRef<ArityError> createArityError(State* state, HRef<Closure> callee, Fixnum cal
         ptr = (ArityError*)state->heap.tospace.allocOrDie(&*state->types.arityError);
     }
 
-    *ptr = ArityError{.callee = callee, .callArgc = callArgc};
-
-    return HRef(ptr);
+    return HRef{new (ptr) ArityError{callee, callArgc}};
 }
 
 HRef<InapplicableError> createInapplicableError(State* state, HRef<Multimethod> callee) {
@@ -1181,9 +1006,7 @@ HRef<InapplicableError> createInapplicableError(State* state, HRef<Multimethod> 
             &*state->types.inapplicableError);
     }
 
-    *ptr = InapplicableError{.callee = callee};
-
-    return HRef(ptr);
+    return HRef{new (ptr) InapplicableError{callee}};
 }
 
 HRef<FatalError> createOverflowError(
@@ -1205,13 +1028,7 @@ HRef<FatalError> createOverflowError(
     HRef<Symbol> const name = intern(state, strLit("overflow"));
     ptr = &*res; // Post-GC reload
 
-    *ptr = FatalError{.name = name};
-    ORef* const irritantsMut = const_cast<ORef*>(ptr->flexData());
-    irritantsMut[0] = callee;
-    irritantsMut[1] = x;
-    irritantsMut[2] = y;
-
-    return res;
+    return HRef{new (ptr) FatalError{name, ORefSpan{{callee, x, y}}}};
 }
 
 HRef<FatalError> createDivByZeroError(
@@ -1233,13 +1050,7 @@ HRef<FatalError> createDivByZeroError(
     HRef<Symbol> const name = intern(state, strLit("divide-by-zero"));
     ptr = &*res; // Post-GC reload
 
-    *ptr = FatalError{.name = name};
-    ORef* const irritantsMut = const_cast<ORef*>(ptr->flexData());
-    irritantsMut[0] = callee;
-    irritantsMut[1] = x;
-    irritantsMut[2] = y;
-
-    return res;
+    return HRef{new (ptr) FatalError{name, ORefSpan{{callee, x, y}}}};
 }
 
 } // namespace

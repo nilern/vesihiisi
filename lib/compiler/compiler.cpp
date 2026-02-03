@@ -53,7 +53,8 @@ void assertIRFnInTospace(State const* state, IRFn const* fn) {
     }
 
     if (isHeaped(fn->maybeName)) {
-        assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(fn->maybeName)));
+        assert(allocatedInSemispace(&state->heap.tospace,
+                                    &*HRef<Object>::fromUnchecked(fn->maybeName)));
     }
 }
 
@@ -77,6 +78,8 @@ void pushArg(Compiler* compiler, Args* args, IRName arg) {
 }
 
 void markIRStmt(State* state, IRStmt* stmt) {
+    stmt->maybeLoc = state->heap.mark(stmt->maybeLoc);
+
     switch (stmt->type) {
     case IRStmt::GLOBAL_DEF: {
         stmt->define.name =
@@ -106,6 +109,11 @@ void markIRStmt(State* state, IRStmt* stmt) {
 }
 
 void assertIRStmtInTospace(State const* state, IRStmt const* stmt) {
+    if (isHeaped(stmt->maybeLoc)) {
+        assert(allocatedInSemispace(&state->heap.tospace,
+                                    &*HRef<Object>::fromUnchecked(stmt->maybeLoc)));
+    }
+
     switch (stmt->type) {
     case IRStmt::GLOBAL_DEF: {
         assert(allocatedInSemispace(&state->heap.tospace, &*stmt->define.name));
@@ -122,7 +130,7 @@ void assertIRStmtInTospace(State const* state, IRStmt const* stmt) {
     case IRStmt::CONST_DEF: {
         ORef const v = stmt->constDef.v;
         if (isHeaped(v)) {
-            assert(allocatedInSemispace(&state->heap.tospace, uncheckedORefToPtr(v)));
+            assert(allocatedInSemispace(&state->heap.tospace, &*HRef<Object>::fromUnchecked(v)));
         }
     }; break;
 
@@ -132,6 +140,17 @@ void assertIRStmtInTospace(State const* state, IRStmt const* stmt) {
 
     case IRStmt::CLOSURE: case IRStmt::MOVE: case IRStmt::SWAP:
     case IRStmt::KNOT: case IRStmt::KNOT_INIT: case IRStmt::KNOT_GET: break;
+    }
+}
+
+void markIRTransfer(State& state, IRTransfer& transfer) {
+    transfer.maybeLoc = state.heap.mark(transfer.maybeLoc);
+}
+
+void assertIRTransferInTospace(State const& state, IRTransfer const& transfer) {
+    if (isHeaped(transfer.maybeLoc)) {
+        assert(allocatedInSemispace(&state.heap.tospace,
+                                    &*HRef<Object>::fromUnchecked(transfer.maybeLoc)));
     }
 }
 
@@ -154,6 +173,8 @@ void markIRBlock(State* state, IRBlock* block) {
     for (size_t i = 0; i < stmtCount; ++i) {
         markIRStmt(state, &block->stmts.vals[i]);
     }
+
+    markIRTransfer(*state, block->transfer);
 }
 
 void assertIRBlockInTospace(State const* state, IRBlock const* block) {
@@ -161,6 +182,8 @@ void assertIRBlockInTospace(State const* state, IRBlock const* block) {
     for (size_t i = 0; i < stmtCount; ++i) {
         assertIRStmtInTospace(state, &block->stmts.vals[i]);
     }
+
+    assertIRTransferInTospace(*state, block->transfer);
 }
 
 void pushIRStmt(Compiler* compiler, Stmts* stmts, IRStmt stmt) {

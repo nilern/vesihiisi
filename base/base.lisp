@@ -307,6 +307,7 @@
                           (on-yield k v)))))))
   (define yield (fn (v) (yield-to default-prompt v)))
 
+  ;; TODO: Prune `trampoline` from traces:
   (define stash-trace
     (fn (stash)
       (letfn (((trace frame)

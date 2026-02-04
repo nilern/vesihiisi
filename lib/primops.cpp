@@ -488,7 +488,7 @@ PrimopRes PrimopSlotGet::uncheckedInvoke(State* state) {
 PrimopRes PrimopSlotSet::uncheckedInvoke(State* state) {
     ORef const v = state->regs[firstArgReg];
     size_t const slotIdx = (uint64_t)Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
-    ORef const slotV = state->regs[firstArgReg + 2];
+    ORef slotV = state->regs[firstArgReg + 2];
 
     Type const* const type = typePtrOf(state, v);
     if (!type->isBytes.val()) {
@@ -501,11 +501,13 @@ PrimopRes PrimopSlotSet::uncheckedInvoke(State* state) {
 
         auto slots = SlotsMut{&*obj, reinterpret_cast<ORef*>(&*obj)};
         slots[slotIdx].set(*state, slotV);
+        slotV = state->regs[firstArgReg + 2]; // Reload in case write barrier caused GC
     } else {
         assert(false); // TODO
     }
 
-    state->regs[retReg] = slotV; // Beats returning `v`; at least consistent with e.g. `def` atm
+    // Beats returning `v`; at least consistent with e.g. `def` atm
+    state->regs[retReg] = slotV;
 
     return PrimopRes::CONTINUE;
 }
@@ -590,7 +592,8 @@ PrimopRes PrimopFlexSet::uncheckedInvoke(State* state) {
 
     auto flexSlots = SlotsMut{ptr, (ORef*)((char const*)ptr + type->minSize.val())};
     flexSlots[size_t(i)].set(*state, iv);
-    state->regs[retReg] = iv; // Once again most convenient and consistent to just return this
+    // Once again most convenient and consistent to just return this
+    state->regs[retReg] = state->regs[firstArgReg + 2]; // Reload in case write barrier caused GC
 
     return PrimopRes::CONTINUE;
 }
@@ -610,8 +613,8 @@ PrimopRes PrimopFlexCopy::uncheckedInvoke(State* state) {
     if (!eq(srcType->isBytes, isBytesRef)) {
         PANIC("TODO: Proper bytes-vs-slots error");
     }
-    auto const destObj = HRef<Object>::fromUnchecked(dest);
-    auto const srcObj = HRef<Object>::fromUnchecked(src);
+    auto destObj = HRef<Object>::fromUnchecked(dest);
+    auto srcObj = HRef<Object>::fromUnchecked(src);
 
     size_t const destCount = (uintptr_t)uncheckedFlexHeader(destObj)->count.val();
     size_t const srcCount = (uintptr_t)uncheckedFlexHeader(srcObj)->count.val();
@@ -630,7 +633,11 @@ PrimopRes PrimopFlexCopy::uncheckedInvoke(State* state) {
     if (copyCount > copySpace) { PANIC("TODO: Proper bounds error"); }
 
     if (!destType->isBytes.val()) {
-        state->heap.writeBarrier(&*destObj);
+        if (!state->heap.writeBarrier(&*destObj)) {
+            auto const destG = state->pushRoot(&destObj);
+            auto const srcG = state->pushRoot(&srcObj);
+            collect(state);
+        }
     }
 
     auto const destVals = (char*)uncheckedUntypedFlexPtr(destObj);
@@ -910,7 +917,7 @@ PrimopRes PrimopStringIteratorPeek::uncheckedInvoke(State* state) {
         return primopError(state, createTypeError(state, state->types.string, maybeString));
     }
     auto const string = HRef<String>::fromUnchecked(maybeString);
-    ORef const maybeByteIdx = iter->byteIdx().get();
+    ORef const maybeByteIdx = iter->byteIdx();
     if (!Fixnum::contains(maybeByteIdx)) {
         return primopError(state, createTypeError(state, state->types.fixnum, maybeString));
     }
@@ -942,7 +949,7 @@ PrimopRes PrimopStringIteratorNext::uncheckedInvoke(State* state) {
         return primopError(state, createTypeError(state, state->types.string, maybeString));
     }
     auto const string = HRef<String>::fromUnchecked(maybeString);
-    ORef const maybeByteIdx = iter->byteIdx().get();
+    ORef const maybeByteIdx = iter->byteIdx();
     if (!Fixnum::contains(maybeByteIdx)) {
         return primopError(state, createTypeError(state, state->types.fixnum, maybeString));
     }
@@ -959,7 +966,7 @@ PrimopRes PrimopStringIteratorNext::uncheckedInvoke(State* state) {
     assert(cpWidth > 0); // Strings should always have been created from valid UTF-8
     auto const cp = uint32_t(maybeCp);
 
-    iter->byteIdx().set(*state, Fixnum{int64_t(byteIdx) + cpWidth});
+    iter->setByteIdx(Fixnum{int64_t(byteIdx) + cpWidth});
     state->regs[retReg] = Char{cp};
     return PrimopRes::CONTINUE;
 }

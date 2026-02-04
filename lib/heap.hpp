@@ -14,29 +14,22 @@ class Heap {
 
         explicit Semispace(size_t size);
 
-        ~Semispace() { std::free(start); } // Need a destructor
+        ~Semispace() { std::free(start); }
 
         Semispace(Semispace&& that) : free{that.free}, limit{that.limit}, start{that.start} {
             that.start = nullptr; // Prevent double free
         }
-        Semispace& operator=(Semispace&& that) {
-            this->free = that.free;
-            this->limit = that.limit;
-            this->start = that.start;
+        Semispace& operator=(Semispace&& that);
 
-            that.start = nullptr;
-
-            return *this;
-        }
-
-        // Deep copying these would be a farce and shallow copy causes use-after-free:ing destructions:
+        // Deep copying these would be a farce and shallow copy causes use-after-free:ing
+        // destructions:
         Semispace(Semispace const&) = delete;
         Semispace& operator=(Semispace const&) = delete;
 
         [[nodiscard]]
         bool isValid() const { return free != nullptr; }
 
-        size_t size() const { return (size_t)(limit - start); }
+        size_t size() const { return size_t(limit - start); }
 
         [[nodiscard]]
         bool allocatedIn(Object const* obj) const {
@@ -62,10 +55,52 @@ class Heap {
         bool shouldGrow(Semispace const& other) const;
     };
 
+    struct Nursery {
+        char* free;
+        Object** remembered;
+        char* start;
+        char* end;
+
+        explicit Nursery(size_t size);
+
+        ~Nursery() { std::free(start); }
+
+        Nursery(Nursery&& that) :
+            free{that.free}, remembered{that.remembered}, start{that.start}, end{that.end}
+        {
+            that.start = nullptr; // Prevent double free
+        }
+        Nursery& operator=(Nursery&& that) = delete; // Unused
+
+        // Deep copying these would be a farce and shallow copy causes use-after-free:ing
+        // destructions:
+        Nursery(Nursery const&) = delete;
+        Nursery& operator=(Nursery const&) = delete;
+
+        [[nodiscard]]
+        bool isValid() const { return free != nullptr; }
+
+        size_t size() const { return size_t(end - start); }
+
+        [[maybe_unused]]
+        [[nodiscard]]
+        Object* tryAlloc(Type const* type);
+
+        [[maybe_unused]]
+        [[nodiscard]]
+        Object* tryAllocFlex(Type const* type, Fixnum length);
+
+        [[nodiscard]]
+        bool tryToRemember(Object* obj);
+    };
+
+    Nursery nursery;
     Semispace tospace;
     Semispace fromspace;
 
-    explicit Heap(size_t size) : tospace{size / 2}, fromspace{size / 2} {}
+    explicit Heap(size_t size) :
+        nursery{size / 9}, tospace{nursery.size() * 4}, fromspace{tospace.size()}
+    {}
 
     Object* tryShallowCopy(Object* obj);
 
@@ -78,7 +113,9 @@ public:
     static Heap tryCreate(size_t size);
 
     [[nodiscard]]
-    bool isValid() const { return tospace.isValid() && fromspace.isValid(); }
+    bool isValid() const { return tospace.isValid() && fromspace.isValid() && nursery.isValid(); }
+
+    // FIXME: Allocating objects that do not fit in nursery (or even tospace!):
 
     [[nodiscard]]
     Object* tryAlloc(Type const* type) { return tospace.tryAlloc(type); }
@@ -96,7 +133,8 @@ public:
         return tospace.allocFlexOrDie(type, length);
     }
 
-    void writeBarrier(Object* /*dest*/) { /*TODO*/ }
+    [[nodiscard]]
+    bool writeBarrier(Object* dest) { return nursery.tryToRemember(dest); }
 
     [[nodiscard]]
     Object* mark(Object* obj);
@@ -113,11 +151,11 @@ public:
     bool evacuated(Object const* obj) const { return tospace.allocatedIn(obj); }
 };
 
-inline bool mustCollect(void const* ptr) {
-#ifdef GC_ALOT
-    return !ptr || true;
-#else
+inline bool mustCollect([[maybe_unused]] void const* ptr) {
+#ifndef GC_ALOT
     return !ptr;
+#else
+    return true;
 #endif
 }
 

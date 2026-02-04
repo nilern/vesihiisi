@@ -228,7 +228,8 @@ HRef<Method> createSpecialization(
     size_t const arity = (uintptr_t)fxArity.val();
     for (size_t i = 0, typeIdx = 0; i < arity; ++i) {
         ORef const maybeType = generic->domain()[i].get();
-        specialization->domain()[i].set(*state, isHeaped(maybeType) ? maybeType : types[typeIdx++]);
+        const_cast<ORef*>(specialization->flexData())[i] = // `const_cast` for init
+            isHeaped(maybeType) ? maybeType : types[typeIdx++];
     }
 
     return specialization;

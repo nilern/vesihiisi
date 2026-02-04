@@ -420,7 +420,8 @@ struct StringIterator : public FixedObject<StringIterator> {
 private:
     ORef byteIdx_;
 public:
-    SlotMut<ORef> byteIdx() { return SlotMut{this, byteIdx_}; }
+    ORef byteIdx() { return byteIdx_; }
+    void setByteIdx(Fixnum idx) { byteIdx_ = idx; }
 
     [[maybe_unused]]
     static HRef<Type> reify(struct State const& state);

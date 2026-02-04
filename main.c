@@ -235,7 +235,7 @@ int main(int argc, char const* argv[static argc]) {
         args.filename = fullBootstrapFilename; // HACK
     }
 
-    struct Vshs_State* state = tryCreateState(1024*1024, vshsHome, argc, argv);
+    struct Vshs_State* state = tryCreateState(10*1024*1024, vshsHome, argc, argv);
     if (!state) {
         puts("Insufficient memory");
         return EXIT_FAILURE;

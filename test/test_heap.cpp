@@ -6,7 +6,7 @@
 #include "../lib/vesihiisi.cpp"
 
 static void testBootstrap(void) {
-    State* const state = State::tryCreate(1024*1024);
+    State* const state = State::tryCreate(10*1024*1024);
     assert(state);
     
     HRef<Type> const typeType = state->types.type;
@@ -29,7 +29,7 @@ static void testBootstrap(void) {
 }
 
 static void testIntern(void) {
-    State* const state = State::tryCreate(1024*1024);
+    State* const state = State::tryCreate(10*1024*1024);
     assert(state);
 
     char const nameChars[] = "foo";

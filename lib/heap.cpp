@@ -7,10 +7,23 @@
 
 namespace {
 
+// Semispace
+// =================================================================================================
+
 Heap::Semispace::Semispace(size_t size) {
     start = (char*)calloc(size, sizeof *start);
     free = start;
     limit = start + size;
+}
+
+Heap::Semispace& Heap::Semispace::operator=(Semispace&& that) {
+    this->free = that.free;
+    this->limit = that.limit;
+    this->start = that.start;
+
+    that.start = nullptr; // Prevent double free
+
+    return *this;
 }
 
 bool Heap::Semispace::shouldGrow(Semispace const& other) const {
@@ -37,7 +50,6 @@ void Heap::Semispace::refurbish(Semispace const& other) {
     free = start;
 }
 
-[[nodiscard]]
 Object* Heap::Semispace::tryAlloc(Type const* type) {
     assert(isValid());
     assert(!type->isFlex.val());
@@ -52,7 +64,7 @@ Object* Heap::Semispace::tryAlloc(Type const* type) {
     // Check bound and commit reservation:
     uintptr_t const size = (uintptr_t)type->minSize.val();
     char* const free = (char*)(void*)(address + size);
-    if (free >= limit) { return nullptr; }
+    if (free > limit) { return nullptr; }
     this->free = free;
 
     Object* const ptr = (Object*)(void*)address;
@@ -61,14 +73,12 @@ Object* Heap::Semispace::tryAlloc(Type const* type) {
     return ptr;
 }
 
-[[nodiscard]]
 Object* Heap::Semispace::allocOrDie(Type const* type) {
     Object* const res = tryAlloc(type);
     if (!res) { PANIC("Out of memory"); }
     return res;
 }
 
-[[nodiscard]]
 Object* Heap::Semispace::tryAllocFlex(Type const* type, Fixnum length) {
     assert(isValid());
     assert(type->isFlex.val());
@@ -85,7 +95,7 @@ Object* Heap::Semispace::tryAllocFlex(Type const* type, Fixnum length) {
     uintptr_t const flexSize = type->isBytes.val() ? len : len * sizeof(ORef);
     uintptr_t const size = (uintptr_t)type->minSize.val() + flexSize;
     char* const free = (char*)(void*)(address + size);
-    if (free >= limit) { return nullptr; }
+    if (free > limit) { return nullptr; }
     this->free = free;
 
     Object* const ptr = (Object*)(void*)address;
@@ -94,12 +104,89 @@ Object* Heap::Semispace::tryAllocFlex(Type const* type, Fixnum length) {
     return ptr;
 }
 
-[[nodiscard]]
 Object* Heap::Semispace::allocFlexOrDie(Type const* type, Fixnum length) {
     Object* const res = tryAllocFlex(type, length);
     if (!res) { PANIC("Out of memory"); }
     return res;
 }
+
+// Nursery
+// =================================================================================================
+
+Heap::Nursery::Nursery(size_t size) {
+    start = (char*)calloc(size, sizeof *start);
+    free = start;
+    end = start + size;
+    remembered = reinterpret_cast<Object**>(end);
+}
+
+// TODO: DRY wrt. `Heap::Semispace::tryAlloc`:
+Object* Heap::Nursery::tryAlloc(Type const* type) {
+    assert(isValid());
+    assert(!type->isFlex.val());
+
+    uintptr_t address = (uintptr_t)(void*)free;
+
+    address += sizeof(Header); // Reserve header
+    // Align oref:
+    uintptr_t const align = (uintptr_t)type->align.val();
+    address = (address + align - 1) & ~(align - 1);
+
+    // Check bound and commit reservation:
+    uintptr_t const size = (uintptr_t)type->minSize.val();
+    char* const free = (char*)(void*)(address + size);
+    if (free > reinterpret_cast<char const*>(remembered)) { return nullptr; }
+    this->free = free;
+
+    Object* const ptr = (Object*)(void*)address;
+    *((Header*)(void*)address - 1) = Header{type}; // Init header
+
+    return ptr;
+}
+
+// TODO: DRY wrt. `Heap::Semispace::tryAllocFlex`:
+Object* Heap::Nursery::tryAllocFlex(Type const* type, Fixnum length) {
+    assert(isValid());
+    assert(type->isFlex.val());
+
+    uintptr_t address = (uintptr_t)(void*)free;
+
+    address += sizeof(FlexHeader); // Reserve header
+    // Align oref:
+    uintptr_t const align = (uintptr_t)type->align.val();
+    address = (address + align - 1) & ~(align - 1);
+
+    // Check bound and commit reservation:
+    uintptr_t len = (uintptr_t)length.val();
+    uintptr_t const flexSize = type->isBytes.val() ? len : len * sizeof(ORef);
+    uintptr_t const size = (uintptr_t)type->minSize.val() + flexSize;
+    char* const free = (char*)(void*)(address + size);
+    if (free > reinterpret_cast<char const*>(remembered)) { return nullptr; }
+    this->free = free;
+
+    Object* const ptr = (Object*)(void*)address;
+    *((FlexHeader*)(void*)address - 1) = FlexHeader{length, type}; // Init header
+
+    return ptr;
+}
+
+bool Heap::Nursery::tryToRemember([[maybe_unused]] Object* obj) {
+#ifndef GC_ALOT
+    Object** const newRemembered = remembered - 1;
+    if (reinterpret_cast<char const*>(newRemembered) < free) {
+        return false;
+    }
+
+    *newRemembered = obj;
+    remembered = newRemembered;
+    return true;
+#else
+    return false;
+#endif
+}
+
+// Heap
+// =================================================================================================
 
 [[nodiscard]]
 Object* Heap::tryShallowCopy(Object* obj) {

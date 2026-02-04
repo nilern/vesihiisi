@@ -97,6 +97,7 @@ VMRes run(State* state, HRef<Closure> self) {
             ORef c = state->consts[constIdx].get();
             if (isa<Symbol>(*state, c)) { // Link:
                 c = getVar(state, state->ns, HRef<Symbol>::fromUnchecked(c));
+                auto const cG = state->pushRoot(&c);
 
                 state->consts[constIdx].set(*state, c);
             }
@@ -127,6 +128,7 @@ VMRes run(State* state, HRef<Closure> self) {
                     goto apply;
                 }
                 c = findRes.var;
+                auto const cG = state->pushRoot(&c);
 
                 state->consts[constIdx].set(*state, c);
             }
@@ -157,6 +159,7 @@ VMRes run(State* state, HRef<Closure> self) {
                     goto apply;
                 }
                 c = findRes.var;
+                auto const cG = state->pushRoot(&c);
 
                 state->consts[constIdx].set(*state, c);
             }
@@ -200,7 +203,7 @@ VMRes run(State* state, HRef<Closure> self) {
                             if (!isa<Type>(*state, maybeType)) {
                                 return VMRes{}; // TODO: Signal type error properly
                             }
-                            types->itemsMut()[typeIdx++].set(*state, maybeType);
+                            const_cast<ORef*>(types->items().data())[typeIdx++] = maybeType;
                         }
                     }
                 }

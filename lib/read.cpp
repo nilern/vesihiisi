@@ -223,7 +223,8 @@ ReadExprTailRes readListTail(State* state, Parser* parser) {
     ReadExprRes const carRes = readExpr(state, parser);
     if (!carRes.success) { return ReadExprTailRes{carRes.err}; }
     {
-        Vshs_LocatedORef const locVal = carRes.val;
+        Vshs_LocatedORef locVal = carRes.val;
+        auto const locG = state->pushRoot(&locVal.loc);
         pair->car().set(*state, locVal.val);
         pair->maybeLoc().set(*state, locVal.loc);
     }
@@ -232,7 +233,8 @@ ReadExprTailRes readListTail(State* state, Parser* parser) {
 
     // (<expr> <ws>)* ; FOLLOW = {')', '.'}
     for (int c; !((c = TRY(ReadExprTailRes, parser->peek())) == ')' || c == '.');) {
-        HRef<Pair> const newPair = allocPair(state);
+        HRef<Pair> newPair = allocPair(state);
+        auto const newPairG = state->pushRoot(&newPair);
         pair->cdr().set(*state, newPair);
         pair = newPair;
 
@@ -240,7 +242,8 @@ ReadExprTailRes readListTail(State* state, Parser* parser) {
         ReadExprRes const carRes = readExpr(state, parser);
         if (!carRes.success) { return ReadExprTailRes{carRes.err}; }
         {
-            Vshs_LocatedORef const locVal = carRes.val;
+            Vshs_LocatedORef locVal = carRes.val;
+            auto const locG = state->pushRoot(&locVal.loc);
             pair->car().set(*state, locVal.val);
             pair->maybeLoc().set(*state, locVal.loc);
         }

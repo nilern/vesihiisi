@@ -4,10 +4,14 @@
 
 namespace {
 
+// TODO: Make this work in non-unity builds (no practical need for that (yet?) though):
 template<typename T>
 void SlotMut<T>::set(State& state, T v) {
-    state.heap.writeBarrier(obj_);
     *slot_ = v;
+
+    if (!state.heap.writeBarrier(obj_)) {
+        collect(&state);
+    }
 }
 
 HRef<Type> Flonum::reify(State const& state) { return state.types.flonum; }

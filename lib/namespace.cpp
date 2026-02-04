@@ -42,9 +42,9 @@ void rehashNamespace(State* state, HRef<Namespace> const* nsHandle) {
     size_t const newCap = oldCap << 1;
     HRef<ArrayMut> newKeysRef = createArrayMut(state, Fixnum((intptr_t)newCap)); // May GC
     auto const newKeysRefG = state->pushRoot(&newKeysRef);
-    HRef<ArrayMut> const newValsRef = createArrayMut(state, Fixnum((intptr_t)newCap)); // May GC
+    HRef<ArrayMut> newValsRef = createArrayMut(state, Fixnum((intptr_t)newCap)); // May GC
 
-    HRef<Namespace> const ns = *nsHandle;
+    HRef<Namespace> ns = *nsHandle;
     ORef const* const oldKeys = ns->keys().get()->flexData();
     ORef const* const oldVals = ns->vals().get()->flexData();
     ORef* const newKeys = const_cast<ORef*>(newKeysRef->flexData()); // `const_cast` for init
@@ -68,8 +68,10 @@ void rehashNamespace(State* state, HRef<Namespace> const* nsHandle) {
         }
     }
 
-    ns->keys().set(*state, newKeysRef);
-    ns->vals().set(*state, newValsRef);
+    auto const newValsRefG = state->pushRoot(&newValsRef);
+    auto const nsG = state->pushRoot(&ns);
+    ns->keys().set(*state, newKeysRef); // May GC
+    ns->vals().set(*state, newValsRef); // May GC
 }
 
 HRef<Var> getVar(State* state, HRef<Namespace> ns, HRef<Symbol> name) {
@@ -88,12 +90,13 @@ HRef<Var> getVar(State* state, HRef<Namespace> ns, HRef<Symbol> name) {
             rehashNamespace(state, &ns); // May GC
         }
 
-        HRef<Var> const var = createUnboundVar(state); // May GC
+        HRef<Var> var = createUnboundVar(state); // May GC
+        auto const varG = state->pushRoot(&var);
 
         findRes = findVar(ns, name);
         assert(findRes.type == FindVarRes::NS_FOUND_VAR_DEST_IDX);
-        ns->keys().get()->flexItemsMut()[findRes.destIndex].set(*state,  name);
-        ns->vals().get()->flexItemsMut()[findRes.destIndex].set(*state, var);
+        ns->keys().get()->flexItemsMut()[findRes.destIndex].set(*state, name); // May GC
+        ns->vals().get()->flexItemsMut()[findRes.destIndex].set(*state, var); // May GC
         ns->count = Fixnum((intptr_t)newCount);
 
         return var;

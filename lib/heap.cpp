@@ -225,8 +225,8 @@ Heap Heap::tryCreate(size_t size) { return Heap{size}; }
 
 [[nodiscard]]
 Object* Heap::mark(Object* obj) {
-    Object* const fwdPtr = obj->tryForwarded();
-    if (fwdPtr) { return fwdPtr; }
+    for (Object* fwdPtr = nullptr; (fwdPtr = obj->tryForwarded()); obj = fwdPtr) {}
+    if (evacuated(obj)) { return obj; }
 
     Object* const copy = tryShallowCopy(obj);
     assert(copy); // Copying should always succeed since tospace is at least as big as fromspace.

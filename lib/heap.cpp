@@ -7,26 +7,26 @@
 
 namespace {
 
-Semispace::Semispace(size_t size) {
+Heap::Semispace::Semispace(size_t size) {
     start = (char*)calloc(size, sizeof *start);
     free = start;
     limit = start + size;
 }
 
-bool Semispace::shouldGrow(Semispace const* other) const {
-    size_t const otherSize = other->size();
+bool Heap::Semispace::shouldGrow(Semispace const& other) const {
+    size_t const otherSize = other.size();
     if (otherSize > size()) { return true; } // Catch up
 
-    size_t const otherSlack = (size_t)(other->limit - other->free);
+    size_t const otherSlack = size_t(other.limit - other.free);
     return otherSlack < otherSize / 5; // `other` is > 80% full
 }
 
-void Semispace::refurbish(Semispace const* other) {
+void Heap::Semispace::refurbish(Semispace const& other) {
     size_t const mySize = size();
 
     if (shouldGrow(other)) {
         size_t const newSize = mySize + mySize / 2;
-        char* const newStart = (char*)calloc(newSize, sizeof *newStart);
+        char* const newStart = static_cast<char*>(calloc(newSize, sizeof *newStart));
         std::free(start);
         limit = newStart + newSize;
         start = newStart;
@@ -38,7 +38,7 @@ void Semispace::refurbish(Semispace const* other) {
 }
 
 [[nodiscard]]
-Object* Semispace::tryAlloc(Type const* type) {
+Object* Heap::Semispace::tryAlloc(Type const* type) {
     assert(isValid());
     assert(!type->isFlex.val());
 
@@ -62,14 +62,14 @@ Object* Semispace::tryAlloc(Type const* type) {
 }
 
 [[nodiscard]]
-Object* Semispace::allocOrDie(Type const* type) {
+Object* Heap::Semispace::allocOrDie(Type const* type) {
     Object* const res = tryAlloc(type);
     if (!res) { PANIC("Out of memory"); }
     return res;
 }
 
 [[nodiscard]]
-Object* Semispace::tryAllocFlex(Type const* type, Fixnum length) {
+Object* Heap::Semispace::tryAllocFlex(Type const* type, Fixnum length) {
     assert(isValid());
     assert(type->isFlex.val());
 
@@ -95,18 +95,18 @@ Object* Semispace::tryAllocFlex(Type const* type, Fixnum length) {
 }
 
 [[nodiscard]]
-Object* Semispace::allocFlexOrDie(Type const* type, Fixnum length) {
+Object* Heap::Semispace::allocFlexOrDie(Type const* type, Fixnum length) {
     Object* const res = tryAllocFlex(type, length);
     if (!res) { PANIC("Out of memory"); }
     return res;
 }
 
 [[nodiscard]]
-Object* Heap::tryShallowCopy(void* ptr) {
-    assert(allocatedInSemispace(&tospace, ptr)        // Normal cloning
-           || allocatedInSemispace(&fromspace, ptr)); // GC
+Object* Heap::tryShallowCopy(Object* obj) {
+    assert(evacuated(obj)                  // Normal cloning
+           || fromspace.allocatedIn(obj)); // GC
 
-    Header const header = *((Header*)ptr - 1);
+    Header const header = *((Header*)obj - 1);
     Type const* const type = header.typePtr();
 
     Object* copy = nullptr;
@@ -117,7 +117,7 @@ Object* Heap::tryShallowCopy(void* ptr) {
 
         *((Header*)copy - 1) = header;
     } else {
-        FlexHeader const flexHeader = *((FlexHeader*)ptr - 1);
+        FlexHeader const flexHeader = *((FlexHeader*)obj - 1);
 
         Fixnum const fxLen = flexHeader.count;
         copy = tospace.tryAllocFlex(type, fxLen);
@@ -129,7 +129,7 @@ Object* Heap::tryShallowCopy(void* ptr) {
         size += type->isBytes.val() ? len : len * sizeof(ORef);
     }
 
-    memcpy(copy, ptr, size);
+    memcpy(copy, obj, size);
 
     return copy;
 }

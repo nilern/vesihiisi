@@ -6,73 +6,95 @@
 
 namespace {
 
-struct Semispace {
-    char* free;
-    char* limit;
-    char* start;
+class Heap {
+    struct Semispace {
+        char* free;
+        char* limit;
+        char* start;
 
-    ~Semispace() { std::free(start); } // Need a destructor
+        explicit Semispace(size_t size);
 
-    Semispace(Semispace&& that) : free{that.free}, limit{that.limit}, start{that.start} {
-        that.start = nullptr; // Prevent double free
-    }
-    Semispace& operator=(Semispace&& that) {
-        this->free = that.free;
-        this->limit = that.limit;
-        this->start = that.start;
+        ~Semispace() { std::free(start); } // Need a destructor
 
-        that.start = nullptr;
+        Semispace(Semispace&& that) : free{that.free}, limit{that.limit}, start{that.start} {
+            that.start = nullptr; // Prevent double free
+        }
+        Semispace& operator=(Semispace&& that) {
+            this->free = that.free;
+            this->limit = that.limit;
+            this->start = that.start;
 
-        return *this;
-    }
+            that.start = nullptr;
 
-    // Deep copying these would be a farce and shallow copy causes use-after-free:ing destructions:
-    Semispace(Semispace const&) = delete;
-    Semispace& operator=(Semispace const&) = delete;
+            return *this;
+        }
 
-    [[nodiscard]]
-    bool isValid() const { return free != nullptr; }
+        // Deep copying these would be a farce and shallow copy causes use-after-free:ing destructions:
+        Semispace(Semispace const&) = delete;
+        Semispace& operator=(Semispace const&) = delete;
 
-    size_t size() const { return (size_t)(limit - start); }
+        [[nodiscard]]
+        bool isValid() const { return free != nullptr; }
 
-    bool contains(void const* ptr) const {
-        return start <= (char const*)ptr && (char const*)ptr < limit;
-    }
+        size_t size() const { return (size_t)(limit - start); }
 
-    [[nodiscard]]
-    Object* tryAlloc(Type const* type);
+        [[nodiscard]]
+        bool allocatedIn(Object const* obj) const {
+            auto const data = reinterpret_cast<char const*>(obj);
+            return start <= data && data < free;
+        }
 
-    [[nodiscard]]
-    Object* allocOrDie(Type const* type);
+        [[nodiscard]]
+        Object* tryAlloc(Type const* type);
 
-    [[nodiscard]]
-    Object* tryAllocFlex(Type const* type, Fixnum length);
+        [[nodiscard]]
+        Object* allocOrDie(Type const* type);
 
-    [[nodiscard]]
-    Object* allocFlexOrDie(Type const* type, Fixnum length);
+        [[nodiscard]]
+        Object* tryAllocFlex(Type const* type, Fixnum length);
 
-    void refurbish(Semispace const* other);
+        [[nodiscard]]
+        Object* allocFlexOrDie(Type const* type, Fixnum length);
 
-private:
-    friend struct Heap;
+        void refurbish(Semispace const& other);
 
-    explicit Semispace(size_t size);
+    private:
+        bool shouldGrow(Semispace const& other) const;
+    };
 
-    bool shouldGrow(Semispace const* other) const;
-};
-
-inline bool allocatedInSemispace(Semispace const* space, void const* ptr) {
-    return space->start <= (char const*)ptr && (char const*)ptr < space->free;
-}
-
-typedef struct Heap {
     Semispace tospace;
     Semispace fromspace;
 
+    explicit Heap(size_t size) : tospace{size / 2}, fromspace{size / 2} {}
+
+    Object* tryShallowCopy(Object* obj);
+
+    [[nodiscard]]
+    Header markHeader(Header header);
+
+    void* scanObj(void* const scan);
+
+public:
     static Heap tryCreate(size_t size);
 
     [[nodiscard]]
     bool isValid() const { return tospace.isValid() && fromspace.isValid(); }
+
+    [[nodiscard]]
+    Object* tryAlloc(Type const* type) { return tospace.tryAlloc(type); }
+
+    [[nodiscard]]
+    Object* allocOrDie(Type const* type) { return tospace.allocOrDie(type); }
+
+    [[nodiscard]]
+    Object* tryAllocFlex(Type const* type, Fixnum length) {
+        return tospace.tryAllocFlex(type, length);
+    }
+
+    [[nodiscard]]
+    Object* allocFlexOrDie(Type const* type, Fixnum length) {
+        return tospace.allocFlexOrDie(type, length);
+    }
 
     void writeBarrier(Object* /*dest*/) { /*TODO*/ }
 
@@ -81,18 +103,15 @@ typedef struct Heap {
     [[nodiscard]]
     ORef mark(ORef oref);
 
+    void flipSemispaces() { std::swap(tospace, fromspace); }
+
     void collect();
 
-private:
-    explicit Heap(size_t size) : tospace{size / 2}, fromspace{size / 2} {}
-
-    Object* tryShallowCopy(void* ptr);
+    void refurbish() { fromspace.refurbish(tospace); }
 
     [[nodiscard]]
-    Header markHeader(Header header);
-
-    void* scanObj(void* const scan);
-} Heap;
+    bool evacuated(Object const* obj) const { return tospace.allocatedIn(obj); }
+};
 
 inline bool mustCollect(void const* ptr) {
 #ifdef GC_ALOT
@@ -100,13 +119,6 @@ inline bool mustCollect(void const* ptr) {
 #else
     return !ptr;
 #endif
-}
-
-inline void flipSemispaces(Heap* heap) {
-    /*Semispace tmp = std::move(heap->tospace);
-    heap->tospace = std::move(heap->fromspace);
-    heap->fromspace = std::move(tmp);*/
-    std::swap(heap->tospace, heap->fromspace);
 }
 
 } // namespace

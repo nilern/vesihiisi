@@ -4,18 +4,18 @@
 
 namespace {
 
-Var* tryCreateUnboundVar(Semispace* semispace, Type const* varType, HRef<Unbound> unbound) {
-    Var* ptr = (Var*)semispace->tryAlloc(varType);
+Var* tryCreateUnboundVar(Heap& heap, Type const* varType, HRef<Unbound> unbound) {
+    auto const ptr = static_cast<Var*>(heap.tryAlloc(varType));
     if (!ptr) { return ptr; }
 
     return new (ptr) Var{unbound, False};
 }
 
 HRef<Var> createUnboundVar(State* state) {
-    Var* ptr = (Var*)state->heap.tospace.tryAlloc(&*state->types.var);
+    Var* ptr = static_cast<decltype(ptr)>(state->heap.tryAlloc(&*state->types.var));
     if (mustCollect(ptr)) {
         collect(state);
-        ptr = (Var*)state->heap.tospace.allocOrDie(&*state->types.var);
+        ptr = static_cast<decltype(ptr)>(state->heap.allocOrDie(&*state->types.var));
     }
 
     return HRef{new (ptr) Var{state->singletons.unbound, False}};

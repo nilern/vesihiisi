@@ -25,25 +25,25 @@ void SymbolTable::prune() {
 }
 
 HRef<Symbol> createUninternedSymbol(State* state, Fixnum hash, Str name) {
-    Symbol* ptr = (Symbol*)state->heap.tospace.tryAllocFlex(
-        &*state->types.symbol, Fixnum((intptr_t)name.len));
+    Symbol* ptr = static_cast<decltype(ptr)>(
+        state->heap.tryAllocFlex(&*state->types.symbol, Fixnum((intptr_t)name.len)));
     if (mustCollect(ptr)) {
         collect(state);
-        ptr = (Symbol*)state->heap.tospace.allocFlexOrDie(
-            &*state->types.symbol, Fixnum((intptr_t)name.len));
+        ptr = static_cast<decltype(ptr)>(
+            state->heap.allocFlexOrDie(&*state->types.symbol, Fixnum((intptr_t)name.len)));
     }
 
     return HRef{new (ptr) Symbol{hash, name}};
 }
 
 HRef<Symbol> createUninternedSymbolFromHeaped(State* state, Fixnum hash, HRef<String> name) {
-    Symbol* ptr = (Symbol*)state->heap.tospace.tryAllocFlex(
-        &*state->types.symbol, name->flexCount());
+    Symbol* ptr = static_cast<decltype(ptr)>(
+        state->heap.tryAllocFlex(&*state->types.symbol, name->flexCount()));
     if (mustCollect(ptr)) {
         auto const nameG = state->pushRoot(&name);
         collect(state);
-        ptr = (Symbol*)state->heap.tospace.allocFlexOrDie(
-            &*state->types.symbol, name->flexCount());
+        ptr = static_cast<decltype(ptr)>(
+            state->heap.allocFlexOrDie(&*state->types.symbol, name->flexCount()));
     }
 
     return HRef{new (ptr) Symbol{hash, name->str()}};

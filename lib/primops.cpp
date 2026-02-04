@@ -430,11 +430,11 @@ PrimopRes PrimopMake::uncheckedInvoke(State* state) {
 
     if (!type->isFlex.val()) {
         // Alloc:
-        Object* ptr = state->heap.tospace.tryAlloc(&*type);
+        Object* ptr = state->heap.tryAlloc(&*type);
         if (mustCollect(ptr)) {
             collect(state);
             type = HRef<Type>::fromUnchecked(state->regs[firstArgReg]);
-            ptr = state->heap.tospace.allocOrDie(&*type);
+            ptr = state->heap.allocOrDie(&*type);
         }
 
         // Init:
@@ -515,11 +515,11 @@ PrimopRes PrimopMakeFlex::uncheckedInvoke(State* state) {
     Fixnum const count = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]);
 
     if (type->isFlex.val()) {
-        Object* ptr = state->heap.tospace.tryAllocFlex(&*type, count);
+        Object* ptr = state->heap.tryAllocFlex(&*type, count);
         if (mustCollect(ptr)) {
             collect(state);
             type = HRef<Type>::fromUnchecked(state->regs[firstArgReg]);
-            ptr = state->heap.tospace.allocFlexOrDie(&*type, count);
+            ptr = state->heap.allocFlexOrDie(&*type, count);
         }
 
         state->regs[retReg] = HRef<Object>(ptr);
@@ -661,12 +661,12 @@ PrimopRes PrimopFlexClone::uncheckedInvoke(State* state) {
 
     size_t const copyCount = end - start;
 
-    Object* dest = state->heap.tospace.tryAllocFlex(&*type, Fixnum{int64_t(copyCount)});
+    Object* dest = state->heap.tryAllocFlex(&*type, Fixnum{int64_t(copyCount)});
     if (mustCollect(dest)) {
         auto const srcObjG = state->pushRoot(&srcObj);
         auto const typeRefG = state->pushRoot(&type);
         collect(state);
-        dest = state->heap.tospace.allocFlexOrDie(&*type, Fixnum{int64_t(copyCount)});
+        dest = state->heap.allocFlexOrDie(&*type, Fixnum{int64_t(copyCount)});
     }
 
     auto const minSize = size_t(type->minSize.val());

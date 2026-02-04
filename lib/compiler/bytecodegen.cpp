@@ -97,7 +97,7 @@ void assertMethodBuilderInTospace(State const* state,MethodBuilder const* builde
     for (size_t i = 0; i < constCount; ++i) {
         ORef const v = builder->consts[i].val;
         if (isHeaped(v)) {
-            assert(allocatedInSemispace(&state->heap.tospace, &*HRef<Object>::fromUnchecked(v)));
+            assert(state->heap.evacuated(&*HRef<Object>::fromUnchecked(v)));
         }
     }
 
@@ -105,7 +105,7 @@ void assertMethodBuilderInTospace(State const* state,MethodBuilder const* builde
     for (size_t i = 1; i < filenameRunCount; i += 2) { // Skip fixnums at 0, 2, 4...
         ORef const v = builder->revFilenameRuns[i];
         if (isHeaped(v)) {
-            assert(allocatedInSemispace(&state->heap.tospace, &*HRef<Object>::fromUnchecked(v)));
+            assert(state->heap.evacuated(&*HRef<Object>::fromUnchecked(v)));
         }
     }
 

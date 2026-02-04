@@ -72,14 +72,14 @@ RootGuard& RootGuard::operator=(RootGuard&& that) {
 RootGuard::~RootGuard() { if (state) { state->shadowstack.pop_back(); } }
 
 bool tryCreateNamespace(
-    Semispace* semispace, HRef<Namespace>* dest, Type const* nsType, Type const* arrayType
+    Heap& heap, HRef<Namespace>* dest, Type const* nsType, Type const* arrayType
 ) {
     Fixnum const count = Fixnum{2l};
-    ArrayMut* const keys = (ArrayMut*)semispace->tryAllocFlex(arrayType, count);
+    ArrayMut* const keys = (ArrayMut*)heap.tryAllocFlex(arrayType, count);
     if (!keys) { return false; }
-    ArrayMut* const vals = (ArrayMut*)semispace->tryAllocFlex(arrayType, count);
+    ArrayMut* const vals = (ArrayMut*)heap.tryAllocFlex(arrayType, count);
     if (!vals) { return false; }
-    Namespace* const ptr = (Namespace*)semispace->tryAlloc(nsType);
+    Namespace* const ptr = (Namespace*)heap.tryAlloc(nsType);
     if (!ptr) { return false; }
 
     *dest = HRef{new (ptr) Namespace{HRef{keys}, HRef{vals}, count}};
@@ -131,8 +131,8 @@ void initSpecialPurposeRegs(State* state) {
 }
 
 template<typename T, bool isBytes>
-Type* tryCreateFixedType(Semispace* semispace, Type const* typeType) {
-    Type* const type = static_cast<Type*>(semispace->tryAlloc(typeType));
+Type* tryCreateFixedType(Heap& heap, Type const* typeType) {
+    Type* const type = static_cast<Type*>(heap.tryAlloc(typeType));
     if (!type) { return nullptr; }
 
     return new (type) Type{
@@ -142,8 +142,8 @@ Type* tryCreateFixedType(Semispace* semispace, Type const* typeType) {
 }
 
 template<typename T> requires std::is_base_of_v<AnyIndexedObject<T, typename T::Item>, T>
-Type* tryCreateIndexedType(Semispace* semispace, Type const* typeType) {
-    auto const type = static_cast<Type*>(semispace->tryAlloc(typeType));
+Type* tryCreateIndexedType(Heap& heap, Type const* typeType) {
+    auto const type = static_cast<Type*>(heap.tryAlloc(typeType));
     if (!type) { return nullptr; }
 
     constexpr bool isBytes = !std::is_base_of_v<ORef, typename T::Item>;
@@ -157,13 +157,13 @@ Type* tryCreateIndexedType(Semispace* semispace, Type const* typeType) {
     };
 }
 
-Type* tryCreateTypeType(Semispace* semispace) {
+Type* tryCreateTypeType(Heap& heap) {
     auto const bootstrapTypeType = Type{
         Fixnum((intptr_t)sizeof(Type)), Fixnum((intptr_t)alignof(Type)), False, False, False,
         Fixnum{0l}, HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
     
-    auto const typeType = static_cast<Type*>(semispace->tryAlloc(&bootstrapTypeType));
+    auto const typeType = static_cast<Type*>(heap.tryAlloc(&bootstrapTypeType));
     if (!typeType) { return nullptr; }
 
     *((Header*)typeType - 1) = Header{typeType}; // Init header, closing loop
@@ -171,8 +171,8 @@ Type* tryCreateTypeType(Semispace* semispace) {
     return new (typeType) Type{bootstrapTypeType};
 }
 
-Type* tryCreateAnyType(Semispace* semispace, Type const* typeType) {
-    auto const type = static_cast<Type*>(semispace->tryAlloc(typeType));
+Type* tryCreateAnyType(Heap& heap, Type const* typeType) {
+    auto const type = static_cast<Type*>(heap.tryAlloc(typeType));
     if (!type) { return nullptr; }
 
     return new (type) Type{ // TODO: Avoid requiring some nonsensical values like this:
@@ -181,8 +181,8 @@ Type* tryCreateAnyType(Semispace* semispace, Type const* typeType) {
     };
 }
 
-Type* tryCreateSymbolType(Semispace* semispace, Type const* typeType) {
-    auto const type = static_cast<Type*>(semispace->tryAlloc(typeType));
+Type* tryCreateSymbolType(Heap& heap, Type const* typeType) {
+    auto const type = static_cast<Type*>(heap.tryAlloc(typeType));
     if (!type) { return nullptr; }
 
     return new (type) Type{
@@ -191,8 +191,8 @@ Type* tryCreateSymbolType(Semispace* semispace, Type const* typeType) {
     };
 }
 
-Type* tryCreateEmptyType(Semispace* semispace, Type const* typeType) {
-    auto const type = static_cast<Type*>(semispace->tryAlloc(typeType));
+Type* tryCreateEmptyType(Heap& heap, Type const* typeType) {
+    auto const type = static_cast<Type*>(heap.tryAlloc(typeType));
     if (!type) { return nullptr; }
 
     return new (type) Type{
@@ -201,8 +201,8 @@ Type* tryCreateEmptyType(Semispace* semispace, Type const* typeType) {
     };
 }
 
-Type* tryCreateMethodType(Semispace* semispace, Type const* typeType) {
-    auto const type = static_cast<Type*>(semispace->tryAlloc(typeType));
+Type* tryCreateMethodType(Heap& heap, Type const* typeType) {
+    auto const type = static_cast<Type*>(heap.tryAlloc(typeType));
     if (!type) { return nullptr; }
 
     return new (type) Type{
@@ -211,8 +211,8 @@ Type* tryCreateMethodType(Semispace* semispace, Type const* typeType) {
     };
 }
 
-Type* tryCreateClosureType(Semispace* semispace, Type const* typeType) {
-    auto const type = static_cast<Type*>(semispace->tryAlloc(typeType));
+Type* tryCreateClosureType(Heap& heap, Type const* typeType) {
+    auto const type = static_cast<Type*>(heap.tryAlloc(typeType));
     if (!type) { return nullptr; }
 
     return new (type) Type{
@@ -221,8 +221,8 @@ Type* tryCreateClosureType(Semispace* semispace, Type const* typeType) {
     };
 }
 
-Type* tryCreateContinuationType(Semispace* semispace, Type const* typeType) {
-    auto const type = static_cast<Type*>(semispace->tryAlloc(typeType));
+Type* tryCreateContinuationType(Heap& heap, Type const* typeType) {
+    auto const type = static_cast<Type*>(heap.tryAlloc(typeType));
     if (!type) { return nullptr; }
 
     return new (type) Type{
@@ -232,8 +232,8 @@ Type* tryCreateContinuationType(Semispace* semispace, Type const* typeType) {
     };
 }
 
-Type* tryCreateFatalErrorType(Semispace* semispace, Type const* typeType) {
-    auto const type = static_cast<Type*>(semispace->tryAlloc(typeType));
+Type* tryCreateFatalErrorType(Heap& heap, Type const* typeType) {
+    auto const type = static_cast<Type*>(heap.tryAlloc(typeType));
     if (!type) { return nullptr; }
 
     return new (type) Type{
@@ -243,8 +243,8 @@ Type* tryCreateFatalErrorType(Semispace* semispace, Type const* typeType) {
     };
 }
 
-Type* tryCreateImmType(Semispace* semispace, Type const* typeType) {
-    auto const type = static_cast<Type*>(semispace->tryAlloc(typeType));
+Type* tryCreateImmType(Heap& heap, Type const* typeType) {
+    auto const type = static_cast<Type*>(heap.tryAlloc(typeType));
     if (!type) { return nullptr; }
     
     return new (type) Type{ // TODO: Avoid requiring some nonsensical values like this:
@@ -286,7 +286,7 @@ void installPrimop(
 }
 
 Var* tryCreateUnboundVar(
-    Semispace* semispace, Type const* unboundType, HRef<Unbound> unbound);
+    Heap& heap, Type const* unboundType, HRef<Unbound> unbound);
 
 void nameType(State* state, HRef<Type> type, Str name) {
     auto const typeRefG = state->pushRoot(&type);
@@ -357,91 +357,91 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
     Heap heap = Heap::tryCreate(heapSize);
     if (!heap.isValid()) { return nullptr; }
     
-    Type* const typeType = tryCreateTypeType(&heap.tospace);
+    Type* const typeType = tryCreateTypeType(heap);
     if (!typeType) { return nullptr; }
-    Type * const anyType = tryCreateAnyType(&heap.tospace, typeType);
+    Type * const anyType = tryCreateAnyType(heap, typeType);
     if (!anyType) { return nullptr; }
-    Type* const stringType = tryCreateIndexedType<String>(&heap.tospace, typeType);
+    Type* const stringType = tryCreateIndexedType<String>(heap, typeType);
     if (!stringType) { return nullptr; }
     Type* const stringIteratorType =
-        tryCreateFixedType<StringIterator, false>(&heap.tospace, typeType);
+        tryCreateFixedType<StringIterator, false>(heap, typeType);
     if (!stringIteratorType) { return nullptr; }
-    Type* const arrayType = tryCreateIndexedType<Array>(&heap.tospace, typeType);
+    Type* const arrayType = tryCreateIndexedType<Array>(heap, typeType);
     if (!arrayType) { return nullptr; }
-    Type* const arrayMutType = tryCreateIndexedType<ArrayMut>(&heap.tospace, typeType);
+    Type* const arrayMutType = tryCreateIndexedType<ArrayMut>(heap, typeType);
     if (!arrayMutType) { return nullptr; }
-    Type* const byteArrayType = tryCreateIndexedType<ByteArray>(&heap.tospace, typeType);
+    Type* const byteArrayType = tryCreateIndexedType<ByteArray>(heap, typeType);
     if (!byteArrayType) { return nullptr; }
-    Type* const byteArrayMutType = tryCreateIndexedType<ByteArrayMut>(&heap.tospace, typeType);
+    Type* const byteArrayMutType = tryCreateIndexedType<ByteArrayMut>(heap, typeType);
     if (!byteArrayMutType) { return nullptr; }
-    Type* const symbolType = tryCreateSymbolType(&heap.tospace, typeType);
+    Type* const symbolType = tryCreateSymbolType(heap, typeType);
     if (!symbolType) { return nullptr; }
-    Type* const locType = tryCreateFixedType<Loc, false>(&heap.tospace, typeType);
+    Type* const locType = tryCreateFixedType<Loc, false>(heap, typeType);
     if (!locType) { return nullptr; }
-    Type* const pairType = tryCreateFixedType<Pair, false>(&heap.tospace, typeType);
+    Type* const pairType = tryCreateFixedType<Pair, false>(heap, typeType);
     if (!pairType) { return nullptr; }
-    Type* const emptyListType = tryCreateEmptyType(&heap.tospace, typeType);
+    Type* const emptyListType = tryCreateEmptyType(heap, typeType);
     if (!emptyListType) { return nullptr; }
-    Type* const methodType = tryCreateMethodType(&heap.tospace, typeType);
+    Type* const methodType = tryCreateMethodType(heap, typeType);
     if (!methodType) { return nullptr; }
-    Type* const closureType = tryCreateClosureType(&heap.tospace, typeType);
+    Type* const closureType = tryCreateClosureType(heap, typeType);
     if (!closureType) { return nullptr; }
-    Type* const multimethodType = tryCreateFixedType<Multimethod, false>(&heap.tospace, typeType);
+    Type* const multimethodType = tryCreateFixedType<Multimethod, false>(heap, typeType);
     if (!multimethodType) { return nullptr; }
-    Type* const continuationType = tryCreateContinuationType(&heap.tospace, typeType);
+    Type* const continuationType = tryCreateContinuationType(heap, typeType);
     if (!continuationType) { return nullptr; }
-    Type* const unboundType = tryCreateEmptyType(&heap.tospace, typeType);
+    Type* const unboundType = tryCreateEmptyType(heap, typeType);
     if (!unboundType) { return nullptr; }
-    Type* const varType = tryCreateFixedType<Var, false>(&heap.tospace, typeType);
+    Type* const varType = tryCreateFixedType<Var, false>(heap, typeType);
     if (!varType) { return nullptr; }
-    Type* const knotType = tryCreateFixedType<Knot, false>(&heap.tospace, typeType);
+    Type* const knotType = tryCreateFixedType<Knot, false>(heap, typeType);
     if (!knotType) { return nullptr; }
-    Type* const nsType = tryCreateFixedType<Namespace, false>(&heap.tospace, typeType);
+    Type* const nsType = tryCreateFixedType<Namespace, false>(heap, typeType);
     if (!nsType) { return nullptr; }
-    Type* const inputFileType = tryCreateFixedType<InputFile, true>(&heap.tospace, typeType);
+    Type* const inputFileType = tryCreateFixedType<InputFile, true>(heap, typeType);
     if (!inputFileType) { return nullptr; }
-    Type* const endType = tryCreateEmptyType(&heap.tospace, typeType);
+    Type* const endType = tryCreateEmptyType(heap, typeType);
     if (!endType) { return nullptr; }
-    Type* const fatalErrorType = tryCreateFatalErrorType(&heap.tospace, typeType);
+    Type* const fatalErrorType = tryCreateFatalErrorType(heap, typeType);
     if (!fatalErrorType) { return nullptr; }
-    Type* const unboundErrorType = tryCreateFixedType<UnboundError, false>(&heap.tospace, typeType);
+    Type* const unboundErrorType = tryCreateFixedType<UnboundError, false>(heap, typeType);
     if (!unboundType) { return nullptr; }
-    Type* const typeErrorType = tryCreateFixedType<TypeError, false>(&heap.tospace, typeType);
+    Type* const typeErrorType = tryCreateFixedType<TypeError, false>(heap, typeType);
     if (!typeErrorType) { return nullptr; }
-    Type* const arityErrorType = tryCreateFixedType<ArityError, false>(&heap.tospace, typeType);
+    Type* const arityErrorType = tryCreateFixedType<ArityError, false>(heap, typeType);
     if (!arityErrorType) { return nullptr; }
     Type* const inapplicableErrorType =
-        tryCreateFixedType<InapplicableError, false>(&heap.tospace, typeType);
+        tryCreateFixedType<InapplicableError, false>(heap, typeType);
     if (!inapplicableErrorType) { return nullptr; }
     
-    Type* const fixnumType = tryCreateImmType(&heap.tospace, typeType);
+    Type* const fixnumType = tryCreateImmType(heap, typeType);
     if (!fixnumType) { return nullptr; }
-    Type* const charType = tryCreateImmType(&heap.tospace, typeType);
+    Type* const charType = tryCreateImmType(heap, typeType);
     if (!charType) { return nullptr; }
-    Type* const flonumType = tryCreateImmType(&heap.tospace, typeType);
+    Type* const flonumType = tryCreateImmType(heap, typeType);
     if (!flonumType) { return nullptr; }
-    Type* const boolType = tryCreateImmType(&heap.tospace, typeType);
+    Type* const boolType = tryCreateImmType(heap, typeType);
     if (!boolType) { return nullptr; }
 
-    End* const end = (End*)heap.tospace.tryAlloc(endType);
+    End* const end = (End*)heap.tryAlloc(endType);
     if (!end) { return nullptr; }
-    EmptyList* const emptyList = (EmptyList*)heap.tospace.tryAlloc(emptyListType);
+    EmptyList* const emptyList = (EmptyList*)heap.tryAlloc(emptyListType);
     if (!emptyList) { return nullptr; }
-    Unbound* const unbound = (Unbound*)heap.tospace.tryAlloc(unboundType);
+    Unbound* const unbound = (Unbound*)heap.tryAlloc(unboundType);
     if (!unbound) { return nullptr; }
     Continuation* const exit =
-        (Continuation*)heap.tospace.tryAllocFlex(continuationType, Fixnum{0l});
+        (Continuation*)heap.tryAllocFlex(continuationType, Fixnum{0l});
     if (!exit) { return nullptr; }
     const_cast<Fixnum&>(exit->pc) = Fixnum{0l}; // HACK: Init
 
     // HACK:
-    Var* const debugPlaceholder = tryCreateUnboundVar(&heap.tospace, varType, HRef(unbound));
+    Var* const debugPlaceholder = tryCreateUnboundVar(heap, varType, HRef(unbound));
     if (!debugPlaceholder) { return nullptr; }
-    Var* const errorHandlerPlaceholder = tryCreateUnboundVar(&heap.tospace, varType, HRef(unbound));
+    Var* const errorHandlerPlaceholder = tryCreateUnboundVar(heap, varType, HRef(unbound));
     if (!errorHandlerPlaceholder) { return nullptr; }
 
     HRef<Namespace> ns = HRef<Namespace>::fromUnchecked(ORef{0}); // HACK;
-    if (!tryCreateNamespace(&heap.tospace, &ns, nsType, arrayType)) { return nullptr; }
+    if (!tryCreateNamespace(heap, &ns, nsType, arrayType)) { return nullptr; }
 
     State* const dest = new (std::nothrow) State{
         std::move(heap),
@@ -615,10 +615,9 @@ bool isa(State const* state, HRef<Type> type, ORef v) {
 [[maybe_unused]]
 void assertStateInTospace(State const* state) {
     if (isHeaped(state->method)) {
-        assert(allocatedInSemispace(&state->heap.tospace,
-                                    &*HRef<Object>::fromUnchecked(state->method)));
-        assert(allocatedInSemispace(&state->heap.tospace, state->code));
-        assert(allocatedInSemispace(&state->heap.tospace, &state->consts[0].get()));
+        assert(state->heap.evacuated(&*HRef<Object>::fromUnchecked(state->method)));
+        assert(state->heap.evacuated(reinterpret_cast<Object const*>(state->code)));
+        assert(state->heap.evacuated(reinterpret_cast<Object const*>(&state->consts[0].get())));
     }
 
     // TODO: When we start only marking live regs, this has to only check those as well to avoid
@@ -626,43 +625,43 @@ void assertStateInTospace(State const* state) {
     for (size_t i = 0; i < REG_COUNT; ++i) {
         ORef const reg = state->regs[i];
         if (isHeaped(reg)) {
-            assert(allocatedInSemispace(&state->heap.tospace, &*HRef<Object>::fromUnchecked(reg)));
+            assert(state->heap.evacuated(&*HRef<Object>::fromUnchecked(reg)));
         }
     }
 
-    assert(allocatedInSemispace(&state->heap.tospace, &*state->ns));
+    assert(state->heap.evacuated(&*state->ns));
 
     for (size_t i = 0; i < BOOTSTRAP_TYPE_COUNT; ++i) {
-        assert(allocatedInSemispace(&state->heap.tospace, &*state->typesArray[i]));
+        assert(state->heap.evacuated(&*state->typesArray[i]));
     }
 
     for ([[maybe_unused]] HRef<Symbol> const& symbol : state->symbols) {
-        assert(allocatedInSemispace(&state->heap.tospace, &*symbol));
+        assert(state->heap.evacuated(&*symbol));
     }
 
     for ([[maybe_unused]] HRef<Method> const& specialization : state->specializations) {
-        assert(allocatedInSemispace(&state->heap.tospace, &*specialization));
+        assert(state->heap.evacuated(&*specialization));
     }
 
     for (size_t i = 0; i < BOOTSTRAP_SINGLETON_COUNT; ++i) {
         ORef const v = state->singletonsArray[i];
         if (isHeaped(v)) {
-            assert(allocatedInSemispace(&state->heap.tospace, &*HRef<Object>::fromUnchecked(v)));
+            assert(state->heap.evacuated(&*HRef<Object>::fromUnchecked(v)));
         }
     }
 
-    assert(allocatedInSemispace(&state->heap.tospace, &*state->debug));
-    assert(allocatedInSemispace(&state->heap.tospace, &*state->errorHandler));
+    assert(state->heap.evacuated(&*state->debug));
+    assert(state->heap.evacuated(&*state->errorHandler));
 
     for (ORef* const v : state->shadowstack) {
         if (isHeaped(*v)) {
-            assert(allocatedInSemispace(&state->heap.tospace, &*HRef<Object>::fromUnchecked(*v)));
+            assert(state->heap.evacuated(&*HRef<Object>::fromUnchecked(*v)));
         }
     }
 }
 
 void defaultPrepCollection(State* state) {
-    flipSemispaces(&state->heap);
+    state->heap.flipSemispaces();
     markRoots(state);
 }
 
@@ -671,7 +670,7 @@ void completeCollection(State* state) {
 
     updateWeakRefs(state);
 
-    state->heap.fromspace.refurbish(&state->heap.tospace);
+    state->heap.refurbish();
     initSpecialPurposeRegs(state);
 
 #ifndef NDEBUG
@@ -704,11 +703,11 @@ void collectTracingIR(State* state, struct IRFn* fn, struct MethodBuilder* build
 }
 
 HRef<Type> createSlotsType(State* state, HRef<Symbol> name, Fixnum slotCount, Bool isFlex) {
-    Type* ptr = static_cast<decltype(ptr)>(state->heap.tospace.tryAlloc(&*state->types.type));
+    Type* ptr = static_cast<decltype(ptr)>(state->heap.tryAlloc(&*state->types.type));
     if (mustCollect(ptr)) {
         auto const nameG = state->pushRoot(&name);
         collect(state);
-        ptr = static_cast<decltype(ptr)>(state->heap.tospace.allocOrDie(&*state->types.type));
+        ptr = static_cast<decltype(ptr)>(state->heap.allocOrDie(&*state->types.type));
     }
 
     Fixnum const minSize = !isFlex.val()
@@ -722,11 +721,11 @@ HRef<Type> createSlotsType(State* state, HRef<Symbol> name, Fixnum slotCount, Bo
 
 String* allocString(State* state, Fixnum byteCount) {
     String* ptr =
-        static_cast<String*>(state->heap.tospace.tryAllocFlex(&*state->types.string,
+        static_cast<String*>(state->heap.tryAllocFlex(&*state->types.string,
                              byteCount));
     if (mustCollect(ptr)) {
         collect(state);
-        ptr = static_cast<String*>(state->heap.tospace.allocFlexOrDie(&*state->types.string,
+        ptr = static_cast<String*>(state->heap.allocFlexOrDie(&*state->types.string,
                                    byteCount));
     }
 
@@ -763,45 +762,45 @@ HRef<ArrayMut> createArrayMut(State* state, Fixnum count) {
 
 HRef<ByteArrayMut> createByteArrayMut(State* state, Fixnum count) {
     ByteArrayMut* ptr = static_cast<ByteArrayMut*>(
-        state->heap.tospace.tryAllocFlex(&*state->types.byteArrayMut, count));
+        state->heap.tryAllocFlex(&*state->types.byteArrayMut, count));
     if (mustCollect(ptr)) {
         collect(state);
         ptr = static_cast<ByteArrayMut*>(
-            state->heap.tospace.allocFlexOrDie(&*state->types.byteArrayMut, count));
+            state->heap.allocFlexOrDie(&*state->types.byteArrayMut, count));
     }
 
     return HRef{ptr};
 }
 
 HRef<Loc> createLoc(State* state, HRef<String> filename, Fixnum byteIdx) {
-    Loc* ptr = static_cast<Loc*>(state->heap.tospace.tryAlloc(&*state->types.loc));
+    Loc* ptr = static_cast<Loc*>(state->heap.tryAlloc(&*state->types.loc));
     if (mustCollect(ptr)) {
         auto const filenameG = state->pushRoot(&filename);
         collect(state);
-        ptr = static_cast<Loc*>(state->heap.tospace.allocOrDie(&*state->types.loc));
+        ptr = static_cast<Loc*>(state->heap.allocOrDie(&*state->types.loc));
     }
 
     return HRef{new (ptr) Loc{filename, byteIdx}};
 }
 
 HRef<Pair> allocPair(State* state) {
-    Pair* ptr = (Pair*)state->heap.tospace.tryAlloc(&*state->types.pair);
+    Pair* ptr = (Pair*)state->heap.tryAlloc(&*state->types.pair);
     if (mustCollect(ptr)) {
         collect(state);
-        ptr = (Pair*)state->heap.tospace.allocOrDie(&*state->types.pair);
+        ptr = (Pair*)state->heap.allocOrDie(&*state->types.pair);
     }
     
     return HRef(ptr);
 }
 
 HRef<Pair> createPair(State *state, ORef car, ORef cdr, ORef maybeLoc) {
-    Pair* ptr = (Pair*)state->heap.tospace.tryAlloc(&*state->types.pair);
+    Pair* ptr = (Pair*)state->heap.tryAlloc(&*state->types.pair);
     if (mustCollect(ptr)) {
         auto const carG = state->pushRoot(&car);
         auto const cdrG = state->pushRoot(&cdr);
         auto const maybeLocG = state->pushRoot(&maybeLoc);
         collect(state);
-        ptr = (Pair*)state->heap.tospace.allocOrDie(&*state->types.pair);
+        ptr = (Pair*)state->heap.allocOrDie(&*state->types.pair);
     }
 
     return HRef{new (ptr) Pair{car, cdr, maybeLoc}};
@@ -812,7 +811,7 @@ Method* tryAllocBytecodeMethod(
     Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs
 ) {
     auto const ptr =
-        static_cast<Method*>(state->heap.tospace.tryAllocFlex(&*state->types.method, arity));
+        static_cast<Method*>(state->heap.tryAllocFlex(&*state->types.method, arity));
     if (!ptr) { return ptr; }
 
     return new (ptr) Method{
@@ -826,7 +825,7 @@ Method* allocBytecodeMethodOrDie(
     Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs
 ) {
     auto const ptr =
-        static_cast<Method*>(state->heap.tospace.allocFlexOrDie(&*state->types.method, arity));
+        static_cast<Method*>(state->heap.allocFlexOrDie(&*state->types.method, arity));
 
     return new (ptr) Method{
         reinterpret_cast<MethodCode>(callBytecode), code, consts, hasVarArg, hash, maybeName,
@@ -838,7 +837,7 @@ HRef<Method> allocBytecodeMethod(
     State* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
     Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs
 ) {
-    auto ptr = static_cast<Method*>(state->heap.tospace.tryAllocFlex(&*state->types.method, arity));
+    auto ptr = static_cast<Method*>(state->heap.tryAllocFlex(&*state->types.method, arity));
     if (mustCollect(ptr)) {
         auto const codeG = state->pushRoot(&code);
         auto const constsG = state->pushRoot(&consts);
@@ -847,7 +846,7 @@ HRef<Method> allocBytecodeMethod(
         auto const maybeSrcByteIdxsG = state->pushRoot(&maybeSrcByteIdxs);
         collect(state);
         ptr =
-            static_cast<Method*>(state->heap.tospace.allocFlexOrDie(&*state->types.method, arity));
+            static_cast<Method*>(state->heap.allocFlexOrDie(&*state->types.method, arity));
     }
 
     return HRef{new (ptr) Method{
@@ -869,7 +868,7 @@ HRef<Method> vcreatePrimopMethod(
         domain[i] = HRef<Type>::fromUnchecked(va_arg(va_domain, ORef));
     }
 
-    Method* ptr = (Method*)state->heap.tospace.tryAllocFlex(&*state->types.method, fxArity);
+    Method* ptr = (Method*)state->heap.tryAllocFlex(&*state->types.method, fxArity);
     if (mustCollect(ptr)) {
         auto domainRoots = std::vector<RootGuard>{};
         domainRoots.reserve(arity);
@@ -877,7 +876,7 @@ HRef<Method> vcreatePrimopMethod(
             domainRoots.push_back(state->pushRoot(domain + i));
         }
         collect(state);
-        ptr = (Method*)state->heap.tospace.allocFlexOrDie(&*state->types.method, fxArity);
+        ptr = (Method*)state->heap.allocFlexOrDie(&*state->types.method, fxArity);
     }
 
     uintptr_t const hash = fnv1aHash_n((uint8_t*)&nativeCode, sizeof nativeCode); // HACK
@@ -910,11 +909,11 @@ HRef<Method> createPrimopMethod(
 
 HRef<Closure> allocClosure(State* state, HRef<Method> method, Fixnum cloverCount) {
     Closure* ptr =
-        (Closure*)state->heap.tospace.tryAllocFlex(&*state->types.closure, cloverCount);
+        (Closure*)state->heap.tryAllocFlex(&*state->types.closure, cloverCount);
     if (mustCollect(ptr)) {
         auto const methodG = state->pushRoot(&method);
         collect(state);
-        ptr = (Closure*)state->heap.tospace.allocFlexOrDie(&*state->types.closure, cloverCount);
+        ptr = (Closure*)state->heap.allocFlexOrDie(&*state->types.closure, cloverCount);
     }
 
     const_cast<ORef&>(ptr->method) = method; // Initing so `const_cast` and no write barrier
@@ -925,12 +924,12 @@ HRef<Closure> allocClosure(State* state, HRef<Method> method, Fixnum cloverCount
 HRef<Continuation> allocContinuation(
     State* state, HRef<Method> method, Fixnum pc, Fixnum cloverCount
 ) {
-    Continuation* ptr = (Continuation*)state->heap.tospace.tryAllocFlex(
+    Continuation* ptr = (Continuation*)state->heap.tryAllocFlex(
         &*state->types.continuation, cloverCount);
     if (mustCollect(ptr)) {
         auto const methodG = state->pushRoot(&method);
         collect(state);
-        ptr =(Continuation*)state->heap.tospace.allocFlexOrDie(
+        ptr =(Continuation*)state->heap.allocFlexOrDie(
             &*state->types.continuation, cloverCount);
     }
 
@@ -941,10 +940,10 @@ HRef<Continuation> allocContinuation(
 }
 
 HRef<Knot> allocKnot(State* state) {
-    Knot* ptr = (Knot*)state->heap.tospace.tryAlloc(&*state->types.knot);
+    Knot* ptr = (Knot*)state->heap.tryAlloc(&*state->types.knot);
     if (mustCollect(ptr)) {
         collect(state);
-        ptr = (Knot*)state->heap.tospace.allocOrDie(&*state->types.knot);
+        ptr = (Knot*)state->heap.allocOrDie(&*state->types.knot);
     }
 
     return HRef(ptr);
@@ -952,45 +951,45 @@ HRef<Knot> allocKnot(State* state) {
 
 HRef<InputFile> createInputFile(State* state, UTF8InputFile&& file) {
     InputFile* ptr = static_cast<decltype(ptr)>(
-        state->heap.tospace.tryAlloc(&*state->types.inputFile));
+        state->heap.tryAlloc(&*state->types.inputFile));
     if (mustCollect(ptr)) {
         collect(state);
         ptr = static_cast<decltype(ptr)>(
-            state->heap.tospace.allocOrDie(&*state->types.inputFile));
+            state->heap.allocOrDie(&*state->types.inputFile));
     }
 
     return HRef{new (ptr) InputFile{std::move(file)}};
 }
 
 HRef<UnboundError> createUnboundError(State* state, HRef<Symbol> name) {
-    UnboundError* ptr = (UnboundError*)state->heap.tospace.tryAlloc(&*state->types.unboundError);
+    UnboundError* ptr = (UnboundError*)state->heap.tryAlloc(&*state->types.unboundError);
     if (mustCollect(ptr)) {
         auto const nameG = state->pushRoot(&name);
         collect(state);
-        ptr = (UnboundError*)state->heap.tospace.allocOrDie(&*state->types.unboundError);
+        ptr = (UnboundError*)state->heap.allocOrDie(&*state->types.unboundError);
     }
 
     return HRef{new (ptr) UnboundError{name}};
 }
 
 HRef<TypeError> createTypeError(State* state, HRef<Type> type, ORef val) {
-    TypeError* ptr = (TypeError*)state->heap.tospace.tryAlloc(&*state->types.typeError);
+    TypeError* ptr = (TypeError*)state->heap.tryAlloc(&*state->types.typeError);
     if (mustCollect(ptr)) {
         auto const typeG = state->pushRoot(&type);
         auto const valG = state->pushRoot(&val);
         collect(state);
-        ptr = (TypeError*)state->heap.tospace.allocOrDie(&*state->types.typeError);
+        ptr = (TypeError*)state->heap.allocOrDie(&*state->types.typeError);
     }
 
     return HRef{new (ptr) TypeError{type, val}};
 }
 
 HRef<ArityError> createArityError(State* state, HRef<Closure> callee, Fixnum callArgc) {
-    ArityError* ptr = (ArityError*)state->heap.tospace.tryAlloc(&*state->types.arityError);
+    ArityError* ptr = (ArityError*)state->heap.tryAlloc(&*state->types.arityError);
     if (mustCollect(ptr)) {
         auto const calleeG = state->pushRoot(&callee);
         collect(state);
-        ptr = (ArityError*)state->heap.tospace.allocOrDie(&*state->types.arityError);
+        ptr = (ArityError*)state->heap.allocOrDie(&*state->types.arityError);
     }
 
     return HRef{new (ptr) ArityError{callee, callArgc}};
@@ -998,11 +997,11 @@ HRef<ArityError> createArityError(State* state, HRef<Closure> callee, Fixnum cal
 
 HRef<InapplicableError> createInapplicableError(State* state, HRef<Multimethod> callee) {
     InapplicableError* ptr =
-        (InapplicableError*)state->heap.tospace.tryAlloc(&*state->types.inapplicableError);
+        (InapplicableError*)state->heap.tryAlloc(&*state->types.inapplicableError);
     if (mustCollect(ptr)) {
         auto const calleeG = state->pushRoot(&callee);
         collect(state);
-        ptr = (InapplicableError*)state->heap.tospace.allocOrDie(
+        ptr = (InapplicableError*)state->heap.allocOrDie(
             &*state->types.inapplicableError);
     }
 
@@ -1015,11 +1014,11 @@ HRef<FatalError> createOverflowError(
     Fixnum const count = Fixnum{3l};
 
     FatalError* ptr =
-        (FatalError*)state->heap.tospace.tryAllocFlex(&*state->types.fatalError, count);
+        (FatalError*)state->heap.tryAllocFlex(&*state->types.fatalError, count);
     if (mustCollect(ptr)) {
         auto const calleeG = state->pushRoot(&callee);
         collect(state);
-        ptr = (FatalError*)state->heap.tospace.allocFlexOrDie(&*state->types.fatalError, count);
+        ptr = (FatalError*)state->heap.allocFlexOrDie(&*state->types.fatalError, count);
     }
     HRef<FatalError> res = HRef(ptr);
 
@@ -1037,11 +1036,11 @@ HRef<FatalError> createDivByZeroError(
     Fixnum const count = Fixnum{3l};
 
     FatalError* ptr =
-        (FatalError*)state->heap.tospace.tryAllocFlex(&*state->types.fatalError, count);
+        (FatalError*)state->heap.tryAllocFlex(&*state->types.fatalError, count);
     if (mustCollect(ptr)) {
         auto const calleeG = state->pushRoot(&callee);
         collect(state);
-        ptr = (FatalError*)state->heap.tospace.allocFlexOrDie(&*state->types.fatalError, count);
+        ptr = (FatalError*)state->heap.allocFlexOrDie(&*state->types.fatalError, count);
     }
     HRef<FatalError> res = HRef(ptr);
 

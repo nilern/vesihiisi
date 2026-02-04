@@ -53,8 +53,7 @@ void assertIRFnInTospace(State const* state, IRFn const* fn) {
     }
 
     if (isHeaped(fn->maybeName)) {
-        assert(allocatedInSemispace(&state->heap.tospace,
-                                    &*HRef<Object>::fromUnchecked(fn->maybeName)));
+        assert(state->heap.evacuated(&*HRef<Object>::fromUnchecked(fn->maybeName)));
     }
 }
 
@@ -110,27 +109,26 @@ void markIRStmt(State* state, IRStmt* stmt) {
 
 void assertIRStmtInTospace(State const* state, IRStmt const* stmt) {
     if (isHeaped(stmt->maybeLoc)) {
-        assert(allocatedInSemispace(&state->heap.tospace,
-                                    &*HRef<Object>::fromUnchecked(stmt->maybeLoc)));
+        assert(state->heap.evacuated(&*HRef<Object>::fromUnchecked(stmt->maybeLoc)));
     }
 
     switch (stmt->type) {
     case IRStmt::GLOBAL_DEF: {
-        assert(allocatedInSemispace(&state->heap.tospace, &*stmt->define.name));
+        assert(state->heap.evacuated(&*stmt->define.name));
     }; break;
 
     case IRStmt::GLOBAL_SET: {
-        assert(allocatedInSemispace(&state->heap.tospace, &*stmt->globalSet.name));
+        assert(state->heap.evacuated(&*stmt->globalSet.name));
     }; break;
 
     case IRStmt::GLOBAL: {
-        assert(allocatedInSemispace(&state->heap.tospace, &*stmt->global.name));
+        assert(state->heap.evacuated(&*stmt->global.name));
     }; break;
 
     case IRStmt::CONST_DEF: {
         ORef const v = stmt->constDef.v;
         if (isHeaped(v)) {
-            assert(allocatedInSemispace(&state->heap.tospace, &*HRef<Object>::fromUnchecked(v)));
+            assert(state->heap.evacuated(&*HRef<Object>::fromUnchecked(v)));
         }
     }; break;
 
@@ -147,10 +145,9 @@ void markIRTransfer(State& state, IRTransfer& transfer) {
     transfer.maybeLoc = state.heap.mark(transfer.maybeLoc);
 }
 
-void assertIRTransferInTospace(State const& state, IRTransfer const& transfer) {
+void assertIRTransferInTospace([[maybe_unused]] State const& state, IRTransfer const& transfer) {
     if (isHeaped(transfer.maybeLoc)) {
-        assert(allocatedInSemispace(&state.heap.tospace,
-                                    &*HRef<Object>::fromUnchecked(transfer.maybeLoc)));
+        assert(state.heap.evacuated(&*HRef<Object>::fromUnchecked(transfer.maybeLoc)));
     }
 }
 

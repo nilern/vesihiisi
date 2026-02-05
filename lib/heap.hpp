@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <utility>
 
 #include "object.hpp"
@@ -9,6 +10,7 @@ namespace {
 class Heap {
     struct Semispace {
         char* free;
+        char* scan;
         char* limit;
         char* start;
 
@@ -16,7 +18,9 @@ class Heap {
 
         ~Semispace() { std::free(start); }
 
-        Semispace(Semispace&& that) : free{that.free}, limit{that.limit}, start{that.start} {
+        Semispace(Semispace&& that) :
+            free{that.free}, scan{that.scan}, limit{that.limit}, start{that.start}
+        {
             that.start = nullptr; // Prevent double free
         }
         Semispace& operator=(Semispace&& that);
@@ -27,32 +31,31 @@ class Heap {
         Semispace& operator=(Semispace const&) = delete;
 
         [[nodiscard]]
-        bool isValid() const { return free != nullptr; }
+        bool isValid() const { return start != nullptr; }
 
         size_t size() const { return size_t(limit - start); }
 
         [[nodiscard]]
         bool allocatedIn(Object const* obj) const {
             auto const data = reinterpret_cast<char const*>(obj);
-            return start <= data && data < free;
+            return start <= data && data <= free; // `data == free` can hold for zero-sized objs
         }
 
         [[nodiscard]]
         Object* tryAlloc(Type const* type);
 
         [[nodiscard]]
-        Object* allocOrDie(Type const* type);
-
-        [[nodiscard]]
         Object* tryAllocFlex(Type const* type, Fixnum length);
 
         [[nodiscard]]
-        Object* allocFlexOrDie(Type const* type, Fixnum length);
+        Object* nextGrey(char* scan) const;
 
         void refurbish(Semispace const& other);
 
     private:
-        bool shouldGrow(Semispace const& other) const;
+        bool shouldGrow(Semispace const& other) const {
+            return other.size() > size(); // Catch up?
+        }
     };
 
     struct Nursery {
@@ -78,36 +81,71 @@ class Heap {
         Nursery& operator=(Nursery const&) = delete;
 
         [[nodiscard]]
-        bool isValid() const { return free != nullptr; }
+        bool isValid() const { return start != nullptr; }
 
         size_t size() const { return size_t(end - start); }
 
-        [[maybe_unused]]
+        [[nodiscard]]
+        bool allocatedIn(Object const* obj) const {
+            auto const data = reinterpret_cast<char const*>(obj);
+            return start <= data && data <= free; // `data == free` can hold for zero-sized objs
+        }
+
         [[nodiscard]]
         Object* tryAlloc(Type const* type);
 
-        [[maybe_unused]]
+        [[nodiscard]]
+        Object* allocOrDie(Type const* type);
+
         [[nodiscard]]
         Object* tryAllocFlex(Type const* type, Fixnum length);
 
         [[nodiscard]]
+        Object* allocFlexOrDie(Type const* type, Fixnum length);
+
+        std::span<Object* const> remembereds() const {
+            return std::span{remembered, reinterpret_cast<Object**>(end)};
+        }
+
+        [[nodiscard]]
         bool tryToRemember(Object* obj);
+
+        void refurbish() {
+            memset(start, 0, size());
+            free = start;
+            remembered = reinterpret_cast<Object**>(end);
+        }
     };
+
+public:
+    enum CollectionMode { MINOR, MAJOR, EXPANDING };
 
     Nursery nursery;
     Semispace tospace;
     Semispace fromspace;
+    std::optional<Semispace> insufficientTospace = std::nullopt;
+    CollectionMode mode = MINOR;
 
     explicit Heap(size_t size) :
         nursery{size / 9}, tospace{nursery.size() * 4}, fromspace{tospace.size()}
     {}
 
-    Object* tryShallowCopy(Object* obj);
+    Object* tryEvacuate(Object* obj);
 
     [[nodiscard]]
-    Header markHeader(Header header);
+    std::optional<Header> markHeader(Header header);
 
-    void* scanObj(void* const scan);
+    [[nodiscard]]
+    char* scanObj(Object* obj);
+
+    [[nodiscard]]
+    Object* mark(Object* obj);
+
+    void flipSemispaces() { std::swap(tospace, fromspace); }
+
+    void growTospace();
+
+    void escalate();
 
 public:
     static Heap tryCreate(size_t size);
@@ -118,34 +156,32 @@ public:
     // FIXME: Allocating objects that do not fit in nursery (or even tospace!):
 
     [[nodiscard]]
-    Object* tryAlloc(Type const* type) { return tospace.tryAlloc(type); }
+    Object* tryAlloc(Type const* type) { return nursery.tryAlloc(type); }
 
     [[nodiscard]]
-    Object* allocOrDie(Type const* type) { return tospace.allocOrDie(type); }
+    Object* allocOrDie(Type const* type) { return nursery.allocOrDie(type); }
 
     [[nodiscard]]
     Object* tryAllocFlex(Type const* type, Fixnum length) {
-        return tospace.tryAllocFlex(type, length);
+        return nursery.tryAllocFlex(type, length);
     }
 
     [[nodiscard]]
     Object* allocFlexOrDie(Type const* type, Fixnum length) {
-        return tospace.allocFlexOrDie(type, length);
+        return nursery.allocFlexOrDie(type, length);
     }
 
+    // OPTIMIZE: Do all/some filtering here instead of leaving it all to collection time:
     [[nodiscard]]
     bool writeBarrier(Object* dest) { return nursery.tryToRemember(dest); }
 
     [[nodiscard]]
-    Object* mark(Object* obj);
+    std::optional<ORef> mark(ORef oref);
+
     [[nodiscard]]
-    ORef mark(ORef oref);
+    bool collect();
 
-    void flipSemispaces() { std::swap(tospace, fromspace); }
-
-    void collect();
-
-    void refurbish() { fromspace.refurbish(tospace); }
+    void refurbish();
 
     [[nodiscard]]
     bool evacuated(Object const* obj) const { return tospace.allocatedIn(obj); }

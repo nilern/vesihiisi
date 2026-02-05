@@ -14,12 +14,12 @@ SymbolTable::SymbolTable() { entries = (ORef*)calloc(cap, sizeof *entries); }
 
 SymbolTable::~SymbolTable() { free(entries); }
 
-void SymbolTable::prune() {
+void SymbolTable::prune(State const& state) {
     for (size_t i = 0; i < cap; ++i) {
         ORef* const v = &entries[i];
         if (isHeaped(*v)) {
-            Object* const fwdPtr = HRef<Object>::fromUnchecked(*v)->tryForwarded();
-            *v = fwdPtr ? HRef(fwdPtr) : Tombstone;
+            Object const* obj = HRef<Object>::fromUnchecked(*v)->canonical();
+            *v = state.heap.evacuated(obj) ? HRef{obj} : Tombstone;
         }
     }
 }
@@ -170,12 +170,12 @@ Specializations::Specializations() { entries = (ORef*)calloc(cap, sizeof *entrie
 
 Specializations::~Specializations() { free(entries); }
 
-void Specializations::prune() {
+void Specializations::prune(State const& state) {
     for (size_t i = 0; i < cap; ++i) {
         ORef* const v = &entries[i];
         if (isHeaped(*v)) {
-            Object* const fwdPtr = HRef<Object>::fromUnchecked(*v)->tryForwarded();
-            *v = fwdPtr ? HRef<Object>(fwdPtr) : Tombstone;
+            Object const* obj = HRef<Object>::fromUnchecked(*v)->canonical();
+            *v = state.heap.evacuated(obj) ? HRef{obj} : Tombstone;
         }
     }
 }

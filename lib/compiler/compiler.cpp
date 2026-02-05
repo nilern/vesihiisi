@@ -33,15 +33,18 @@ IRName renameIRName(Compiler* compiler, IRName name) {
     return renameSymbolImpl(compiler, compiler->nameSyms[name.index]);
 }
 
-void markIRBlock(State* state, struct IRBlock* block);
+[[nodiscard]]
+bool markIRBlock(State* state, struct IRBlock* block);
 
-void markIRFn(State* state, IRFn* fn) {
+bool markIRFn(State* state, IRFn* fn) {
     size_t const blockCount = fn->blockCount;
     for (size_t i = 0; i < blockCount; ++i) {
-        markIRBlock(state, fn->blocks[i]);
+        if (!markIRBlock(state, fn->blocks[i])) { return false; }
     }
 
-    fn->maybeName = state->heap.mark(fn->maybeName);
+    fn->maybeName = TRY_NULLOPT_TO_FALSE(state->heap.mark(fn->maybeName));
+
+    return true;
 }
 
 void assertIRBlockInTospace(State const* state, struct IRBlock const* block);
@@ -76,35 +79,42 @@ void pushArg(Compiler* compiler, Args* args, IRName arg) {
     args->names[args->count++] = arg;
 }
 
-void markIRStmt(State* state, IRStmt* stmt) {
-    stmt->maybeLoc = state->heap.mark(stmt->maybeLoc);
+[[nodiscard]]
+bool markIRStmt(State* state, IRStmt* stmt) {
+    stmt->maybeLoc = TRY_NULLOPT_TO_FALSE(state->heap.mark(stmt->maybeLoc));
 
     switch (stmt->type) {
     case IRStmt::GLOBAL_DEF: {
         stmt->define.name =
-            HRef<Symbol>::fromUnchecked(state->heap.mark(stmt->define.name));
+            HRef<Symbol>::fromUnchecked(TRY_NULLOPT_TO_FALSE(state->heap.mark(stmt->define.name)));
     }; break;
 
     case IRStmt::GLOBAL_SET: {
         stmt->globalSet.name =
-            HRef<Symbol>::fromUnchecked(state->heap.mark(stmt->globalSet.name));
+            HRef<Symbol>::fromUnchecked(
+                TRY_NULLOPT_TO_FALSE(state->heap.mark(stmt->globalSet.name)));
     }; break;
 
     case IRStmt::GLOBAL: {
-        stmt->global.name = HRef<Symbol>::fromUnchecked(state->heap.mark(stmt->global.name));
+        stmt->global.name =
+            HRef<Symbol>::fromUnchecked(TRY_NULLOPT_TO_FALSE(state->heap.mark(stmt->global.name)));
     }; break;
 
     case IRStmt::CONST_DEF: {
-        stmt->constDef.v = state->heap.mark(stmt->constDef.v);
+        stmt->constDef.v = TRY_NULLOPT_TO_FALSE(state->heap.mark(stmt->constDef.v));
     }; break;
 
     case IRStmt::CLOVER: break;
 
-    case IRStmt::METHOD_DEF: markIRFn(state, &stmt->methodDef.fn); break;
+    case IRStmt::METHOD_DEF: {
+        if (!markIRFn(state, &stmt->methodDef.fn)) { return false; }
+    }; break;
 
     case IRStmt::CLOSURE: case IRStmt::MOVE: case IRStmt::SWAP:
     case IRStmt::KNOT: case IRStmt::KNOT_INIT: case IRStmt::KNOT_GET: break;
     }
+
+    return true;
 }
 
 void assertIRStmtInTospace(State const* state, IRStmt const* stmt) {
@@ -141,8 +151,10 @@ void assertIRStmtInTospace(State const* state, IRStmt const* stmt) {
     }
 }
 
-void markIRTransfer(State& state, IRTransfer& transfer) {
-    transfer.maybeLoc = state.heap.mark(transfer.maybeLoc);
+[[nodiscard]]
+bool markIRTransfer(State& state, IRTransfer& transfer) {
+    transfer.maybeLoc = TRY_NULLOPT_TO_FALSE(state.heap.mark(transfer.maybeLoc));
+    return true;
 }
 
 void assertIRTransferInTospace([[maybe_unused]] State const& state, IRTransfer const& transfer) {
@@ -165,13 +177,13 @@ Stmts newStmtsWithCap(Compiler* compiler, size_t cap) {
 
 inline Stmts newStmts(Compiler* compiler) { return newStmtsWithCap(compiler, 2); }
 
-void markIRBlock(State* state, IRBlock* block) {
+bool markIRBlock(State* state, IRBlock* block) {
     size_t stmtCount = block->stmts.count;
     for (size_t i = 0; i < stmtCount; ++i) {
-        markIRStmt(state, &block->stmts.vals[i]);
+        if (!markIRStmt(state, &block->stmts.vals[i])) { return false; }
     }
 
-    markIRTransfer(*state, block->transfer);
+    return markIRTransfer(*state, block->transfer);
 }
 
 void assertIRBlockInTospace(State const* state, IRBlock const* block) {

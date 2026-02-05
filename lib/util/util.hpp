@@ -58,6 +58,11 @@ struct Res {
       if (!TRY_IMPL_result.success) { return ResultType{TRY_IMPL_result.err}; } \
       TRY_IMPL_result.val;})
 
+#define TRY_NULLOPT_TO_FALSE(expr) \
+    ({auto const TRY_NULLOPT_TO_FALSE_IMPL_result = (expr); \
+      if (!TRY_NULLOPT_TO_FALSE_IMPL_result) { return false; } \
+      std::move(*TRY_NULLOPT_TO_FALSE_IMPL_result);})
+
 typedef void (*SwapFn)(void* x, void* y);
 
 void reverse(void* arr, size_t count, size_t size, SwapFn swap);

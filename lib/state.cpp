@@ -13,6 +13,8 @@
 #include "flyweights.hpp"
 #include "namespace.hpp"
 #include "primops.hpp"
+#include "compiler/compiler.hpp"
+#include "compiler/bytecodegen.hpp"
 
 namespace {
 
@@ -88,37 +90,42 @@ bool tryCreateNamespace(
 
 void freeState(State* state) { delete(state); }
 
-void markRoots(State* state) {
-    state->method = state->heap.mark(state->method);
+[[nodiscard]]
+bool markRoots(State* state) {
+    state->method = TRY_NULLOPT_TO_FALSE(state->heap.mark(state->method));
 
     // OPTIMIZE: Only mark registers that are actually live (requires emitting liveness bitmaps for
     // safepoints:
     for (size_t i = 0; i < REG_COUNT; ++i) {
-        state->regs[i] = state->heap.mark(state->regs[i]);
+        state->regs[i] = TRY_NULLOPT_TO_FALSE(state->heap.mark(state->regs[i]));
     }
 
-    state->ns = HRef<Namespace>::fromUnchecked(state->heap.mark(state->ns));
+    state->ns = HRef<Namespace>::fromUnchecked(TRY_NULLOPT_TO_FALSE(state->heap.mark(state->ns)));
 
     for (size_t i = 0; i < BOOTSTRAP_TYPE_COUNT; ++i) {
         state->typesArray[i] =
-            HRef<Type>::fromUnchecked(state->heap.mark(state->typesArray[i]));
+            HRef<Type>::fromUnchecked(TRY_NULLOPT_TO_FALSE(state->heap.mark(state->typesArray[i])));
     }
 
     for (size_t i = 0; i < BOOTSTRAP_SINGLETON_COUNT; ++i) {
-        state->singletonsArray[i] = state->heap.mark(state->singletonsArray[i]);
+        state->singletonsArray[i] =
+            TRY_NULLOPT_TO_FALSE(state->heap.mark(state->singletonsArray[i]));
     }
 
-    state->debug = HRef<Var>::fromUnchecked(state->heap.mark(state->debug));
-    state->errorHandler = HRef<Var>::fromUnchecked(state->heap.mark(state->errorHandler));
+    state->debug = HRef<Var>::fromUnchecked(TRY_NULLOPT_TO_FALSE(state->heap.mark(state->debug)));
+    state->errorHandler =
+        HRef<Var>::fromUnchecked(TRY_NULLOPT_TO_FALSE(state->heap.mark(state->errorHandler)));
 
     for (ORef* const rootHandle : state->shadowstack) {
-        *rootHandle = state->heap.mark(*rootHandle);
+        *rootHandle = TRY_NULLOPT_TO_FALSE(state->heap.mark(*rootHandle));
     }
+
+    return true;
 }
 
 void updateWeakRefs(State* state) {
-    state->symbols.prune();
-    state->specializations.prune();
+    state->symbols.prune(*state);
+    state->specializations.prune(*state);
 }
 
 void initSpecialPurposeRegs(State* state) {
@@ -660,13 +667,12 @@ void assertStateInTospace(State const* state) {
     }
 }
 
-void defaultPrepCollection(State* state) {
-    state->heap.flipSemispaces();
-    markRoots(state);
-}
+[[nodiscard]]
+bool defaultPrepCollection(State* state) { return markRoots(state); }
 
-void completeCollection(State* state) {
-    state->heap.collect();
+[[nodiscard]]
+bool completeCollection(State* state) {
+    if (!state->heap.collect()) { return false; }
 
     updateWeakRefs(state);
 
@@ -676,25 +682,24 @@ void completeCollection(State* state) {
 #ifndef NDEBUG
     assertStateInTospace(state);
 #endif
+
+    return true;
 }
 
 void collect(State* state) {
-    defaultPrepCollection(state);
-
-    completeCollection(state);
+    do {
+        while (!defaultPrepCollection(state)) {}
+    } while (!completeCollection(state));
 }
 
-void markIRFn(State* state, struct IRFn* fn);
-void assertIRFnInTospace(State const* state, struct IRFn const* fn);
-void markMethodBuilder(State* state, struct MethodBuilder* builder);
-void assertMethodBuilderInTospace(State const* state, struct MethodBuilder const* builder);
-
 void collectTracingIR(State* state, struct IRFn* fn, struct MethodBuilder* builder) {
-    defaultPrepCollection(state);
-    markIRFn(state, fn);
-    markMethodBuilder(state, builder);
-
-    completeCollection(state);
+    do {
+        while (!(
+            defaultPrepCollection(state)
+            && markIRFn(state, fn)
+            && markMethodBuilder(state, builder)
+        )) {}
+    } while (!completeCollection(state));
 
 #ifndef NDEBUG
     assertIRFnInTospace(state, fn);

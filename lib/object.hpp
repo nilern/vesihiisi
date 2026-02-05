@@ -19,14 +19,56 @@ static_assert(sizeof(void*) == sizeof(uint64_t)); // Only 64-bit supported (for 
 
 inline bool eq(ORef x, ORef y) { return x.bits == y.bits; }
 
+enum class TaggedType : uint64_t {
+    HEAPED = 0,
+    FIXNUM = 1,
+    CHAR = 2,
+    BOOL = 3,
+    FLONUM = 4
+};
+
+constexpr uint64_t payloadWidth = 48;
+constexpr uint64_t payloadMask = ((uint64_t)1 << payloadWidth) - 1; // `payloadWidth` ones
+
+constexpr uint64_t tagMask = (uint64_t)0x7fff << payloadWidth;
+
+constexpr uint64_t nonFlonumTag = (uint64_t)0x7ffc << payloadWidth;
+
+// OPTIMIZE: Utilize unused bits
+constexpr uint64_t fixnumTag = nonFlonumTag | ((uint64_t)TaggedType::FIXNUM << payloadWidth);
+constexpr uint64_t charTag = nonFlonumTag | ((uint64_t)TaggedType::CHAR << payloadWidth);
+constexpr uint64_t boolTag = nonFlonumTag | ((uint64_t)TaggedType::BOOL << payloadWidth);
+// By using 0b00 for pointers we avoid any conflict with actual NaN:s as we do not want null
+// pointers anyway:
+constexpr uint64_t heapedTag = nonFlonumTag | ((uint64_t)0b00 << payloadWidth);
+
+/// Reference to `Object` of type `T`
+template<typename T>
+struct HRef : public ORef {
+    constexpr explicit HRef(T* ptr) : HRef{heapedTag | (uint64_t)ptr} {}
+
+    static HRef<T> fromUnchecked(ORef v) { return std::bit_cast<HRef<T>>(v); }
+
+    T* operator->() const { return std::bit_cast<T*>(bits & payloadMask); }
+
+    T& operator*() const { return *operator->(); }
+
+private:
+    constexpr explicit HRef(uint64_t t_bits) : ORef{t_bits} {}
+};
+
 /// Access to mutable slot (of type `ORef` or `HRef<U>`) with write barrier. Because GC could move
 /// the underlying slot, to be safe always use this as a temporary e.g. `obj.slot().get/set(...`.
 template<typename T>
 class SlotMut {
-    struct Object* obj_;
     T* slot_;
+    HRef<struct Object> oref_;
+    ptrdiff_t offset_;
 public:
-    SlotMut(struct Object* obj, T& slot) : obj_{obj}, slot_{&slot} {}
+    SlotMut(struct Object* obj, T& slot) :
+        slot_{&slot}, oref_{obj},
+        offset_{reinterpret_cast<char*>(slot_) - reinterpret_cast<char*>(obj)}
+    {}
 
     /// Get value of slot.
     T get() const { return *slot_; }
@@ -75,44 +117,6 @@ public:
     SlotsMut<ORef> data() { return SlotsMut{obj_, span_.data()}; }
 
     SlotMut<ORef> operator[](size_t i) { return SlotMut{obj_, span_[i]}; }
-};
-
-enum class TaggedType : uint64_t {
-    HEAPED = 0,
-    FIXNUM = 1,
-    CHAR = 2,
-    BOOL = 3,
-    FLONUM = 4
-};
-
-constexpr uint64_t payloadWidth = 48;
-constexpr uint64_t payloadMask = ((uint64_t)1 << payloadWidth) - 1; // `payloadWidth` ones
-
-constexpr uint64_t tagMask = (uint64_t)0x7fff << payloadWidth;
-
-constexpr uint64_t nonFlonumTag = (uint64_t)0x7ffc << payloadWidth;
-
-// OPTIMIZE: Utilize unused bits
-constexpr uint64_t fixnumTag = nonFlonumTag | ((uint64_t)TaggedType::FIXNUM << payloadWidth);
-constexpr uint64_t charTag = nonFlonumTag | ((uint64_t)TaggedType::CHAR << payloadWidth);
-constexpr uint64_t boolTag = nonFlonumTag | ((uint64_t)TaggedType::BOOL << payloadWidth);
-// By using 0b00 for pointers we avoid any conflict with actual NaN:s as we do not want null
-// pointers anyway:
-constexpr uint64_t heapedTag = nonFlonumTag | ((uint64_t)0b00 << payloadWidth);
-
-/// Reference to `Object` of type `T`
-template<typename T>
-struct HRef : public ORef {
-    constexpr explicit HRef(T* ptr) : HRef{heapedTag | (uint64_t)ptr} {}
-
-    static HRef<T> fromUnchecked(ORef v) { return std::bit_cast<HRef<T>>(v); }
-
-    T* operator->() const { return std::bit_cast<T*>(bits & payloadMask); }
-
-    T& operator*() const { return *operator->(); }
-
-private:
-    constexpr explicit HRef(uint64_t t_bits) : ORef{t_bits} {}
 };
 
 struct Scalar : public ORef {
@@ -233,6 +237,11 @@ struct Object {
     struct Header* header();
 
     Object* tryForwarded() const;
+    Object* canonical() {
+        Object* obj = this;
+        for (Object* fwdPtr = nullptr; (fwdPtr = obj->tryForwarded()); obj = fwdPtr) {}
+        return obj;
+    }
 
     void forwardTo(Object* copy);
 };

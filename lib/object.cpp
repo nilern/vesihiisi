@@ -7,11 +7,14 @@ namespace {
 // TODO: Make this work in non-unity builds (no practical need for that (yet?) though):
 template<typename T>
 void SlotMut<T>::set(State& state, T v) {
-    *slot_ = v;
-
-    if (!state.heap.writeBarrier(obj_)) {
+    if (!state.heap.writeBarrier(&*oref_)) { // OPTIMIZE: tag(in ctor)-untag(here)
+        auto const orefG_ = state.pushRoot(&oref_);
+        auto const vG = state.pushRoot(&v);
         collect(&state);
+        slot_ = reinterpret_cast<T*>(reinterpret_cast<char*>(&*oref_) + offset_);
     }
+
+    *slot_ = v;
 }
 
 HRef<Type> Flonum::reify(State const& state) { return state.types.flonum; }

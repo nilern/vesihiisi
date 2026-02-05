@@ -20,7 +20,12 @@ But what we do have going on in various states of completeness:
 
 * NaN-tagged value representation
 * Last record slot can be indexed i.e. arrays are not special
-* Stop-and-copy GC using the elegant Cheney algorithm
+* Generational GC
+	- Very simple arrangement, basically plopped a nursery in front of a
+	  semispace collector and started juggling the semispaces around as the
+	  Cheney copying [actually only cares about the destination space layout](https://www.more-magic.net/posts/internals-gc.html).
+	  Of course a write barrier also needed to be (somewhat painstakingly)
+	  added.
 * Register-based bytecode VM
     - A bytecode compiler that actually tries to do good register allocation
     - Compressed debug info on bytecode methods
@@ -50,7 +55,6 @@ But what we do have going on in various states of completeness:
 * Namespace system
 * Non-blocking IO etc. (Concurrent ML)
 * Get to a JIT, even if it is just a simple method JIT.
-* Generational GC
 * FFI
 * Native threads
     - Parallel GC

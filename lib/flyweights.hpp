@@ -47,7 +47,7 @@ public:
     HRef<Symbol> createFromHeapedAtUnchecked(
         State* state, size_t i, Fixnum hash, HRef<String> name);
 
-    void prune();
+    void prune(State const& state);
 
     class const_iterator {
         ORef const* ptr;
@@ -122,7 +122,7 @@ public:
     HRef<Method> createAtUnchecked(
         State* state, size_t i, Fixnum fxHash, HRef<Method> generic, HRef<ArrayMut> types);
 
-    void prune();
+    void prune(State const& state);
 
     class const_iterator {
         ORef const* ptr;

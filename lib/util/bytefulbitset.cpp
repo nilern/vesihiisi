@@ -16,7 +16,8 @@ void bytefulBitSetSet(BytefulBitSet* bits, size_t n) {
     size_t const byteIdx = n / UINT8_WIDTH;
 
     if (byteIdx >= bits->byteCap) { // Does not even fit allocation => grow:
-        size_t const newCap = bits->byteCap + bits->byteCap / 2;
+        size_t newCap = bits->byteCap + bits->byteCap / 2;
+        if (newCap < byteIdx + 1) { newCap = byteIdx + 1; }
         uint8_t* const newBytes = (uint8_t*)malloc(newCap * sizeof *newBytes);
 
         memcpy(newBytes, bits->bytes, bits->byteCount * sizeof *newBytes);

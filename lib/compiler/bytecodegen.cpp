@@ -75,30 +75,38 @@ struct MethodBuilder {
     struct MethodBuilder* parent;
 };
 
-void markMethodBuilder(State* state, MethodBuilder* builder) {
+bool markMethodBuilder(State* state, MethodBuilder* builder) {
     size_t const constCount = builder->constCount;
     for (size_t i = 0; i < constCount; ++i) {
-        builder->consts[i].val = state->heap.mark(builder->consts[i].val);
+        builder->consts[i].val = TRY_NULLOPT_TO_FALSE(state->heap.mark(builder->consts[i].val));
     }
 
-    builder->maybeFilename = state->heap.mark(builder->maybeFilename);
+    builder->maybeFilename = TRY_NULLOPT_TO_FALSE(state->heap.mark(builder->maybeFilename));
 
     size_t const filenameRunCount = builder->revFilenameRuns.count();
     for (size_t i = 1; i < filenameRunCount; i += 2) { // Skip fixnums at 0, 2, 4...
-        builder->revFilenameRuns[i] = state->heap.mark(builder->revFilenameRuns[i]);
+        builder->revFilenameRuns[i] =
+            TRY_NULLOPT_TO_FALSE(state->heap.mark(builder->revFilenameRuns[i]));
     }
 
-    if (builder->parent) { markMethodBuilder(state, builder->parent); }
+    if (builder->parent) {
+        if (!markMethodBuilder(state, builder->parent)) { return false; }
+    }
+
+    return true;
 }
 
-[[maybe_unused]]
-void assertMethodBuilderInTospace(State const* state,MethodBuilder const* builder) {
+void assertMethodBuilderInTospace(State const* state, MethodBuilder const* builder) {
     size_t const constCount = builder->constCount;
     for (size_t i = 0; i < constCount; ++i) {
         ORef const v = builder->consts[i].val;
         if (isHeaped(v)) {
             assert(state->heap.evacuated(&*HRef<Object>::fromUnchecked(v)));
         }
+    }
+
+    if (isHeaped(builder->maybeFilename)) {
+        assert(state->heap.evacuated(&*HRef<Object>::fromUnchecked(builder->maybeFilename)));
     }
 
     size_t const filenameRunCount = builder->revFilenameRuns.count();

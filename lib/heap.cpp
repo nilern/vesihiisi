@@ -13,25 +13,19 @@ namespace {
 Heap::Semispace::Semispace(size_t size) {
     start = (char*)calloc(size, sizeof *start);
     free = start;
+    scan = start;
     limit = start + size;
 }
 
 Heap::Semispace& Heap::Semispace::operator=(Semispace&& that) {
     this->free = that.free;
+    this->scan = that.scan;
     this->limit = that.limit;
     this->start = that.start;
 
     that.start = nullptr; // Prevent double free
 
     return *this;
-}
-
-bool Heap::Semispace::shouldGrow(Semispace const& other) const {
-    size_t const otherSize = other.size();
-    if (otherSize > size()) { return true; } // Catch up
-
-    size_t const otherSlack = size_t(other.limit - other.free);
-    return otherSlack < otherSize / 5; // `other` is > 80% full
 }
 
 void Heap::Semispace::refurbish(Semispace const& other) {
@@ -48,6 +42,7 @@ void Heap::Semispace::refurbish(Semispace const& other) {
     }
 
     free = start;
+    scan = start;
 }
 
 Object* Heap::Semispace::tryAlloc(Type const* type) {
@@ -70,18 +65,14 @@ Object* Heap::Semispace::tryAlloc(Type const* type) {
     Object* const ptr = (Object*)(void*)address;
     *((Header*)(void*)address - 1) = Header{type}; // Init header
 
+    assert(allocatedIn(ptr));
     return ptr;
-}
-
-Object* Heap::Semispace::allocOrDie(Type const* type) {
-    Object* const res = tryAlloc(type);
-    if (!res) { PANIC("Out of memory"); }
-    return res;
 }
 
 Object* Heap::Semispace::tryAllocFlex(Type const* type, Fixnum length) {
     assert(isValid());
     assert(type->isFlex.val());
+    assert(length.val() >= 0);
 
     uintptr_t address = (uintptr_t)(void*)free;
 
@@ -101,13 +92,8 @@ Object* Heap::Semispace::tryAllocFlex(Type const* type, Fixnum length) {
     Object* const ptr = (Object*)(void*)address;
     *((FlexHeader*)(void*)address - 1) = FlexHeader{length, type}; // Init header
 
+    assert(allocatedIn(ptr));
     return ptr;
-}
-
-Object* Heap::Semispace::allocFlexOrDie(Type const* type, Fixnum length) {
-    Object* const res = tryAllocFlex(type, length);
-    if (!res) { PANIC("Out of memory"); }
-    return res;
 }
 
 // Nursery
@@ -141,13 +127,21 @@ Object* Heap::Nursery::tryAlloc(Type const* type) {
     Object* const ptr = (Object*)(void*)address;
     *((Header*)(void*)address - 1) = Header{type}; // Init header
 
+    assert(allocatedIn(ptr));
     return ptr;
+}
+
+Object* Heap::Nursery::allocOrDie(Type const* type) {
+    Object* const res = tryAlloc(type);
+    if (!res) { PANIC("Out of memory"); }
+    return res;
 }
 
 // TODO: DRY wrt. `Heap::Semispace::tryAllocFlex`:
 Object* Heap::Nursery::tryAllocFlex(Type const* type, Fixnum length) {
     assert(isValid());
     assert(type->isFlex.val());
+    assert(length.val() >= 0);
 
     uintptr_t address = (uintptr_t)(void*)free;
 
@@ -167,7 +161,14 @@ Object* Heap::Nursery::tryAllocFlex(Type const* type, Fixnum length) {
     Object* const ptr = (Object*)(void*)address;
     *((FlexHeader*)(void*)address - 1) = FlexHeader{length, type}; // Init header
 
+    assert(allocatedIn(ptr));
     return ptr;
+}
+
+Object* Heap::Nursery::allocFlexOrDie(Type const* type, Fixnum length) {
+    Object* const res = tryAllocFlex(type, length);
+    if (!res) { PANIC("Out of memory"); }
+    return res;
 }
 
 bool Heap::Nursery::tryToRemember([[maybe_unused]] Object* obj) {
@@ -189,9 +190,10 @@ bool Heap::Nursery::tryToRemember([[maybe_unused]] Object* obj) {
 // =================================================================================================
 
 [[nodiscard]]
-Object* Heap::tryShallowCopy(Object* obj) {
-    assert(evacuated(obj)                  // Normal cloning
-           || fromspace.allocatedIn(obj)); // GC
+Object* Heap::tryEvacuate(Object* obj) {
+    assert(nursery.allocatedIn(obj) // Any GC
+           || fromspace.allocatedIn(obj) // Major or expanding GC
+           || (insufficientTospace && insufficientTospace->allocatedIn(obj))); // Expanding GC
 
     Header const header = *((Header*)obj - 1);
     Type const* const type = header.typePtr();
@@ -207,7 +209,7 @@ Object* Heap::tryShallowCopy(Object* obj) {
         FlexHeader const flexHeader = *((FlexHeader*)obj - 1);
 
         Fixnum const fxLen = flexHeader.count;
-        copy = tospace.tryAllocFlex(type, fxLen);
+        copy = tospace.tryAllocFlex(type, fxLen); // OPTIMIZE: This also computes `size` internally
         if (!copy) { return nullptr; }
 
         *((FlexHeader*)copy - 1) = flexHeader;
@@ -218,6 +220,7 @@ Object* Heap::tryShallowCopy(Object* obj) {
 
     memcpy(copy, obj, size);
 
+    assert(evacuated(copy));
     return copy;
 }
 
@@ -225,32 +228,36 @@ Heap Heap::tryCreate(size_t size) { return Heap{size}; }
 
 [[nodiscard]]
 Object* Heap::mark(Object* obj) {
-    for (Object* fwdPtr = nullptr; (fwdPtr = obj->tryForwarded()); obj = fwdPtr) {}
+    obj = obj->canonical();
     if (evacuated(obj)) { return obj; }
 
-    Object* const copy = tryShallowCopy(obj);
-    assert(copy); // Copying should always succeed since tospace is at least as big as fromspace.
+    Object* const copy = tryEvacuate(obj);
+    if (!copy) {
+        escalate();
+        return nullptr;
+    }
+
     obj->forwardTo(copy);
     return copy;
 }
 
-[[nodiscard]]
-ORef Heap::mark(ORef oref) {
-    if (!isHeaped(oref)) { return oref; }
+std::optional<ORef> Heap::mark(ORef oref) {
+    if (!isHeaped(oref)) { return std::optional{oref}; }
 
     Object* const ptr = &*HRef<Object>::fromUnchecked(oref);
     Object* const copy = mark(ptr);
-    return tagHeaped(copy);
+    return copy ? std::optional{tagHeaped(copy)} : std::nullopt;
 }
 
-[[nodiscard]]
-Header Heap::markHeader(Header header) {
+std::optional<Header> Heap::markHeader(Header header) {
     auto const type = static_cast<Type*>(mark(header.typePtr()));
-    return Header{type};
+    if (!type) { return std::nullopt; }
+    return std::optional{Header{type}};
 }
 
-[[nodiscard]]
-void* nextGrey(void* const scan) {
+Object* Heap::Semispace::nextGrey(char* scan) const {
+    assert(start <= (char*)scan && (char*)scan < limit);
+
     uintptr_t address = (uintptr_t)scan;
     uintptr_t const align = alignof(ORef);
     address = (address + align - 1) & ~(align - 1);
@@ -263,33 +270,34 @@ void* nextGrey(void* const scan) {
 
     ++orefScan; // Skip <header>
 
-    return (void*)orefScan;
+    return reinterpret_cast<Object*>(orefScan);
 }
 
-[[nodiscard]]
-void* Heap::scanObj(void* const scan) {
-    assert(tospace.start <= (char*)scan && (char*)scan < tospace.limit);
-    assert((uintptr_t)scan % alignof(ORef) == 0);
+char* Heap::scanObj(Object* const obj) {
+    assert(tospace.start <= (char*)obj && (char*)obj < tospace.limit);
+    assert((uintptr_t)obj % alignof(ORef) == 0);
 
-    Header* const header = (Header*)scan - 1;
-    *header = markHeader(*header);
+    Header* const header = obj->header();
+    auto const markedHeader = markHeader(*header);
+    if (!markedHeader) { return nullptr; }
+    *header = *markedHeader;
     Type* const type = header->typePtr();
 
-    char* byteScan = (char*)scan;
+    char* byteScan = (char*)obj;
 
     if (type->isBytes.val()) {
         byteScan += (uintptr_t)type->minSize.val(); // Skip fixed portion
 
         if (type->isFlex.val()) {
-            FlexHeader const flexHeader = *((FlexHeader*)scan - 1);
+            FlexHeader const flexHeader = *((FlexHeader*)obj - 1);
             byteScan += (uintptr_t)flexHeader.count.val(); // Skip flex portion
         }
 
-        return (void*)byteScan;
+        return byteScan;
     } else {
         size_t slotCount = (uintptr_t)type->minSize.val() / sizeof(ORef); // Fixed slot count
         if (type->isFlex.val()) {
-            FlexHeader const flexHeader = *((FlexHeader*)scan - 1);
+            FlexHeader const flexHeader = *((FlexHeader*)obj - 1);
             slotCount += (uintptr_t)flexHeader.count.val(); // Add flex slot count
         }
 
@@ -303,18 +311,64 @@ void* Heap::scanObj(void* const scan) {
 
         // Finally, actually scan slots:
         for (size_t i = 0; i < slotCount; ++i, ++orefScan) {
-            *orefScan = mark(*orefScan);
+            std::optional<ORef> const marked = mark(*orefScan);
+            if (!marked) { return nullptr; }
+            *orefScan = *marked;
         }
 
-        return (void*)orefScan;
+        return reinterpret_cast<char*>(orefScan);
     }
 }
 
-void Heap::collect() {
-    for (void* scan = tospace.start; (char*)scan < tospace.free;) {
-        scan = nextGrey(scan);
-        scan = scanObj(scan);
+bool Heap::collect() {
+    if (mode == MINOR) {
+        for (auto const remembered : nursery.remembereds()) {
+            if (tospace.allocatedIn(remembered)) {
+                if (!scanObj(remembered)) { return false; }
+            }
+        }
     }
+
+    while (tospace.scan < tospace.free) {
+        auto const scan = scanObj(tospace.nextGrey(tospace.scan));
+        if (!scan) { return false; }
+
+        tospace.scan = scan;
+    }
+
+    return true;
+}
+
+void Heap::growTospace() {
+    insufficientTospace = std::optional{std::move(tospace)};
+    // `2 * (fromspace.size() + nursery.size())` should accomodate everything from both nursery
+    // and fromspace even if there were no alignment holes before the collection and the collection
+    // produces the maximum possible amount of alignment holes:
+    tospace = Semispace{2 * (fromspace.size() + nursery.size())};
+}
+
+void Heap::escalate() {
+    switch (mode) {
+    case MINOR: {
+        flipSemispaces();
+        mode = MAJOR;
+    }; break;
+
+    case MAJOR: {
+        growTospace();
+        mode = EXPANDING;
+    }; break;
+
+    case EXPANDING: PANIC("Out of memory");
+    }
+}
+
+void Heap::refurbish() {
+    nursery.refurbish();
+    if (mode >= MAJOR) { fromspace.refurbish(tospace); }
+    if (mode >= EXPANDING) { insufficientTospace = std::nullopt; }
+
+    mode = MINOR;
 }
 
 } // namespace

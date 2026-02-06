@@ -20,6 +20,106 @@ PrimopRes primopTypeError(State* state, ORef v) {
     return primopTypeError(state, state->reify<T>(), v);
 }
 
+// TODO: Move to dispatch.hpp:
+template<bool hasVararg, typename... Domain>
+[[nodiscard]]
+PrimopRes checkDomain(State* state) {
+    switch (state->domainChecking) {
+    case State::DomainChecking::CHECK: {
+        size_t const argc = state->entryRegc - firstArgReg;
+        static constexpr size_t arity = sizeof...(Domain);
+        if (argc != arity) {
+            if (!(hasVararg && argc >= arity - 1)) {
+                assert(isa<Closure>(*state, state->regs[calleeReg]));
+                auto const callee = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
+                return primopArityError(state, callee, argc);
+            }
+        }
+
+        ORef const* const args = state->regs + firstArgReg;
+        HRef<Type> const domain[] = {state->reify<Domain>()...}; // OPTIMIZE: Get rid of this
+        if constexpr (!hasVararg) {
+            // TODO: `template for` (requires C++26):
+            size_t i = 0;
+            ((isa<Domain>(*state, args[i++])
+                  ? void()
+                  : ({ return primopTypeError(state, domain[i - 1], args[i - 1]); }))
+             , ...);
+        } else {
+            static constexpr size_t minArity = arity - 1;
+
+            { // TODO: `template for` (requires C++26):
+                size_t i = 0;
+                // HACK: Short-circuit `i` to avoid duplicate work and even buffer overflow:
+                ((i >= minArity || isa<Domain>(*state, args[i++])
+                      ? void()
+                      : ({ return primopTypeError(state, domain[i - 1], args[i - 1]); }))
+                 , ...);
+            }
+
+            using VarargType = // `Domain...[minArity]`:
+                std::remove_reference_t<
+                    decltype(std::get<minArity>(*(std::tuple<Domain...>*)(nullptr)))>;
+            for (size_t i = minArity; i < argc; ++i) {
+                ORef const v = args[i];
+                if (!isa<VarargType>(*state, v)) {
+                    return primopTypeError<VarargType>(state, v);
+                }
+            }
+        }
+    }; break;
+
+    case State::DomainChecking::SPECULATE: {
+        state->domainChecking = State::DomainChecking::CHECK;
+
+        size_t const argc = state->entryRegc - firstArgReg;
+        static constexpr size_t arity = sizeof...(Domain);
+        if (argc != arity) {
+            if (!(hasVararg && argc >= arity - 1)) {
+                return PrimopRes::MISSPECULATION;
+            }
+        }
+
+        ORef const* const args = state->regs + firstArgReg;
+        if constexpr (!hasVararg) {
+            // TODO: `template for` (requires C++26):
+            size_t i = 0;
+            ((isa<Domain>(*state, args[i++])
+                  ? void()
+                  : ({ return PrimopRes::MISSPECULATION; }))
+             , ...);
+        } else {
+            static constexpr size_t minArity = arity - 1;
+
+            { // TODO: `template for` (requires C++26):
+                size_t i = 0;
+                // HACK: Short-circuit `i` to avoid duplicate work and even buffer overflow:
+                ((i >= minArity || isa<Domain>(*state, args[i++])
+                      ? void()
+                      : ({ return PrimopRes::MISSPECULATION; }))
+                 , ...);
+            }
+
+            using VarargType = // `Domain...[minArity]`:
+                std::remove_reference_t<
+                    decltype(std::get<minArity>(*(std::tuple<Domain...>*)(nullptr)))>;
+            for (size_t i = minArity; i < argc; ++i) {
+                ORef const v = args[i];
+                if (!isa<VarargType>(*state, v)) {
+                    return PrimopRes::MISSPECULATION;
+                }
+            }
+        }
+    }; break;
+
+    case State::DomainChecking::SKIP: {
+        state->domainChecking = State::DomainChecking::CHECK;
+    }; break;
+    }
+
+    return PrimopRes::CONTINUE; // HACK
+}
+
 // Primops
 // =================================================================================================
 
@@ -31,54 +131,13 @@ struct Primop {
                       Fixnum{int64_t(sizeof...(Domain))}, state.reify<Domain>()...);
     }
 
-    // TODO: Move domain checking out into a `template<bool hasVararg, typename... Domain>` to
-    // at least share the code between primops of the same type?:
     static PrimopRes invoke(State* state) {
-        if (state->domainChecking == State::DomainChecking::CHECK) {
-            size_t const argc = state->entryRegc - firstArgReg;
-            static constexpr size_t arity = sizeof...(Domain);
-            static constexpr bool hasVararg = CRTPSub::hasVararg;
-            if (argc != arity) {
-                if (!(CRTPSub::hasVararg && argc >= arity - 1)) {
-                    assert(isa<Closure>(*state, state->regs[calleeReg]));
-                    auto const callee = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
-                    return primopArityError(state, callee, argc);
-                }
-            }
-
-            ORef const* const args = state->regs + firstArgReg;
-            HRef<Type> const domain[] = {state->reify<Domain>()...}; // OPTIMIZE: Get rid of this
-            if constexpr (!hasVararg) {
-                // TODO: `template for` (requires C++26):
-                size_t i = 0;
-                ((isa<Domain>(*state, args[i++])
-                      ? void()
-                      : ({ return primopTypeError(state, domain[i - 1], args[i - 1]); }))
-                 , ...);
-            } else {
-                static constexpr size_t minArity = arity - 1;
-
-                { // TODO: `template for` (requires C++26):
-                    size_t i = 0;
-                    // HACK: Short-circuit `i` to avoid duplicate work and even buffer overflow:
-                    ((i >= minArity || isa<Domain>(*state, args[i++])
-                          ? void()
-                          : ({ return primopTypeError(state, domain[i - 1], args[i - 1]); }))
-                     , ...);
-                }
-
-                using VarargType = // `Domain...[minArity]`:
-                    std::remove_reference_t<
-                        decltype(std::get<minArity>(*(std::tuple<Domain...>*)(nullptr)))>;
-                for (size_t i = minArity; i < argc; ++i) {
-                    ORef const v = args[i];
-                    if (!isa<VarargType>(*state, v)) {
-                        return primopTypeError<VarargType>(state, v);
-                    }
-                }
-            }
-        } else {
-            state->domainChecking = State::DomainChecking::CHECK;
+        auto const checkRes = checkDomain<CRTPSub::hasVararg, Domain...>(state);
+        switch (checkRes) {
+        case PrimopRes::CONTINUE: break;
+        case PrimopRes::MISSPECULATION: case PrimopRes::ERROR: return checkRes;
+        case PrimopRes::TAILCALL: case PrimopRes::TAILAPPLY: case PrimopRes::ABORT:
+            PANIC("Unreachable code reached.");
         }
 
         return CRTPSub::uncheckedInvoke(state);

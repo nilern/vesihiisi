@@ -369,8 +369,11 @@ VMRes run(State* state, HRef<Closure> self) {
             state->pc = 0;
 
             // Check domain:
-            PrimopRes const checkRes = checkDomain(state);
-            if (checkRes == PrimopRes::TAILCALL) { continue; }
+            switch (checkDomain(state)) {
+            case DomainCheckRes::OK: break;
+            case DomainCheckRes::MISSPECULATION: PANIC("TODO");
+            case DomainCheckRes::ERROR: continue;
+            }
 
             if (method->hasVarArg.val()) { // Reify varargs:
                 size_t const arity = method->domain().size();
@@ -415,6 +418,11 @@ VMRes run(State* state, HRef<Closure> self) {
                     goto applyPrimop;
                 }
             }; break;
+
+            case PrimopRes::MISSPECULATION: PANIC("TODO");
+
+            case PrimopRes::ERROR: // Set up an error call in its place:
+                break; // All is in place, just keep trampolining
 
             case PrimopRes::ABORT: return VMRes{};
             }

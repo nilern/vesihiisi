@@ -149,28 +149,66 @@ bool closureIsApplicableToList(State const* state, Closure const* callee, ORef a
     return true;
 }
 
-PrimopRes checkDomainForArgs(
+DomainCheckRes checkDomainForArgs(
     State* state, HRef<Closure> calleeRef, ORef const* args, size_t argc
 ) {
-    if (state->domainChecking != State::DomainChecking::CHECK) {
+    if (state->domainChecking == State::DomainChecking::SKIP) {
         state->domainChecking = State::DomainChecking::CHECK;
-        return PrimopRes::CONTINUE;
+        return DomainCheckRes::OK;
     }
 
-    return doCheckDomain(state, calleeRef, args, argc);
+    switch (state->domainChecking) {
+    case State::DomainChecking::CHECK: {
+        if (doCheckDomain(state, calleeRef, args, argc) == PrimopRes::ERROR) {
+            return DomainCheckRes::ERROR;
+        }
+    }; break;
+
+    case State::DomainChecking::SPECULATE: {
+        state->domainChecking = State::DomainChecking::CHECK;
+
+        if (!closureIsApplicable(state, &*calleeRef, args, argc)) {
+            return DomainCheckRes::MISSPECULATION;
+        }
+    }; break;
+
+    case State::DomainChecking::SKIP: PANIC("Unreachable code reached.");
+    }
+
+    return DomainCheckRes::OK;
 }
 
-PrimopRes checkDomain(State* state) {
-    if (state->domainChecking != State::DomainChecking::CHECK) {
+// TODO: DRY wrt. `checkDomainForArgs`:
+DomainCheckRes checkDomain(State* state) {
+    if (state->domainChecking == State::DomainChecking::SKIP) {
         state->domainChecking = State::DomainChecking::CHECK;
-        return PrimopRes::CONTINUE;
+        return DomainCheckRes::OK;
     }
 
     assert(isa<Closure>(*state, state->regs[calleeReg]));
     HRef<Closure> const calleeRef = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
     ORef const* const args = state->regs + firstArgReg;
     size_t const argc = state->entryRegc - firstArgReg;
-    return doCheckDomain(state, calleeRef, args, argc);
+
+    switch (state->domainChecking) {
+    case State::DomainChecking::CHECK: {
+        if (doCheckDomain(state, calleeRef, args, argc) == PrimopRes::ERROR) {
+            return DomainCheckRes::ERROR;
+        }
+    }; break;
+
+    case State::DomainChecking::SPECULATE: {
+        state->domainChecking = State::DomainChecking::CHECK;
+
+        if (!closureIsApplicable(state, &*calleeRef, args, argc)) {
+            return DomainCheckRes::MISSPECULATION;
+        }
+    }; break;
+
+    case State::DomainChecking::SKIP: PANIC("Unreachable code reached.");
+    }
+
+    return DomainCheckRes::OK;
 }
 
 /// Returns applicable closure from `callee`, `Default` if none is found.

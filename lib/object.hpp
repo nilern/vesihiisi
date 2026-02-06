@@ -514,6 +514,8 @@ enum class PrimopRes : uintptr_t {
     CONTINUE,
     TAILCALL,
     TAILAPPLY,
+    MISSPECULATION,
+    ERROR,
     ABORT
 };
 

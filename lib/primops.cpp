@@ -10,9 +10,8 @@
 
 #include "util/util.hpp"
 #include "print.hpp"
-#include "bytecode.hpp"
-#include "dispatch.hpp"
 #include "namespace.hpp"
+#include "dispatch.hpp"
 #include "compiler/compiler.hpp"
 
 namespace {
@@ -30,7 +29,7 @@ PrimopRes primopError(State* state, ORef err) {
     state->regs[calleeReg] = getErrorHandler(state);
     state->regs[firstArgReg] = err;
     state->entryRegc = firstArgReg + 1;
-    return PrimopRes::TAILCALL;
+    return PrimopRes::ERROR;
 }
 
 PrimopRes primopArityError(State* state, HRef<Closure> callee, size_t argc) {
@@ -44,8 +43,11 @@ PrimopRes primopTypeError(State* state, HRef<Type> type, ORef v) {
 PrimopRes callBytecode(State* /*state*/) { return PrimopRes::TAILCALL; }
 
 PrimopRes primopAbort(State* state) {
-    PrimopRes const checkRes = checkDomain(state);
-    if (checkRes == PrimopRes::TAILCALL) { return checkRes; }
+    switch (checkDomain(state)) {
+    case DomainCheckRes::OK: break;
+    case DomainCheckRes::MISSPECULATION: return PrimopRes::MISSPECULATION;
+    case DomainCheckRes::ERROR: return PrimopRes::ERROR;
+    }
 
     ORef const error = state->regs[firstArgReg];
 
@@ -91,14 +93,17 @@ PrimopRes PrimopApplyArray::uncheckedInvoke(State* state) {
 
     // Dispatch:
     if (!calleeClosureForArgs(state, callee, args, argc)) {
-        return PrimopRes::TAILCALL; // Finish panic setup
+        return PrimopRes::ERROR; // Finish panic setup
     }
     assert(isa<Closure>(*state, state->regs[calleeReg]));
     HRef<Closure> const closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
 
     // Check domain (if not already checked by dispatch):
-    PrimopRes const checkRes = checkDomainForArgs(state, closure, args, argc);
-    if (checkRes == PrimopRes::TAILCALL) { return checkRes; }
+    switch (checkDomainForArgs(state, closure, args, argc)) {
+    case DomainCheckRes::OK: break;
+    case DomainCheckRes::MISSPECULATION: return PrimopRes::MISSPECULATION;
+    case DomainCheckRes::ERROR: return PrimopRes::ERROR;
+    }
 
     ORef const method = closure->method;
     assert(isa<Method>(*state, method));
@@ -141,7 +146,7 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
 
     // Dispatch:
     if (!calleeClosureForArglist(state, callee, args)) {
-        return PrimopRes::TAILCALL; // Finish panic setup
+        return PrimopRes::ERROR; // Finish panic setup
     }
     HRef<Closure> const closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
 

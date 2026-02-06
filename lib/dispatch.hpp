@@ -4,14 +4,16 @@
 
 namespace {
 
-/// If args are OK for domain, returns `PrimopRes::CONTINUE`. Else sets up error call and returns
-/// `PrimopRes::TAILCALL`:
+enum class DomainCheckRes : uintptr_t { OK, MISSPECULATION, ERROR };
+
+/// Check args. If result is `DomainCheckRes::ERROR`, also sets up error call.
 [[nodiscard]]
-PrimopRes checkDomainForArgs(State* state, HRef<Closure> calleeRef, ORef const* args, size_t argc);
+DomainCheckRes checkDomainForArgs(
+    State* state, HRef<Closure> calleeRef, ORef const* args, size_t argc);
 
 /// Like `checkDomainForArgs` but assumes args are in `state->regs[firstArgReg...]`.
 [[nodiscard]]
-PrimopRes checkDomain(State* state);
+DomainCheckRes checkDomain(State* state);
 
 /// Sets calleeReg to closure to call and returns `true`. If `callee` is not callable or is a
 /// multimethod inapplicable to the given arguments, sets up error call and returns `false`.

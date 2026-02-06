@@ -44,8 +44,8 @@ PrimopRes primopTypeError(State* state, HRef<Type> type, ORef v) {
 PrimopRes callBytecode(State* /*state*/) { return PrimopRes::TAILCALL; }
 
 PrimopRes primopAbort(State* state) {
-    ORef const maybeErr = checkDomain(state);
-    if (isHeaped(maybeErr)) { return primopError(state, maybeErr); }
+    PrimopRes const checkRes = checkDomain(state);
+    if (checkRes == PrimopRes::TAILCALL) { return checkRes; }
 
     ORef const error = state->regs[firstArgReg];
 
@@ -97,10 +97,8 @@ PrimopRes PrimopApplyArray::uncheckedInvoke(State* state) {
     HRef<Closure> const closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
 
     // Check domain (if not already checked by dispatch):
-    ORef const maybeCalleeErr = checkDomainForArgs(state, closure, args, argc);
-    if (isHeaped(maybeCalleeErr)) {
-        return primopError(state, maybeCalleeErr);
-    }
+    PrimopRes const checkRes = checkDomainForArgs(state, closure, args, argc);
+    if (checkRes == PrimopRes::TAILCALL) { return checkRes; }
 
     ORef const method = closure->method;
     assert(isa<Method>(*state, method));

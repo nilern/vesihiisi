@@ -369,13 +369,8 @@ VMRes run(State* state, HRef<Closure> self) {
             state->pc = 0;
 
             // Check domain:
-            ORef const maybeErr = checkDomain(state);
-            if (isHeaped(maybeErr)) {
-                state->regs[calleeReg] = getErrorHandler(state);
-                state->regs[firstArgReg] = maybeErr;
-                state->entryRegc = firstArgReg + 1;
-                continue;
-            }
+            PrimopRes const checkRes = checkDomain(state);
+            if (checkRes == PrimopRes::TAILCALL) { continue; }
 
             if (method->hasVarArg.val()) { // Reify varargs:
                 size_t const arity = method->domain().size();

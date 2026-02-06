@@ -6,7 +6,7 @@
 namespace {
 
 [[nodiscard]]
-ORef doCheckDomain(
+PrimopRes doCheckDomain(
     State* state, HRef<Closure> callee, ORef const* args, size_t argc
 ) {
     assert(isa<Method>(*state, callee->method));
@@ -16,7 +16,7 @@ ORef doCheckDomain(
 
     if (argc != arity) {
         if (!(hasVarArg && argc >= arity - 1)) {
-            return createArityError(state, callee, Fixnum((intptr_t)argc));
+            return primopArityError(state, callee, argc);
         }
     }
 
@@ -29,7 +29,7 @@ ORef doCheckDomain(
         HRef<Type> const type = HRef<Type>::fromUnchecked(method->domain()[i].get());
         ORef const v = args[i];
         if (!isa(state, type, v)) {
-            return createTypeError(state, type, v);
+            return primopTypeError(state, type, v);
         }
     }
 
@@ -39,12 +39,12 @@ ORef doCheckDomain(
         for (size_t i = minArity; i < argc; ++i) {
             ORef const v = args[i];
             if (!isa(state, type, v)) {
-                return createTypeError(state, type, v);
+                return primopTypeError(state, type, v);
             }
         }
     }
 
-    return Default;
+    return PrimopRes::CONTINUE; // HACK
 }
 
 // TODO: Can we somehow (efficiently!) DRY this wrt. `doCheckDomain`?
@@ -149,23 +149,21 @@ bool closureIsApplicableToList(State const* state, Closure const* callee, ORef a
     return true;
 }
 
-[[nodiscard]]
-ORef checkDomainForArgs(
+PrimopRes checkDomainForArgs(
     State* state, HRef<Closure> calleeRef, ORef const* args, size_t argc
 ) {
     if (state->domainChecking != State::DomainChecking::CHECK) {
         state->domainChecking = State::DomainChecking::CHECK;
-        return Default;
+        return PrimopRes::CONTINUE;
     }
 
     return doCheckDomain(state, calleeRef, args, argc);
 }
 
-[[nodiscard]]
-ORef checkDomain(State* state) {
+PrimopRes checkDomain(State* state) {
     if (state->domainChecking != State::DomainChecking::CHECK) {
         state->domainChecking = State::DomainChecking::CHECK;
-        return Default;
+        return PrimopRes::CONTINUE;
     }
 
     assert(isa<Closure>(*state, state->regs[calleeReg]));

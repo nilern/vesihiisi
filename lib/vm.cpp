@@ -257,18 +257,7 @@ VMRes run(State* state, HRef<Closure> self) {
             }
         }; VM_CONTINUE;
 
-        VM_CASE(OP_RET) {
-            assert(isa<Continuation>(*state, state->regs[retContReg]));
-            auto const ret = HRef<Continuation>::fromUnchecked(state->regs[retContReg]);
-            ORef const anyMethod = ret->method;
-            if (isHeaped(anyMethod)) { // Return to bytecode method:
-                assert(isa<Method>(*state, anyMethod));
-                state->setMethod(HRef<Method>::fromUnchecked(anyMethod));
-                state->pc = (size_t)ret->pc.val();
-            } else { // Exit
-                return VMRes{.val = state->regs[retReg], .success = true};
-            }
-        }; VM_CONTINUE;
+        VM_CASE(OP_RET) goto kontinue;
 
         VM_CASE(OP_CLOSURE) {
             uint8_t const destReg = state->code[state->pc++];
@@ -406,19 +395,8 @@ VMRes run(State* state, HRef<Closure> self) {
         } else {
             applyPrimop:
             switch (method->nativeCode(state)) {
-            case PrimopRes::CONTINUE: { // Returned:
-                // TODO: DRY wrt. OP_RET:
-                assert(isa<Continuation>(*state, state->regs[retContReg]));
-                auto const ret = HRef<Continuation>::fromUnchecked(state->regs[retContReg]);
-                ORef const anyMethod = ret->method;
-                if (isHeaped(anyMethod)) { // Return to bytecode method:
-                    assert(isa<Method>(*state, anyMethod));
-                    state->setMethod(HRef<Method>::fromUnchecked(anyMethod));
-                    state->pc = (size_t)ret->pc.val();
-                } else { // Exit:
-                    return VMRes{.val = state->regs[retReg], .success = true};
-                }
-            }; VM_CONTINUE;
+            case PrimopRes::CONTINUE: // Returned:
+                goto kontinue;
 
             case PrimopRes::TAILCALL: // Set up another call in its place:
                 break; // All is in place, just keep trampolining
@@ -446,6 +424,21 @@ VMRes run(State* state, HRef<Closure> self) {
             case PrimopRes::ABORT: return VMRes{};
             }
         }
+    }
+
+    kontinue: {
+        assert(isa<Continuation>(*state, state->regs[retContReg]));
+        auto const ret = HRef<Continuation>::fromUnchecked(state->regs[retContReg]);
+        ORef const anyMethod = ret->method;
+        if (isHeaped(anyMethod)) { // Return to bytecode method:
+            assert(isa<Method>(*state, anyMethod));
+            state->setMethod(HRef<Method>::fromUnchecked(anyMethod));
+            state->pc = (size_t)ret->pc.val();
+        } else { // Exit:
+            return VMRes{.val = state->regs[retReg], .success = true};
+        }
+
+        VM_CONTINUE;
     }
     }
 }

@@ -70,7 +70,7 @@ VMRes run(State* state, HRef<Closure> self) {
 #define VM_CONTINUE goto eval
 #endif
 
-    for (;/*ever*/;) {
+    for (auto inlineCacheIdx = std::optional<uint8_t>{}; /*ever*/;) {
 #if !VSHS_COMPUTED_GOTO
     eval:
 #endif
@@ -126,6 +126,7 @@ VMRes run(State* state, HRef<Closure> self) {
                     state->regs[calleeReg] = getErrorHandler(state);
                     state->regs[firstArgReg] = createUnboundError(state, name);
                     state->entryRegc = firstArgReg + 1;
+                    inlineCacheIdx = std::nullopt;
                     goto apply;
                 }
                 c = findRes.var;
@@ -157,6 +158,7 @@ VMRes run(State* state, HRef<Closure> self) {
                     state->regs[calleeReg] = getErrorHandler(state);
                     state->regs[firstArgReg] = createUnboundError(state, name);
                     state->entryRegc = firstArgReg + 1;
+                    inlineCacheIdx = std::nullopt;
                     goto apply;
                 }
                 c = findRes.var;
@@ -309,6 +311,7 @@ VMRes run(State* state, HRef<Closure> self) {
         }; VM_CONTINUE;
 
         VM_CASE(OP_CALL) {
+            inlineCacheIdx = std::optional{state->code[state->pc++]};
             uint8_t const regCount  = state->code[state->pc++];
             uint8_t const cloverSetByteCount = state->code[state->pc++];
             size_t cloverCount = 0;
@@ -346,6 +349,7 @@ VMRes run(State* state, HRef<Closure> self) {
         }; VM_CONTINUE;
 
         VM_CASE(OP_TAILCALL) {
+            inlineCacheIdx = std::optional{state->code[state->pc++]};
             uint8_t const regCount = state->code[state->pc++];
 
             state->entryRegc = regCount;
@@ -354,8 +358,9 @@ VMRes run(State* state, HRef<Closure> self) {
         }
 
     apply: for (;/*ever*/;) {
+        ORef const originalCallee = state->regs[calleeReg];
         // Do not need return value here as a call is set up even in case of error:
-        calleeClosure(state, state->regs[calleeReg]);
+        calleeClosure(state, originalCallee, inlineCacheIdx);
 
         auto method = [&](){
             assert(isa<Closure>(*state, state->regs[calleeReg]));
@@ -364,15 +369,23 @@ VMRes run(State* state, HRef<Closure> self) {
             return HRef<Method>::fromUnchecked(closure->method);
         }();
         if (isHeaped(method->code)) { // Bytecode method:
-            // Jump to beginning:
-            state->setMethod(method);
-            state->pc = 0;
-
             // Check domain:
             switch (checkDomain(state)) {
             case DomainCheckRes::OK: break;
-            case DomainCheckRes::MISSPECULATION: PANIC("TODO");
-            case DomainCheckRes::ERROR: continue;
+
+            case DomainCheckRes::MISSPECULATION: {
+                // `originalCallee` is valid since speculation does not allocate or do write
+                // barriers:
+                state->regs[calleeReg] = originalCallee;
+                // These writes do invalidate `originalCallee`:
+                state->consts[*inlineCacheIdx].set(*state, Default);
+                state->consts[*inlineCacheIdx + 1].set(*state, Default);
+                inlineCacheIdx = std::nullopt;
+            }; continue;
+
+            case DomainCheckRes::ERROR: {
+                inlineCacheIdx = std::nullopt;
+            }; continue;
             }
 
             if (method->hasVarArg.val()) { // Reify varargs:
@@ -389,6 +402,10 @@ VMRes run(State* state, HRef<Closure> self) {
                 state->regs[firstArgReg + minArity] = varargsRef;
             }
 
+            // Jump to beginning:
+            state->setMethod(method);
+            state->pc = 0;
+
             VM_CONTINUE;
         } else {
             applyPrimop:
@@ -396,8 +413,9 @@ VMRes run(State* state, HRef<Closure> self) {
             case PrimopRes::CONTINUE: // Returned:
                 goto kontinue;
 
-            case PrimopRes::TAILCALL: // Set up another call in its place:
-                break; // All is in place, just keep trampolining
+            case PrimopRes::TAILCALL: { // Set up another call in its place:
+                inlineCacheIdx = std::nullopt;
+            }; break; // All is in place, just keep trampolining
 
             // TODO: DRY with loop head:
             case PrimopRes::TAILAPPLY: {
@@ -419,10 +437,19 @@ VMRes run(State* state, HRef<Closure> self) {
                 }
             }; break;
 
-            case PrimopRes::MISSPECULATION: PANIC("TODO");
+            case PrimopRes::MISSPECULATION: {
+                // `originalCallee` is valid since speculation does not allocate or do write
+                // barriers:
+                state->regs[calleeReg] = originalCallee;
+                // These writes do invalidate `originalCallee`:
+                state->consts[*inlineCacheIdx].set(*state, Default);
+                state->consts[*inlineCacheIdx + 1].set(*state, Default);
+                inlineCacheIdx = std::nullopt;
+            }; break;
 
-            case PrimopRes::ERROR: // Set up an error call in its place:
-                break; // All is in place, just keep trampolining
+            case PrimopRes::ERROR: { // Set up an error call in its place:
+                inlineCacheIdx = std::nullopt;
+            }; break; // All is in place, just keep trampolining
 
             case PrimopRes::ABORT: return VMRes{};
             }

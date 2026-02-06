@@ -262,8 +262,7 @@ bool calleeClosureForArgs(State* state, ORef callee, ORef const* args, size_t ar
     } else if (isa<Multimethod>(*state, callee)) {
         HRef<Multimethod> const multiCalleeRef = HRef<Multimethod>::fromUnchecked(callee);
 
-        ORef const maybeClosure =
-            applicableClosureForArgs(state, &*multiCalleeRef, args, argc);
+        ORef const maybeClosure = applicableClosureForArgs(state, &*multiCalleeRef, args, argc);
         if (isHeaped(maybeClosure)) {
             state->regs[calleeReg] = maybeClosure;
             return true;
@@ -297,8 +296,7 @@ bool calleeClosureForArglist(State* state, ORef callee, ORef args) {
     } else if (isa<Multimethod>(*state, callee)) {
         HRef<Multimethod> const multiCalleeRef = HRef<Multimethod>::fromUnchecked(callee);
 
-        ORef const maybeClosure =
-            applicableClosureForArglist(state, &*multiCalleeRef, args);
+        ORef const maybeClosure = applicableClosureForArglist(state, &*multiCalleeRef, args);
         if (isHeaped(maybeClosure)) {
             state->regs[calleeReg] = maybeClosure;
             return true;
@@ -321,10 +319,59 @@ bool calleeClosureForArglist(State* state, ORef callee, ORef args) {
     }
 }
 
-bool calleeClosure(State* state, ORef callee) {
-    ORef const* const args = state->regs + firstArgReg;
-    size_t const argc = state->entryRegc - firstArgReg;
-    return calleeClosureForArgs(state, callee, args, argc);
+// TODO: DRY wrt. `calleeClosureForArgs`:
+bool calleeClosure(State* state, ORef callee, std::optional<uint8_t> inlineCacheIdx) {
+    // TODO: Make continuations directly callable?
+    // TODO: Make this extensible (à la JVM `invokedynamic`)?:
+
+    if (isa<Closure>(*state, callee)) {
+        state->regs[calleeReg] = callee;
+        return true;
+    } else if (isa<Multimethod>(*state, callee)) {
+        HRef<Multimethod> const multiCalleeRef = HRef<Multimethod>::fromUnchecked(callee);
+
+        if (inlineCacheIdx) {
+            if (eq(state->consts[*inlineCacheIdx].get(), multiCalleeRef->methods().get())) {
+                state->regs[calleeReg] = state->consts[*inlineCacheIdx + 1].get();
+                state->domainChecking = State::DomainChecking::SPECULATE;
+
+                assert(isa<Closure>(*state, state->regs[calleeReg]));
+                return true;
+            } else {
+                state->consts[*inlineCacheIdx].set(*state, Default);
+                state->consts[*inlineCacheIdx + 1].set(*state, Default);
+            }
+        }
+
+        ORef const* const args = state->regs + firstArgReg;
+        size_t const argc = state->entryRegc - firstArgReg;
+        ORef const maybeClosure = applicableClosureForArgs(state, &*multiCalleeRef, args, argc);
+        if (isHeaped(maybeClosure)) {
+            state->regs[calleeReg] = maybeClosure;
+            if (inlineCacheIdx) {
+                state->consts[*inlineCacheIdx].set(*state, multiCalleeRef->methods().get());
+                // Post-GC reload of callee:
+                state->consts[*inlineCacheIdx + 1].set(*state, state->regs[calleeReg]);
+            }
+
+            return true;
+        } else {
+            state->regs[calleeReg] = getErrorHandler(state);
+            state->regs[firstArgReg] = createInapplicableError(state, multiCalleeRef);
+            state->entryRegc = firstArgReg + 1;
+
+            assert(isa<Closure>(*state, state->regs[calleeReg]));
+            return false;
+        }
+    } else { // TODO: DRY with "inapplicable" directly above:
+        state->regs[calleeReg] = getErrorHandler(state);
+        // TODO: `UncallableError` as closure is no longer the only callable type:
+        state->regs[firstArgReg] = createTypeError(state, state->types.closure, callee);
+        state->entryRegc = firstArgReg + 1;
+
+        assert(isa<Closure>(*state, state->regs[calleeReg]));
+        return false;
+    }
 }
 
 } // namespace

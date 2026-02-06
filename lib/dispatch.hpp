@@ -21,7 +21,8 @@ bool calleeClosureForArgs(State* state, ORef callee, ORef const* args, size_t ar
 
 bool calleeClosureForArglist(State* state, ORef callee, ORef args);
 
-/// A wrapper for `calleeClosureForArgs` that assumes args are in `state->regs[firstArgReg...]`.
-bool calleeClosure(State* state, ORef callee);
+/// Like `calleeClosureForArgs`, but assumes args are in `state->regs[firstArgReg...]` and can also
+/// utilize the inline cache.
+bool calleeClosure(State* state, ORef callee, std::optional<uint8_t> inlineCacheIdx);
 
 } // namespace

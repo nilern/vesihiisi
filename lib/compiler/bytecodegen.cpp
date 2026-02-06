@@ -49,7 +49,7 @@ struct MethodBuilderLoc {
 struct MethodBuilder {
     struct Const {
         ORef val;
-        enum { VALUE, GLOBAL_NAME } type;
+        enum { VALUE, GLOBAL_NAME, INLINE_CACHE } type;
 
         bool operator==(Const const& that) const { return eq(val, that.val) && type == that.type; }
     };
@@ -397,17 +397,7 @@ void emitClose(Compiler* compiler, MethodBuilder* builder, Args const* args) {
     emitRegBits(compiler, builder, args->names, args->count, false);
 }
 
-uint8_t constIndex(Compiler* compiler, MethodBuilder* builder, MethodBuilder::Const c) {
-    // Linear search is actually good since there usually aren't that many constants per fn:
-    size_t const constCount = builder->constCount;
-    for (size_t i = 0; i < constCount; ++i) {
-        MethodBuilder::Const const ic = builder->consts[i];
-        if (ic == c) {
-            assert(i <= UINT8_MAX);
-            return (uint8_t)i;
-        }
-    }
-
+uint8_t freshConstIndex(Compiler* compiler, MethodBuilder* builder, MethodBuilder::Const c) {
     if (builder->constCount == builder->constCap) {
         size_t const newCap = builder->constCap + builder->constCap / 2;
         builder->consts = static_cast<MethodBuilder::Const*>(
@@ -421,6 +411,25 @@ uint8_t constIndex(Compiler* compiler, MethodBuilder* builder, MethodBuilder::Co
     uint8_t const idx = (uint8_t)builder->constCount;
     builder->consts[builder->constCount++] = c;
     return idx;
+}
+
+uint8_t constIndex(Compiler* compiler, MethodBuilder* builder, MethodBuilder::Const c) {
+    // Linear search is actually good since there usually aren't that many constants per fn:
+    size_t const constCount = builder->constCount;
+    for (size_t i = 0; i < constCount; ++i) {
+        MethodBuilder::Const const ic = builder->consts[i];
+        if (ic == c) {
+            assert(i <= UINT8_MAX);
+            return (uint8_t)i;
+        }
+    }
+
+    return freshConstIndex(compiler, builder, c);
+}
+
+void emitFreshConstArg(Compiler* compiler, MethodBuilder* builder, MethodBuilder::Const c) {
+    uint8_t const idx = freshConstIndex(compiler, builder, c);
+    pushCodeByte(compiler, builder, idx);
 }
 
 void emitConstArg(Compiler* compiler, MethodBuilder* builder, MethodBuilder::Const c) {
@@ -562,6 +571,9 @@ void emitTransfer(
         assert(regCount < UINT8_MAX); // TODO: Handle absurd argument count (probably too late here)
         pushCodeByte(compiler, builder, (uint8_t)regCount);
 
+        emitFreshConstArg(compiler, builder, {Default, MethodBuilder::Const::INLINE_CACHE});
+        freshConstIndex(compiler, builder, {Default, MethodBuilder::Const::INLINE_CACHE});
+
         pushOp(state, compiler, builder, OP_CALL, transfer->maybeLoc);
     }; break;
 
@@ -571,6 +583,9 @@ void emitTransfer(
         size_t const regCount = 2 + tailcall->args.count;
         assert(regCount < UINT8_MAX); // TODO: Handle absurd argument count (probably too late here)
         pushCodeByte(compiler, builder, (uint8_t)regCount);
+
+        emitFreshConstArg(compiler, builder, {Default, MethodBuilder::Const::INLINE_CACHE});
+        freshConstIndex(compiler, builder, {Default, MethodBuilder::Const::INLINE_CACHE});
 
         pushOp(state, compiler, builder, OP_TAILCALL, transfer->maybeLoc);
     }; break;

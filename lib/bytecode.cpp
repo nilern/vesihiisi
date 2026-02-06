@@ -254,10 +254,12 @@ void Disassembler::skipOperands(uint8_t codeByte) {
 
     case OP_CALL: {
         next();
+        next();
         skipRegBits();
     }; break;
 
     case OP_TAILCALL: {
+        next();
         next();
     }; break;
     }
@@ -419,12 +421,16 @@ void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t co
     }; break;
 
     case OP_CALL: {
-        fprintf(dest, "call %u ", next().val.codeByte);
+        auto const ci = next().val.codeByte;
+        auto const regc = next().val.codeByte;
+        fprintf(dest, "call %u? %u ", ci, regc);
         disassembleRegBits(dest);
     }; break;
 
     case OP_TAILCALL: {
-        fprintf(dest, "tailcall %u", next().val.codeByte);
+        auto const ci = next().val.codeByte;
+        auto const regc = next().val.codeByte;
+        fprintf(dest, "tailcall %u? %u ", ci, regc);
     }; break;
     }
 }

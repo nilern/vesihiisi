@@ -31,10 +31,8 @@ VMRes run(State* state, HRef<Closure> self) {
         ORef const anyMethod = self->method;
         auto const method = HRef<Method>::fromUnchecked(anyMethod);
         assert(isHeaped(method->code));
-        state->method = anyMethod;
-        state->code = HRef<ByteArray>::fromUnchecked(method->code)->flexData();
+        state->setMethod(method);
         state->pc = 0;
-        state->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->itemsMut().data();
         state->regs[calleeReg] = self;
         state->regs[retContReg] = state->singletons.exit; // Return continuation
         state->entryRegc = 2;
@@ -263,11 +261,8 @@ VMRes run(State* state, HRef<Closure> self) {
             ORef const anyMethod = ret->method;
             if (isHeaped(anyMethod)) {
                 assert(isa<Method>(*state, anyMethod));
-                auto const method = HRef<Method>::fromUnchecked(anyMethod);
-                state->method = method;
-                state->code = HRef<ByteArray>::fromUnchecked(method->code)->flexData();
+                state->setMethod(HRef<Method>::fromUnchecked(anyMethod));
                 state->pc = (size_t)ret->pc.val();
-                state->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->itemsMut().data();
             } else { // Exit
                 return VMRes{.val = state->regs[retReg], .success = true};
             }
@@ -377,10 +372,8 @@ VMRes run(State* state, HRef<Closure> self) {
             assert(isa<Method>(*state, anyMethod));
             auto method = HRef<Method>::fromUnchecked(anyMethod);
             if (isHeaped(method->code)) {
-                state->method = anyMethod;
-                state->code = HRef<ByteArray>::fromUnchecked(method->code)->flexData();
+                state->setMethod(method);
                 state->pc = 0;
-                state->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->itemsMut().data();
 
                 ORef const maybeErr = checkDomain(state);
                 if (isHeaped(maybeErr)) {
@@ -415,12 +408,8 @@ VMRes run(State* state, HRef<Closure> self) {
                     ORef const anyMethod = ret->method;
                     if (isHeaped(anyMethod)) {
                         assert(isa<Method>(*state, anyMethod));
-                        auto const methodPtr = HRef<Method>::fromUnchecked(anyMethod);
-                        state->method = anyMethod;
-                        state->code = HRef<ByteArray>::fromUnchecked(methodPtr->code)->flexData();
+                        state->setMethod(HRef<Method>::fromUnchecked(anyMethod));
                         state->pc = (size_t)ret->pc.val();
-                        state->consts =
-                            HRef<ArrayMut>::fromUnchecked(methodPtr->consts)->itemsMut().data();
 
                         VM_CONTINUE;
                     } else { // Exit
@@ -438,11 +427,8 @@ VMRes run(State* state, HRef<Closure> self) {
                     assert(isa<Method>(*state, anyMethod));
                     method = HRef<Method>::fromUnchecked(anyMethod);
                     if (isHeaped(method->code)) {
-                        state->method = anyMethod;
-                        state->code = HRef<ByteArray>::fromUnchecked(method->code)->flexData();
+                        state->setMethod(method);
                         state->pc = 0;
-                        state->consts =
-                            HRef<ArrayMut>::fromUnchecked(method->consts)->itemsMut().data();
 
                         state->domainChecking = State::DomainChecking::CHECK;
 

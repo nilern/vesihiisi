@@ -121,6 +121,12 @@ struct State {
     template<typename T> requires (std::is_same<T, ORef>{}())
     HRef<Type> reify() const { return this->types.any; }
 
+    void setMethod(HRef<Method> v) {
+        method = v;
+        code = HRef<ByteArray>::fromUnchecked(v->code)->flexData();
+        consts = HRef<ArrayMut>::fromUnchecked(v->consts)->itemsMut().data();
+    }
+
 private:
     State(Heap heap, NamedTypes types, NamedSingletons singletons, HRef<Namespace> ns,
           HRef<Var> debug, HRef<Var> errorHandler);

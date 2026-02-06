@@ -24,6 +24,11 @@ PrimopRes primopTypeError(State* state, ORef v) {
 template<bool hasVararg, typename... Domain>
 [[nodiscard]]
 PrimopRes checkDomain(State* state) {
+    if (state->domainChecking == State::DomainChecking::SKIP) {
+        state->domainChecking = State::DomainChecking::CHECK;
+        return PrimopRes::CONTINUE; // HACK
+    }
+
     switch (state->domainChecking) {
     case State::DomainChecking::CHECK: {
         size_t const argc = state->entryRegc - firstArgReg;
@@ -112,9 +117,7 @@ PrimopRes checkDomain(State* state) {
         }
     }; break;
 
-    case State::DomainChecking::SKIP: {
-        state->domainChecking = State::DomainChecking::CHECK;
-    }; break;
+    case State::DomainChecking::SKIP: PANIC("Unreachable code reached.");
     }
 
     return PrimopRes::CONTINUE; // HACK

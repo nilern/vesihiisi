@@ -67,10 +67,13 @@ VMRes run(State* state, HRef<Closure> self) {
 #else
 #define VM_DISPATCH(opcode) switch (opcode)
 #define VM_CASE(opcode) case opcode:
-#define VM_CONTINUE continue
+#define VM_CONTINUE goto eval
 #endif
 
     for (;/*ever*/;) {
+#if !VSHS_COMPUTED_GOTO
+    eval:
+#endif
         VM_DISPATCH((Opcode)state->code[state->pc++]) {
         VM_CASE(OP_MOVE) {
             uint8_t const destReg = state->code[state->pc++];
@@ -361,89 +364,89 @@ VMRes run(State* state, HRef<Closure> self) {
         }; VM_CONTINUE;
         }
 
-        apply: {
-            // Do not need return value here as a call is set up even in case of error:
-            calleeClosure(state, state->regs[calleeReg]);
+    apply: for (;/*ever*/;) {
+        // Do not need return value here as a call is set up even in case of error:
+        calleeClosure(state, state->regs[calleeReg]);
 
-            auto method = [&](){
-                assert(isa<Closure>(*state, state->regs[calleeReg]));
-                auto closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
-                assert(isa<Method>(*state, closure->method));
-                return HRef<Method>::fromUnchecked(closure->method);
-            }();
-            if (isHeaped(method->code)) { // Bytecode method:
-                // Jump to beginning:
-                state->setMethod(method);
-                state->pc = 0;
+        auto method = [&](){
+            assert(isa<Closure>(*state, state->regs[calleeReg]));
+            auto closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
+            assert(isa<Method>(*state, closure->method));
+            return HRef<Method>::fromUnchecked(closure->method);
+        }();
+        if (isHeaped(method->code)) { // Bytecode method:
+            // Jump to beginning:
+            state->setMethod(method);
+            state->pc = 0;
 
-                // Check domain:
-                ORef const maybeErr = checkDomain(state);
-                if (isHeaped(maybeErr)) {
-                    state->regs[calleeReg] = getErrorHandler(state);
-                    state->regs[firstArgReg] = maybeErr;
-                    state->entryRegc = firstArgReg + 1;
-                    goto apply;
+            // Check domain:
+            ORef const maybeErr = checkDomain(state);
+            if (isHeaped(maybeErr)) {
+                state->regs[calleeReg] = getErrorHandler(state);
+                state->regs[firstArgReg] = maybeErr;
+                state->entryRegc = firstArgReg + 1;
+                continue;
+            }
+
+            if (method->hasVarArg.val()) { // Reify varargs:
+                size_t const arity = method->domain().size();
+                size_t const minArity = arity - 1;
+                uint8_t const callArgc = state->entryRegc - firstArgReg;
+                size_t const varargCount = callArgc - minArity;
+
+                HRef<ArrayMut> const varargsRef =
+                    createArrayMut(state, Fixnum((intptr_t)varargCount));
+                memcpy((void*)varargsRef->flexData(),
+                       state->regs + firstArgReg + minArity, varargCount * sizeof(ORef));
+
+                state->regs[firstArgReg + minArity] = varargsRef;
+            }
+
+            VM_CONTINUE;
+        } else {
+            applyPrimop:
+            switch (method->nativeCode(state)) {
+            case PrimopRes::CONTINUE: { // Returned:
+                // TODO: DRY wrt. OP_RET:
+                assert(isa<Continuation>(*state, state->regs[retContReg]));
+                auto const ret = HRef<Continuation>::fromUnchecked(state->regs[retContReg]);
+                ORef const anyMethod = ret->method;
+                if (isHeaped(anyMethod)) { // Return to bytecode method:
+                    assert(isa<Method>(*state, anyMethod));
+                    state->setMethod(HRef<Method>::fromUnchecked(anyMethod));
+                    state->pc = (size_t)ret->pc.val();
+                } else { // Exit:
+                    return VMRes{.val = state->regs[retReg], .success = true};
                 }
+            }; VM_CONTINUE;
 
-                if (method->hasVarArg.val()) { // Reify varargs:
-                    size_t const arity = method->domain().size();
-                    size_t const minArity = arity - 1;
-                    uint8_t const callArgc = state->entryRegc - firstArgReg;
-                    size_t const varargCount = callArgc - minArity;
+            case PrimopRes::TAILCALL: // Set up another call in its place:
+                break; // All is in place, just keep trampolining
 
-                    HRef<ArrayMut> const varargsRef =
-                        createArrayMut(state, Fixnum((intptr_t)varargCount));
-                    memcpy((void*)varargsRef->flexData(),
-                           state->regs + firstArgReg + minArity, varargCount * sizeof(ORef));
+            // TODO: DRY with loop head:
+            case PrimopRes::TAILAPPLY: {
+                method = [&](){
+                    assert(isa<Closure>(*state, state->regs[calleeReg]));
+                    auto closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
+                    assert(isa<Method>(*state, closure->method));
+                    return HRef<Method>::fromUnchecked(closure->method);
+                }();
+                if (isHeaped(method->code)) {
+                    state->setMethod(method);
+                    state->pc = 0;
 
-                    state->regs[firstArgReg + minArity] = varargsRef;
+                    state->domainChecking = State::DomainChecking::CHECK;
+
+                    VM_CONTINUE;
+                } else {
+                    goto applyPrimop;
                 }
+            }; break;
 
-                VM_CONTINUE;
-            } else {
-                applyPrimop:
-                switch (method->nativeCode(state)) {
-                case PrimopRes::CONTINUE: { // Returned:
-                    // TODO: DRY wrt. OP_RET:
-                    assert(isa<Continuation>(*state, state->regs[retContReg]));
-                    auto const ret = HRef<Continuation>::fromUnchecked(state->regs[retContReg]);
-                    ORef const anyMethod = ret->method;
-                    if (isHeaped(anyMethod)) { // Return to bytecode method:
-                        assert(isa<Method>(*state, anyMethod));
-                        state->setMethod(HRef<Method>::fromUnchecked(anyMethod));
-                        state->pc = (size_t)ret->pc.val();
-                    } else { // Exit:
-                        return VMRes{.val = state->regs[retReg], .success = true};
-                    }
-                }; VM_CONTINUE;
-
-                case PrimopRes::TAILCALL: // Set up another call in its place:
-                    goto apply; // All is in place, just keep trampolining
-
-                // TODO: DRY with loop head:
-                case PrimopRes::TAILAPPLY: {
-                    method = [&](){
-                        assert(isa<Closure>(*state, state->regs[calleeReg]));
-                        auto closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
-                        assert(isa<Method>(*state, closure->method));
-                        return HRef<Method>::fromUnchecked(closure->method);
-                    }();
-                    if (isHeaped(method->code)) {
-                        state->setMethod(method);
-                        state->pc = 0;
-
-                        state->domainChecking = State::DomainChecking::CHECK;
-
-                        VM_CONTINUE;
-                    } else {
-                        goto applyPrimop;
-                    }
-                }; goto apply;
-
-                case PrimopRes::ABORT: return VMRes{};
-                }
+            case PrimopRes::ABORT: return VMRes{};
             }
         }
+    }
     }
 }
 

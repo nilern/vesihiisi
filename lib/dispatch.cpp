@@ -153,8 +153,8 @@ bool closureIsApplicableToList(State const* state, Closure const* callee, ORef a
 ORef checkDomainForArgs(
     State* state, HRef<Closure> calleeRef, ORef const* args, size_t argc
 ) {
-    if (!state->checkDomain) {
-        state->checkDomain = true;
+    if (state->domainChecking != State::DomainChecking::CHECK) {
+        state->domainChecking = State::DomainChecking::CHECK;
         return Default;
     }
 
@@ -163,8 +163,8 @@ ORef checkDomainForArgs(
 
 [[nodiscard]]
 ORef checkDomain(State* state) {
-    if (!state->checkDomain) {
-        state->checkDomain = true;
+    if (state->domainChecking != State::DomainChecking::CHECK) {
+        state->domainChecking = State::DomainChecking::CHECK;
         return Default;
     }
 
@@ -188,7 +188,7 @@ ORef applicableClosureForArgs(
         auto const methodRef = HRef<Closure>::fromUnchecked(methods[i]);
 
         if (closureIsApplicable(state, &*methodRef, args, argc)) {
-            state->checkDomain = false;
+            state->domainChecking = State::DomainChecking::SKIP;
             return methodRef;
         }
     }
@@ -208,7 +208,7 @@ ORef applicableClosureForArglist(State* state, Multimethod const* callee, ORef a
         HRef<Closure> const methodRef = HRef<Closure>::fromUnchecked(methods[i]);
 
         if (closureIsApplicableToList(state, &*methodRef, args)) {
-            state->checkDomain = false;
+            state->domainChecking = State::DomainChecking::SKIP;
             return methodRef;
         }
     }

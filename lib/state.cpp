@@ -345,7 +345,7 @@ State::State(
     consts{nullptr, nullptr},
     ns{ns},
     entryRegc{0}, // Intentionally invalid
-    checkDomain{true},
+    domainChecking{DomainChecking::CHECK},
 
     heap{std::move(heap)},
     types{types},

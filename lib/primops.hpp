@@ -34,7 +34,7 @@ struct Primop {
     // TODO: Move domain checking out into a `template<bool hasVararg, typename... Domain>` to
     // at least share the code between primops of the same type?:
     static PrimopRes invoke(State* state) {
-        if (state->checkDomain) {
+        if (state->domainChecking != State::DomainChecking::CHECK) {
             size_t const argc = state->entryRegc - firstArgReg;
             static constexpr size_t arity = sizeof...(Domain);
             static constexpr bool hasVararg = CRTPSub::hasVararg;
@@ -78,7 +78,7 @@ struct Primop {
                 }
             }
         } else {
-            state->checkDomain = true;
+            state->domainChecking = State::DomainChecking::CHECK;
         }
 
         return CRTPSub::uncheckedInvoke(state);

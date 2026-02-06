@@ -79,6 +79,8 @@ public:
 };
 
 struct State {
+    enum class DomainChecking : uint8_t { CHECK, SPECULATE, SKIP };
+
     ORef method;
     uint8_t const* code;
     size_t pc;
@@ -86,7 +88,7 @@ struct State {
     SlotsMut<ORef> consts;
     HRef<Namespace> ns;
     uint8_t entryRegc;
-    bool checkDomain;
+    DomainChecking domainChecking;
 
     Heap heap;
 

@@ -444,7 +444,7 @@ VMRes run(State* state, HRef<Closure> self) {
                         state->consts =
                             HRef<ArrayMut>::fromUnchecked(method->consts)->itemsMut().data();
 
-                        state->checkDomain = true;
+                        state->domainChecking = State::DomainChecking::CHECK;
 
                         VM_CONTINUE;
                     } else {

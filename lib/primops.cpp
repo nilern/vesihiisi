@@ -132,7 +132,7 @@ PrimopRes PrimopApplyArray::uncheckedInvoke(State* state) {
     }
 
     state->entryRegc = (uint8_t)(firstArgReg + argc);
-    state->checkDomain = false;
+    state->domainChecking = State::DomainChecking::SKIP;
     return PrimopRes::TAILAPPLY;
 }
 
@@ -157,7 +157,7 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
     // Put args in place and check them (if not already checked by dispatch):
     size_t const arity = (uint64_t)methodRef->flexCount().val();
     size_t argc = 0;
-    if (state->checkDomain) {
+    if (state->domainChecking != State::DomainChecking::SKIP) {
         bool const hasVarArg = methodRef->hasVarArg.val();
         size_t const minArity = !hasVarArg ? arity : arity - 1;
 
@@ -296,7 +296,7 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
 
             argc = minArity + varargCount;
         }
-    } else { // `state->checkDomain == false`
+    } else { // `state->domainChecking == State::DomainChecking::SKIP`
         bool const hasVarArg = methodRef->hasVarArg.val();
         size_t const minArity = !hasVarArg ? arity : arity - 1;
 
@@ -382,7 +382,7 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
     }
 
     state->entryRegc = (uint8_t)(firstArgReg + argc);
-    state->checkDomain = false;
+    state->domainChecking = State::DomainChecking::SKIP;
     return PrimopRes::TAILAPPLY;
 }
 

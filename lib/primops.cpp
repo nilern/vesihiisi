@@ -99,10 +99,7 @@ PrimopRes PrimopApplyArray::uncheckedInvoke(State* state) {
     // Check domain (if not already checked by dispatch):
     ORef const maybeCalleeErr = checkDomainForArgs(state, closure, args, argc);
     if (isHeaped(maybeCalleeErr)) {
-        state->regs[calleeReg] = getErrorHandler(state);
-        state->regs[firstArgReg] = maybeCalleeErr;
-        state->entryRegc = firstArgReg + 1;
-        return PrimopRes::TAILCALL;
+        return primopError(state, maybeCalleeErr);
     }
 
     ORef const method = closure->method;

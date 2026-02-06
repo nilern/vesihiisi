@@ -255,11 +255,10 @@ VMRes run(State* state, HRef<Closure> self) {
         }; VM_CONTINUE;
 
         VM_CASE(OP_RET) {
-            assert(eq(typeOf(state, state->regs[retContReg]),
-                      state->types.continuation));
+            assert(isa<Continuation>(*state, state->regs[retContReg]));
             auto const ret = HRef<Continuation>::fromUnchecked(state->regs[retContReg]);
             ORef const anyMethod = ret->method;
-            if (isHeaped(anyMethod)) {
+            if (isHeaped(anyMethod)) { // Return to bytecode method:
                 assert(isa<Method>(*state, anyMethod));
                 state->setMethod(HRef<Method>::fromUnchecked(anyMethod));
                 state->pc = (size_t)ret->pc.val();
@@ -365,16 +364,19 @@ VMRes run(State* state, HRef<Closure> self) {
         apply: {
             // Do not need return value here as a call is set up even in case of error:
             calleeClosure(state, state->regs[calleeReg]);
-            assert(isa<Closure>(*state, state->regs[calleeReg]));
-            auto closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
 
-            ORef anyMethod = closure->method;
-            assert(isa<Method>(*state, anyMethod));
-            auto method = HRef<Method>::fromUnchecked(anyMethod);
-            if (isHeaped(method->code)) {
+            auto method = [&](){
+                assert(isa<Closure>(*state, state->regs[calleeReg]));
+                auto closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
+                assert(isa<Method>(*state, closure->method));
+                return HRef<Method>::fromUnchecked(closure->method);
+            }();
+            if (isHeaped(method->code)) { // Bytecode method:
+                // Jump to beginning:
                 state->setMethod(method);
                 state->pc = 0;
 
+                // Check domain:
                 ORef const maybeErr = checkDomain(state);
                 if (isHeaped(maybeErr)) {
                     state->regs[calleeReg] = getErrorHandler(state);
@@ -383,7 +385,7 @@ VMRes run(State* state, HRef<Closure> self) {
                     goto apply;
                 }
 
-                if (method->hasVarArg.val()) {
+                if (method->hasVarArg.val()) { // Reify varargs:
                     size_t const arity = method->domain().size();
                     size_t const minArity = arity - 1;
                     uint8_t const callArgc = state->entryRegc - firstArgReg;
@@ -401,31 +403,31 @@ VMRes run(State* state, HRef<Closure> self) {
             } else {
                 applyPrimop:
                 switch (method->nativeCode(state)) {
-                case PrimopRes::CONTINUE: { // TODO: DRY wrt. OP_RET:
-                    assert(eq(typeOf(state, state->regs[retContReg]),
-                              state->types.continuation));
+                case PrimopRes::CONTINUE: { // Returned:
+                    // TODO: DRY wrt. OP_RET:
+                    assert(isa<Continuation>(*state, state->regs[retContReg]));
                     auto const ret = HRef<Continuation>::fromUnchecked(state->regs[retContReg]);
                     ORef const anyMethod = ret->method;
-                    if (isHeaped(anyMethod)) {
+                    if (isHeaped(anyMethod)) { // Return to bytecode method:
                         assert(isa<Method>(*state, anyMethod));
                         state->setMethod(HRef<Method>::fromUnchecked(anyMethod));
                         state->pc = (size_t)ret->pc.val();
-
-                        VM_CONTINUE;
-                    } else { // Exit
+                    } else { // Exit:
                         return VMRes{.val = state->regs[retReg], .success = true};
                     }
-                }; goto apply;
+                }; VM_CONTINUE;
 
-                case PrimopRes::TAILCALL: goto apply; // All is in place, just keep trampolining
+                case PrimopRes::TAILCALL: // Set up another call in its place:
+                    goto apply; // All is in place, just keep trampolining
 
                 // TODO: DRY with loop head:
                 case PrimopRes::TAILAPPLY: {
-                    assert(isa<Closure>(*state, state->regs[calleeReg]));
-                    closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
-                    anyMethod = closure->method;
-                    assert(isa<Method>(*state, anyMethod));
-                    method = HRef<Method>::fromUnchecked(anyMethod);
+                    method = [&](){
+                        assert(isa<Closure>(*state, state->regs[calleeReg]));
+                        auto closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
+                        assert(isa<Method>(*state, closure->method));
+                        return HRef<Method>::fromUnchecked(closure->method);
+                    }();
                     if (isHeaped(method->code)) {
                         state->setMethod(method);
                         state->pc = 0;

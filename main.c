@@ -86,7 +86,7 @@ int main(int argc, char const* argv[static argc]) {
     char const* const vshsHome = getenv(homeEnvVarName);
     if (!vshsHome) {
         fprintf(stderr, "Error: %s not set.\n", homeEnvVarName);
-        exit(EXIT_FAILURE);
+        return EXIT_FAILURE;
     }
 
     size_t const vshsHomeCount = strlen(vshsHome);
@@ -101,6 +101,7 @@ int main(int argc, char const* argv[static argc]) {
     struct Vshs_State* state = tryCreateState(10*1024*1024, vshsHome, argc, argv);
     if (!state) {
         puts("Insufficient memory");
+        free(fullBootstrapFilename);
         return EXIT_FAILURE;
     }
 
@@ -112,6 +113,7 @@ int main(int argc, char const* argv[static argc]) {
     FILE* const file = fopen(fullBootstrapFilename, "rb");
     if (!file) {
         fprintf(stderr, "Can't open %s: %s\n", fullBootstrapFilename, strerror(errno));
+        free(fullBootstrapFilename);
         return EXIT_FAILURE;
     }
 
@@ -183,7 +185,8 @@ int main(int argc, char const* argv[static argc]) {
         Vshs_Res const res = maybeRes.val;
         if (res.tag != RES_OK) {
             fputs("Bad interpreter file\n", stderr);
-            exit(EXIT_FAILURE);
+            free(fullBootstrapFilename);
+            return EXIT_FAILURE;
         }
 
         popRoot(filenameG);
@@ -191,6 +194,7 @@ int main(int argc, char const* argv[static argc]) {
     }
 
     freeState(state);
+    free(fullBootstrapFilename);
     return EXIT_SUCCESS;
 }
 

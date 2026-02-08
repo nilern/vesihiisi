@@ -15,13 +15,14 @@
 #include "dispatch.cpp"
 #include "primops.cpp"
 #include "vm.cpp"
-#include "compiler/compiler.cpp"
+#include "compiler/ir.cpp"
 #include "compiler/tocps.cpp"
 #include "compiler/liveness.cpp"
 #include "compiler/pureloads.cpp"
 #include "compiler/regalloc.cpp"
 #include "compiler/cloverindexing.cpp"
 #include "compiler/bytecodegen.cpp"
+#include "compiler/compiler.cpp"
 
 extern "C" Vshs_RT* Vshs_tryCreateRT(
     size_t heapSize, char const* vshsHome, int argc, char const* argv[]

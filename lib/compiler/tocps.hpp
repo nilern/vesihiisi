@@ -1,6 +1,6 @@
 #pragma once
 
-#include "compiler.hpp"
+#include "ir.hpp"
 
 namespace {
 

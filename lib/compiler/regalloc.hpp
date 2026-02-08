@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-#include "compiler.hpp"
+#include "ir.hpp"
 
 namespace {
 

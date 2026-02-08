@@ -47,7 +47,7 @@ CompilationRes compile(RT* state, ORef expr, HRef<Loc> loc, bool debug) {
         puts("\n");
     }
 
-    indexToplevelFnClovers(&compiler, &irFn);
+    indexToplevelFnClovers(compiler, irFn);
     if (debug) {
         puts(";; # Concrete IR:");
         printIRFn(state, stdout, &compiler, printIRReg, &irFn);

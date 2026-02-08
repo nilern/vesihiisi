@@ -4,6 +4,6 @@
 
 namespace {
 
-void indexToplevelFnClovers(Compiler* compiler, IRFn* fn);
+void indexToplevelFnClovers(Compiler& compiler, IRFn& fn);
 
 } // namespace

@@ -27,6 +27,8 @@ struct Vshs_State* tryCreateState(
     size_t heapSize, char const* vshsHome, int argc, char const* argv[]);
 void freeState(struct Vshs_State* state);
 
+bool Vshs_debug(struct Vshs_State const* state);
+
 typedef struct Vshs_RootGuard {
     struct Vshs_State* state;
 } Vshs_RootGuard;

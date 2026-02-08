@@ -31,6 +31,10 @@ extern "C" Vshs_State* tryCreateState(
 
 extern "C" void freeState(Vshs_State* state) { freeState((State*)state); }
 
+extern "C" bool Vshs_debug(Vshs_State const* state) {
+    return !eq(reinterpret_cast<State const*>(state)->debug->val().get(), False);
+}
+
 extern "C" Vshs_RootGuard* pushRoot(Vshs_State* state, ORef* stackLoc) {
     auto const guard = new RootGuard{}; // So that we do not move-assign into uninitialized
     *guard = ((State*)state)->pushRoot(stackLoc);

@@ -1,5 +1,3 @@
-#define _XOPEN_SOURCE 700 // For `realpath` & `getline`
-
 #include "lib/vesihiisi.h"
 
 #include <assert.h>
@@ -35,7 +33,9 @@ typedef struct Vshs_MaybeRes {
     bool hasVal;
 } Vshs_MaybeRes;
 
-static Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser, bool debug) {
+static Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser) {
+    bool const debug = Vshs_debug(state);
+
     ParseRes const readRes = Vshs_read(state, parser);
     if (!readRes.success) {
         return (Vshs_MaybeRes){{.err = {.parseErr = readRes.err, VSHS_PARSE_ERR}}, RES_OK};
@@ -73,132 +73,6 @@ static Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser, bool deb
     }
 }
 
-#define countof(v) (sizeof(v) / sizeof(*(v)))
-
-typedef struct CLIArgs {
-    char const* name;
-    char const* filename;
-    bool fromStdin;
-    bool debug;
-    bool help;
-    bool forceInteractive;
-} CLIArgs;
-
-static void freeCLIArgs(CLIArgs* args) { free((void*)args->filename); }
-
-typedef struct CLIErr {
-    int idx;
-    enum {CLI_ERR_NONFLAG, CLI_ERR_EXTRA_ARGS} type;
-} CLIErr;
-
-typedef struct ParseArgvRes {
-    union {
-        CLIErr err;
-        CLIArgs val;
-    };
-    ResTag tag;
-} ParseArgvRes;
-
-// TODO: Remove CLI as it is already actually running in Lisp and even `debug` is available in
-// `State`
-
-static void printCLIErr(FILE* dest, char const* argv[], CLIErr const* err) {
-    switch (err->type) {
-    case CLI_ERR_NONFLAG: {
-        fprintf(dest, "%s: unrecognized option '%s'", argv[0], argv[err->idx]);
-    }; break;
-
-    case CLI_ERR_EXTRA_ARGS: {
-        fprintf(dest, "%s: extra arguments (starting with '%s')", argv[0], argv[err->idx]);
-    }; break;
-    }
-}
-
-static void initDebug(CLIArgs* args) { args->debug = true; }
-
-static void initHelp(CLIArgs* args) { args->help = true; }
-
-static void initForceInteractive(CLIArgs* args) { args->forceInteractive = true; }
-
-static char const* const longFlagNames[] = {"debug", "help", "interactive"};
-
-static char const shortFlagNames[] = {'d', 'h', 'i'};
-static_assert(countof(shortFlagNames) == countof(longFlagNames));
-
-static void (*flagInits[])(CLIArgs*) = {
-    initDebug, initHelp, initForceInteractive
-};
-static_assert(countof(flagInits) == countof(longFlagNames));
-
-static char const* const flagDescriptions[] = {
-    "turn on debug output (for developing the VM)",
-    "display this help and exit",
-    "force interactive i.e. if FILE is given launch repl after loading it"
-};
-static_assert(countof(flagDescriptions) == countof(longFlagNames));
-
-static ParseArgvRes parseArgv(int argc, char const* argv[static argc]) {
-    CLIArgs config = {
-        .name = argv[0],
-        .filename = nullptr,
-        .fromStdin = false,
-        .debug = false,
-        .help = false,
-        .forceInteractive = false
-    };
-
-    int i = 1;
-
-    for (char const* arg; i < argc && *(arg = argv[i]) == '-'; ++i) {
-        ++arg;
-
-        bool validFlag = false;
-
-        if (*arg == '-') { // Long flag:
-            ++arg;
-
-            for (size_t j = 0; j < countof(longFlagNames); ++j) {
-                if (strcmp(arg, longFlagNames[j]) == 0) {
-                    flagInits[j](&config);
-                    validFlag = true;
-                    break;
-                }
-            }
-
-            if (!validFlag) {
-                return (ParseArgvRes){.err = {.idx = i, CLI_ERR_NONFLAG}, RES_ERR};
-            }
-        } else if (*arg != '\0') { // Short flag(s):
-            for (; *arg != '\0'; ++arg) {
-                for (size_t j = 0; j < countof(shortFlagNames); ++j) {
-                    if (*arg == shortFlagNames[j]) {
-                        flagInits[j](&config);
-                        validFlag = true;
-                        break;
-                    }
-                }
-
-                if (!validFlag) {
-                    return (ParseArgvRes){.err = {.idx = i, CLI_ERR_NONFLAG}, RES_ERR};
-                }
-            }
-        } else { // Empty short flag '-':
-            config.fromStdin = true;
-        }
-    }
-
-    if (i < argc) {
-        config.filename = realpath(argv[i], nullptr);
-        ++i;
-    }
-
-    if (i < argc) {
-        return (ParseArgvRes){.err = {.idx = i, CLI_ERR_EXTRA_ARGS}, RES_ERR};
-    }
-
-    return (ParseArgvRes){.val = config, RES_OK};
-}
-
 static const char bootstrapFilename[] = "base/bootstrap.lisp";
 static const char homeEnvVarName[] = "VSHS_HOME";
 
@@ -215,25 +89,14 @@ int main(int argc, char const* argv[static argc]) {
         exit(EXIT_FAILURE);
     }
 
-    ParseArgvRes const argvRes = parseArgv(argc, argv);
-    if (argvRes.tag == RES_ERR) {
-        printCLIErr(stderr, argv, &argvRes.err);
-        putc('\n', stderr);
-        fprintf(stderr, "Try '%s --help' for more information.\n", argv[0]);
-        return EXIT_FAILURE;
-    }
-    CLIArgs args = argvRes.val;
-    {
-        size_t const vshsHomeCount = strlen(vshsHome);
-        size_t const bootstrapFilenameCount = sizeof bootstrapFilename / sizeof *bootstrapFilename;
-        size_t const fullbootstrapFilenameCount = vshsHomeCount + 1 + bootstrapFilenameCount;
-        char* const fullBootstrapFilename = malloc(fullbootstrapFilenameCount);
-        strcpy(fullBootstrapFilename, vshsHome);
-        fullBootstrapFilename[vshsHomeCount] = '/'; // TODO: Support non-POSIX filename separator
-        strcpy(fullBootstrapFilename + vshsHomeCount + 1, bootstrapFilename);
-        fullBootstrapFilename[fullbootstrapFilenameCount - 1] = '\0';
-        args.filename = fullBootstrapFilename; // HACK
-    }
+    size_t const vshsHomeCount = strlen(vshsHome);
+    size_t const bootstrapFilenameCount = sizeof bootstrapFilename / sizeof *bootstrapFilename;
+    size_t const fullbootstrapFilenameCount = vshsHomeCount + 1 + bootstrapFilenameCount;
+    char* const fullBootstrapFilename = malloc(fullbootstrapFilenameCount);
+    strcpy(fullBootstrapFilename, vshsHome);
+    fullBootstrapFilename[vshsHomeCount] = '/'; // TODO: Support non-POSIX filename separator
+    strcpy(fullBootstrapFilename + vshsHomeCount + 1, bootstrapFilename);
+    fullBootstrapFilename[fullbootstrapFilenameCount - 1] = '\0';
 
     struct Vshs_State* state = tryCreateState(10*1024*1024, vshsHome, argc, argv);
     if (!state) {
@@ -246,9 +109,9 @@ int main(int argc, char const* argv[static argc]) {
     char* fchars = nullptr;
     size_t fsize = 0;
     // OPTIMIZE: Use `mmap`:
-    FILE* const file = fopen(args.filename, "rb");
+    FILE* const file = fopen(fullBootstrapFilename, "rb");
     if (!file) {
-        fprintf(stderr, "Can't open %s: %s\n", args.filename, strerror(errno));
+        fprintf(stderr, "Can't open %s: %s\n", fullBootstrapFilename, strerror(errno));
         return EXIT_FAILURE;
     }
 
@@ -262,14 +125,14 @@ int main(int argc, char const* argv[static argc]) {
     fchars[fsize] = 0;
     fclose(file);
 
-    Str filenameStr = (Str){(uint8_t*)args.filename, strlen(args.filename)};
+    Str filenameStr = (Str){(uint8_t*)fullBootstrapFilename, strlen(fullBootstrapFilename)};
 
     Str const src = {(uint8_t*)fchars, fsize};
     Parser* const parser = createParser(state, src, filenameStr);
     Vshs_RootGuard* filenameG = pushFilenameRoot(state, parser);
 
     while (!loadFailed) {
-        Vshs_MaybeRes const maybeRes = readEval(state, parser, args.debug);
+        Vshs_MaybeRes const maybeRes = readEval(state, parser);
         if (!maybeRes.hasVal) { break; }
         Vshs_Res const res = maybeRes.val;
 
@@ -315,7 +178,7 @@ int main(int argc, char const* argv[static argc]) {
         Parser* parser = createParser(state, src, replFilenameStr);
         pushFilenameRoot(state, parser);
 
-        Vshs_MaybeRes const maybeRes = readEval(state, parser, args.debug);
+        Vshs_MaybeRes const maybeRes = readEval(state, parser);
         assert(maybeRes.hasVal);
         Vshs_Res const res = maybeRes.val;
         if (res.tag != RES_OK) {
@@ -328,7 +191,6 @@ int main(int argc, char const* argv[static argc]) {
     }
 
     freeState(state);
-    freeCLIArgs(&args);
     return EXIT_SUCCESS;
 }
 

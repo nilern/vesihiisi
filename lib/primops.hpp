@@ -1,6 +1,6 @@
 #pragma once
 
-#include "object.hpp"
+#include "value.hpp"
 #include "state.hpp"
 #include "bytecode.hpp"
 

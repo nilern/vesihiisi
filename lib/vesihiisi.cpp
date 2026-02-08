@@ -4,7 +4,7 @@
 #include "util/arena.cpp"
 #include "util/bitset.cpp"
 #include "util/bytefulbitset.cpp"
-#include "object.cpp"
+#include "value.cpp"
 #include "heap.cpp"
 #include "state.cpp"
 #include "flyweights.cpp"

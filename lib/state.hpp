@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "object.hpp"
+#include "value.hpp"
 #include "heap.hpp"
 #include "flyweights.hpp"
 

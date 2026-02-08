@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "util/util.hpp"
-#include "object.hpp"
+#include "value.hpp"
 #include "heap.hpp"
 #include "flyweights.hpp"
 #include "namespace.hpp"

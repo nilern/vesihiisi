@@ -47,9 +47,10 @@ int main(int argc, char const* argv[static argc]) {
         Str const src = {rawSrc, countof(rawSrc) - 1};
         Vshs_MaybeRes const maybeRes = Vshs_evalString(state, src, replFilenameStr);
         assert(maybeRes.hasVal);
-        Vshs_Res const res = maybeRes.val;
+        Vshs_Res res = maybeRes.val;
         if (res.tag != RES_OK) {
             fputs("Bad interpreter file\n", stderr);
+            Vshs_freeError(&res.err);
             goto error;
         }
     }

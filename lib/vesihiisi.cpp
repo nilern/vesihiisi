@@ -31,32 +31,38 @@ extern "C" Vshs_State* tryCreateState(
 
 extern "C" void freeState(Vshs_State* state) { freeState((State*)state); }
 
-extern "C" Vshs_RootGuard* pushRoot(Vshs_State* state, ORef* stackLoc) {
+namespace {
+typedef struct Vshs_RootGuard {
+    struct Vshs_State* state;
+} Vshs_RootGuard;
+
+Vshs_RootGuard* pushRoot(Vshs_State* state, ORef* stackLoc) {
     auto const guard = new RootGuard{}; // So that we do not move-assign into uninitialized
     *guard = ((State*)state)->pushRoot(stackLoc);
     return (Vshs_RootGuard*)guard;
 }
 
-extern "C" void popRoot(Vshs_RootGuard* guard) { delete (RootGuard*)guard; }
+void popRoot(Vshs_RootGuard* guard) { delete (RootGuard*)guard; }
 
-extern "C" Parser* createParser(Vshs_State* state, Str src, Str filename) {
+Parser* createParser(Vshs_State* state, Str src, Str filename) {
     Parser* const parser = (Parser*)malloc(sizeof *parser);
     if (!parser) { return nullptr; }
     return new (parser) Parser{(State*)state, src, filename};
 }
 
-extern "C" void freeParser(Parser* parser) {
+void freeParser(Parser* parser) {
     parser->~Parser();
     return free(parser);
 }
 
-extern "C" Vshs_RootGuard* pushFilenameRoot(struct Vshs_State* state, Parser* parser) {
+Vshs_RootGuard* pushFilenameRoot(struct Vshs_State* state, Parser* parser) {
     return pushRoot(state, &parser->filename);
 }
 
-extern "C" ParseRes Vshs_read(struct Vshs_State* state, Parser* parser) {
+ParseRes Vshs_read(struct Vshs_State* state, Parser* parser) {
     return read((State*)state, parser);
 }
+} // namespace
 
 extern "C" void printParseError(FILE* dest, Str src, ParseError const* err) {
     if (err->type == INVALID_UTF8) {
@@ -106,7 +112,29 @@ extern "C" void printSyntaxError(
     }
 }
 
-extern "C" EvalRes eval(Vshs_State* extState, ORef expr, ORef loc, bool debug) {
+namespace {
+typedef enum EvalErrorType {
+    SYNTAX_ERROR,
+    RUNTIME_ERROR
+} EvalErrorType;
+
+typedef struct EvalError {
+    union {
+        SyntaxErrors syntaxErrs;
+        // Runtime errors are handled by `State::errorHandler`, we just need to know it failed
+    };
+    EvalErrorType type;
+} EvalError;
+
+typedef struct EvalRes {
+    union {
+        ORef val;
+        EvalError err;
+    };
+    bool success;
+} EvalRes;
+
+EvalRes eval(Vshs_State* extState, ORef expr, ORef loc, bool debug) {
     State* const state = (State*)extState;
 
     assert(isa(state, state->types.loc, loc));
@@ -126,12 +154,25 @@ extern "C" EvalRes eval(Vshs_State* extState, ORef expr, ORef loc, bool debug) {
         ? EvalRes{{.val = runRes.val}, true}
         : EvalRes{{.err = {{}, RUNTIME_ERROR}}, false};
 }
+} // namespace
 
 extern "C" void print(Vshs_State const* state, FILE* dest, ORef v) {
     print((State const*)state, dest, v);
 }
 
-extern "C" Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser) {
+extern "C" void Vshs_freeError(Vshs_Err* err) {
+    switch (err->type) {
+    case Vshs_Err::VSHS_PARSE_ERR: break;
+
+    case Vshs_Err::VSHS_SYNTAX_ERRS: {
+        freeSyntaxErrors(&err->syntaxErrs);
+    }; break;
+
+    case Vshs_Err::VSHS_RUNTIME_ERR: break;
+    }
+}
+
+static Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser) {
     bool const debug = !eq(reinterpret_cast<State const*>(state)->debug->val().get(), False);
 
     ParseRes const readRes = Vshs_read(state, parser);
@@ -207,35 +248,36 @@ extern "C" bool bootstrap(struct Vshs_State* state, char const* bootstrapFilenam
     while (!loadFailed) {
         Vshs_MaybeRes const maybeRes = readEval(state, parser);
         if (!maybeRes.hasVal) { break; }
-        Vshs_Res const res = maybeRes.val;
+        Vshs_Res res = maybeRes.val;
 
         switch (res.tag) {
         case RES_OK: break;
 
         case RES_ERR: {
             switch (res.err.type) {
-            case Vshs_Err::VSHS_PARSE_ERR: { // TODO: DRY wrt. parse error in REPL
+            case Vshs_Err::VSHS_PARSE_ERR: {
+                ParseError const* const err = &res.err.parseErr;
+
                 fputs("ParseError: ", stderr);
-                printParseError(stderr, src, &res.err.parseErr);
+                printParseError(stderr, src, err);
                 putc('\n', stderr);
             }; break;
 
             case Vshs_Err::VSHS_SYNTAX_ERRS: {
-                SyntaxErrors errs = res.err.syntaxErrs;
+                SyntaxErrors const* const errs = &res.err.syntaxErrs;
 
-                size_t const errorCount = errs.count;
+                size_t const errorCount = errs->count;
                 for (size_t i = 0; i < errorCount; ++i) {
                     fputs("SyntaxError: ", stderr);
-                    printSyntaxError(state, stderr, src, &errs.vals[i]);
+                    printSyntaxError(state, stderr, src, &errs->vals[i]);
                     putc('\n', stderr);
                 }
-
-                freeSyntaxErrors(&errs);
             }; break;
 
             case Vshs_Err::VSHS_RUNTIME_ERR: break; // FIXME?
             }
 
+            Vshs_freeError(&res.err);
             loadFailed = true;
         }; break;
         }

@@ -27,13 +27,6 @@ struct Vshs_State* tryCreateState(
     size_t heapSize, char const* vshsHome, int argc, char const* argv[]);
 void freeState(struct Vshs_State* state);
 
-typedef struct Vshs_RootGuard {
-    struct Vshs_State* state;
-} Vshs_RootGuard;
-
-Vshs_RootGuard* pushRoot(struct Vshs_State* state, ORef* stackLoc);
-void popRoot(Vshs_RootGuard* guard);
-
 typedef struct Parser Parser;
 
 typedef enum ParseErrorType {
@@ -41,11 +34,6 @@ typedef enum ParseErrorType {
     EXPECTED_CHAR_CLASS,
     INVALID_UTF8
 } ParseErrorType;
-
-Parser* createParser(struct Vshs_State* state, Str src, Str filename);
-void freeParser(Parser* parser);
-
-Vshs_RootGuard* pushFilenameRoot(struct Vshs_State* state, Parser* parser); // HACK
 
 typedef struct Vshs_LocatedORef {
     ORef val;
@@ -77,8 +65,6 @@ typedef struct ParseRes {
 
 void printParseError(FILE* dest, Str src, ParseError const* err);
 
-ParseRes Vshs_read(struct Vshs_State* state, Parser* parser);
-
 typedef enum SyntaxErrorType {
     INVALID_DEFINIEND,
     INVALID_PARAM,
@@ -102,29 +88,6 @@ typedef struct SyntaxErrors {
 
 void freeSyntaxErrors(SyntaxErrors* syntaxErrors);
 
-typedef enum EvalErrorType {
-    SYNTAX_ERROR,
-    RUNTIME_ERROR
-} EvalErrorType;
-
-typedef struct EvalError {
-    union {
-        SyntaxErrors syntaxErrs;
-        // Runtime errors are handled by `State::errorHandler`, we just need to know it failed
-    };
-    EvalErrorType type;
-} EvalError;
-
-typedef struct EvalRes {
-    union {
-        ORef val;
-        EvalError err;
-    };
-    bool success;
-} EvalRes;
-
-EvalRes eval(struct Vshs_State* state, ORef expr, ORef loc, bool debug);
-
 void print(struct Vshs_State const* state, FILE* dest, ORef v);
 
 typedef enum ResTag {RES_ERR, RES_OK} ResTag;
@@ -141,6 +104,8 @@ typedef struct Vshs_Err {
     } type;
 } Vshs_Err;
 
+void Vshs_freeError(Vshs_Err* err);
+
 typedef struct Vshs_Res {
     union {
         Vshs_Err err;
@@ -155,8 +120,6 @@ typedef struct Vshs_MaybeRes {
 } Vshs_MaybeRes;
 
 bool bootstrap(struct Vshs_State* state, char const* bootstrapFilename);
-
-Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser);
 
 Vshs_MaybeRes Vshs_evalString(struct Vshs_State* state, Str src, Str filename);
 

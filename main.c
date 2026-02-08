@@ -6,14 +6,13 @@
 #include <stdio.h>
 #include <errno.h>
 
+#define countof(v) sizeof(v) / sizeof *(v)
+
 static const char bootstrapFilename[] = "base/bootstrap.lisp";
 static const char homeEnvVarName[] = "VSHS_HOME";
 
-static const char replFilename[] = "REPL";
-static Str const replFilenameStr = {
-    (uint8_t const*)replFilename,
-    sizeof replFilename / sizeof *replFilename
-};
+static const uint8_t replFilename[] = "REPL";
+static Str const replFilenameStr = {replFilename, countof(replFilename) - 1};
 
 int main(int argc, char const* argv[static argc]) {
     char const* const vshsHome = getenv(homeEnvVarName);
@@ -23,7 +22,7 @@ int main(int argc, char const* argv[static argc]) {
     }
 
     size_t const vshsHomeCount = strlen(vshsHome);
-    size_t const bootstrapFilenameCount = sizeof bootstrapFilename / sizeof *bootstrapFilename;
+    size_t const bootstrapFilenameCount = countof(bootstrapFilename);
     size_t const fullbootstrapFilenameCount = vshsHomeCount + 1 + bootstrapFilenameCount;
     char* const fullBootstrapFilename = malloc(fullbootstrapFilenameCount);
     strcpy(fullBootstrapFilename, vshsHome);
@@ -61,7 +60,7 @@ int main(int argc, char const* argv[static argc]) {
     fchars[fsize] = 0;
     fclose(file);
 
-    Str filenameStr = (Str){(uint8_t*)fullBootstrapFilename, strlen(fullBootstrapFilename)};
+    Str filenameStr = (Str){(uint8_t*)fullBootstrapFilename, strlen(fullBootstrapFilename) - 1};
 
     Str const src = {(uint8_t*)fchars, fsize};
     Parser* const parser = createParser(state, src, filenameStr);
@@ -110,7 +109,7 @@ int main(int argc, char const* argv[static argc]) {
 
     {
         uint8_t const rawSrc[] = "(load \"base/interpreter.lisp\" *vm-debug*)";
-        Str const src = {rawSrc, (sizeof rawSrc / sizeof *rawSrc) - 1};
+        Str const src = {rawSrc, countof(rawSrc) - 1};
         Vshs_MaybeRes const maybeRes = Vshs_evalString(state, src, replFilenameStr);
         assert(maybeRes.hasVal);
         Vshs_Res const res = maybeRes.val;

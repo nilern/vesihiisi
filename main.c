@@ -5,7 +5,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#define countof(v) sizeof(v) / sizeof *(v)
+#define countof(v) (sizeof (v) / sizeof *(v))
 
 static const char bootstrapFilename[] = "base/bootstrap.lisp";
 static const char homeEnvVarName[] = "VSHS_HOME";

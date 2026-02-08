@@ -1,3 +1,5 @@
+#include "vm.hpp"
+
 #include <stdbit.h>
 #include <string.h>
 
@@ -18,11 +20,6 @@ namespace {
 #define VSHS_COMPUTED_GOTO false
 #endif
 #endif
-
-typedef struct VMRes {
-    ORef val;
-    bool success;
-} VMRes;
 
 VMRes run(RT* state, HRef<Closure> self) {
     // TODO: Debug index & type checks & bytecode verifier

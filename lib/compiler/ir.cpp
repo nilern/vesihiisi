@@ -360,23 +360,23 @@ void createIRReturn(IRBlock* block, IRName callee, IRName arg, ORef maybeLoc) {
 
 typedef void (PrintIRNameFn)(RT const* state, FILE* dest, Compiler const* compiler, IRName name);
 
-void printIRName(RT const* state, FILE* dest, Compiler const* compiler, IRName name) {
-    assert(name.index < compiler->nameSyms.count());
-    ORef const maybeSym = compiler->nameSyms[name.index];
+void IRName::print(RT const* state, FILE* dest, Compiler const* compiler) const {
+    assert(index < compiler->nameSyms.count());
+    ORef const maybeSym = compiler->nameSyms[index];
     if (isa<Symbol>(*state, maybeSym)) {
         write(state, dest, maybeSym);
     }
-    fprintf(dest, "$%ld", name.index);
+    fprintf(dest, "$%ld", index);
+}
+
+void printIRName(RT const* state, FILE* dest, Compiler const* compiler, IRName name) {
+    name.print(state, dest, compiler);
 }
 
 inline void printIRReg(
     RT const* /*state*/, FILE* dest, Compiler const* /*compiler*/, IRName name
-    ) {
-    fprintf(dest, "r%ld", name.index);
-}
-
-void printIRLabel(FILE* dest, IRLabel label) {
-    fprintf(dest, ":%ld", label.blockIndex);
+) {
+    name.printAsReg(dest);
 }
 
 void printArgs(
@@ -525,7 +525,7 @@ void printTransfer(
         fprintf(dest, "(call ");
         printName(state, dest, compiler, transfer->call.callee);
         fprintf(dest, " (");
-        printIRLabel(dest, transfer->call.retLabel);
+        transfer->call.retLabel.print(dest);
         if (transfer->call.closes.count > 0) { fputc(' ', dest); }
         printArgs(state, dest, compiler, printName, &transfer->call.closes);
         fprintf(dest, ") ");
@@ -547,15 +547,15 @@ void printTransfer(
         fprintf(dest, "(if ");
         printName(state, dest, compiler, transfer->iff.cond);
         fputc(' ', dest);
-        printIRLabel(dest, transfer->iff.conseq);
+        transfer->iff.conseq.print(dest);
         fputc(' ', dest);
-        printIRLabel(dest, transfer->iff.alt);
+        transfer->iff.alt.print(dest);
         fputc(')', dest);
     }; break;
 
     case IRTransfer::GOTO: {
         fprintf(dest, "(goto ");
-        printIRLabel(dest, transfer->gotoo.dest);
+        transfer->gotoo.dest.print(dest);
         fputc(' ', dest);
         printArgs(state, dest, compiler, printName, &transfer->gotoo.args);
         fputc(')', dest);
@@ -578,7 +578,7 @@ void printBlock(
     for (size_t i = 0; i < nesting; ++i) { fprintf(dest, "  "); }
     fprintf(dest, "(label ");
 
-    printIRLabel(dest, block->label);
+    block->label.print(dest);
 
     fprintf(dest, " (");
     {
@@ -610,7 +610,7 @@ void printBlock(
 
         for (size_t i = 0; i < callerCount; ++i) {
             if (i > 0) { fputc(' ', dest); }
-            printIRLabel(dest, block->callers.vals[i]);
+            block->callers.vals[i].print(dest);
         }
 
         fputc(')', dest);

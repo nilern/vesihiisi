@@ -26,9 +26,19 @@ typedef struct Compiler {
     Compiler& operator=(Compiler&&) = delete;
 } Compiler;
 
-typedef struct IRName { size_t index; } IRName;
+struct IRName {
+    size_t index;
 
-typedef struct IRLabel { size_t blockIndex; } IRLabel;
+    void print(RT const* state, FILE* dest, Compiler const* compiler) const;
+
+    void printAsReg(FILE* dest) const { fprintf(dest, "r%ld", index); }
+};
+
+struct IRLabel {
+    size_t blockIndex;
+
+    void print(FILE* dest) const { fprintf(dest, ":%ld", blockIndex); }
+};
 
 typedef struct IRDomain {
     IRName* vals;
@@ -316,13 +326,6 @@ bool markIRFn(RT* state, struct IRFn* fn);
 void assertIRFnInTospace(RT const* state, struct IRFn const* fn);
 
 typedef void (PrintIRNameFn)(RT const* state, FILE* dest, Compiler const* compiler, IRName name);
-
-void printIRName(RT const* state, FILE* dest, Compiler const* compiler, IRName name);
-
-inline void printIRReg(
-    RT const* /*state*/, FILE* dest, Compiler const* /*compiler*/, IRName name);
-
-void printIRLabel(FILE* dest, IRLabel label);
 
 void printArgs(
     RT const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,

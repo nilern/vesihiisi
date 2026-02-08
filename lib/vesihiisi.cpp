@@ -177,6 +177,76 @@ extern "C" Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser) {
     }
 }
 
+extern "C" bool bootstrap(struct Vshs_State* state, char const* bootstrapFilename) {
+    char* fchars = nullptr;
+    size_t fsize = 0;
+    // OPTIMIZE: Use `mmap`:
+    FILE* const file = fopen(bootstrapFilename, "rb");
+    if (!file) {
+        fprintf(stderr, "Can't open %s: %s\n", bootstrapFilename, strerror(errno));
+        return false;
+    }
+
+    fseek(file, 0, SEEK_END);
+    fsize = (size_t)ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    fchars = static_cast<char*>(malloc(fsize + 1));
+    size_t nread /*HACK:*/ [[maybe_unused]] = fread(fchars, 1, fsize, file);
+    assert(nread == fsize);
+    fchars[fsize] = 0;
+    fclose(file);
+
+    Str filenameStr = (Str){(uint8_t*)bootstrapFilename, strlen(bootstrapFilename) - 1};
+
+    Str const src = {(uint8_t*)fchars, fsize};
+    Parser* const parser = createParser(state, src, filenameStr);
+    Vshs_RootGuard* filenameG = pushFilenameRoot(state, parser);
+
+    bool loadFailed = false;
+    while (!loadFailed) {
+        Vshs_MaybeRes const maybeRes = readEval(state, parser);
+        if (!maybeRes.hasVal) { break; }
+        Vshs_Res const res = maybeRes.val;
+
+        switch (res.tag) {
+        case RES_OK: break;
+
+        case RES_ERR: {
+            switch (res.err.type) {
+            case Vshs_Err::VSHS_PARSE_ERR: { // TODO: DRY wrt. parse error in REPL
+                fputs("ParseError: ", stderr);
+                printParseError(stderr, src, &res.err.parseErr);
+                putc('\n', stderr);
+            }; break;
+
+            case Vshs_Err::VSHS_SYNTAX_ERRS: {
+                SyntaxErrors errs = res.err.syntaxErrs;
+
+                size_t const errorCount = errs.count;
+                for (size_t i = 0; i < errorCount; ++i) {
+                    fputs("SyntaxError: ", stderr);
+                    printSyntaxError(state, stderr, src, &errs.vals[i]);
+                    putc('\n', stderr);
+                }
+
+                freeSyntaxErrors(&errs);
+            }; break;
+
+            case Vshs_Err::VSHS_RUNTIME_ERR: break; // FIXME?
+            }
+
+            loadFailed = true;
+        }; break;
+        }
+    }
+
+    popRoot(filenameG);
+    freeParser(parser);
+    free(fchars);
+    return !loadFailed;
+}
+
 extern "C" Vshs_MaybeRes Vshs_evalString(struct Vshs_State* state, Str src, Str filename) {
     Parser* parser = createParser(state, src, filename);
     Vshs_RootGuard* filenameG = pushFilenameRoot(state, parser);

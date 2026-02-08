@@ -154,6 +154,8 @@ typedef struct Vshs_MaybeRes {
     bool hasVal;
 } Vshs_MaybeRes;
 
+bool bootstrap(struct Vshs_State* state, char const* bootstrapFilename);
+
 Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser);
 
 Vshs_MaybeRes Vshs_evalString(struct Vshs_State* state, Str src, Str filename);

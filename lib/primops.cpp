@@ -4,12 +4,12 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
-#include <unistd.h> // TODO: Avoid POSIX requirement
+#include <filesystem>
 
 #include "../deps/utf8proc/utf8proc.h"
 
 #include "util/util.hpp"
-#include "print.hpp"
+#include "write.hpp"
 #include "namespace.hpp"
 #include "dispatch.hpp"
 #include "compiler/compiler.hpp"
@@ -52,7 +52,7 @@ PrimopRes primopAbort(RT* state) {
     ORef const error = state->regs[firstArgReg];
 
     fputs("Runtime error: ", stderr);
-    print(state, stderr, error);
+    write(state, stderr, error);
 
     assert(isa(state, state->types.continuation, state->regs[retContReg]));
     auto const cont = HRef<Continuation>::fromUnchecked(state->regs[retContReg]);
@@ -66,7 +66,7 @@ PrimopRes primopAbort(RT* state) {
         ORef const maybeCallerName = caller->maybeName;
         if (isa<Symbol>(*state, maybeCallerName)) {
             fputs(" in ", stderr);
-            print(state, stderr, HRef<Symbol>::fromUnchecked(maybeCallerName));
+            write(state, stderr, HRef<Symbol>::fromUnchecked(maybeCallerName));
         }
 
         fputs(" at ", stderr);
@@ -982,15 +982,10 @@ PrimopRes PrimopStringToSymbol::uncheckedInvoke(RT* state) {
 PrimopRes PrimopFileExists::uncheckedInvoke(RT* state) {
     auto const filename = HRef<String>::fromUnchecked(state->regs[firstArgReg]);
 
-    // TODO: Avoid copy (with null termination of String?):
-    size_t const byteCount = filename->str().len;
-    char* const cFilename = static_cast<char*>(malloc(byteCount + 1));
-    memcpy(cFilename, filename->str().data, byteCount);
-    cFilename[byteCount] = '\0';
+    auto const cppFilename = std::string_view{
+        reinterpret_cast<char const*>(filename->str().data), filename->str().len};
 
-    state->regs[retReg] = Bool{access(cFilename, F_OK) == 0};
-
-    free(cFilename);
+    state->regs[retReg] = Bool{std::filesystem::exists(cppFilename)};
     return PrimopRes::CONTINUE;
 }
 
@@ -1047,7 +1042,7 @@ PrimopRes PrimopReadChar::uncheckedInvoke(RT* state) {
 }
 
 PrimopRes PrimopWrite::uncheckedInvoke(RT* state) {
-    print(state, stdout, state->regs[firstArgReg]);
+    write(state, stdout, state->regs[firstArgReg]);
 
     return PrimopRes::CONTINUE; // TODO: Maybe do not return written value?
 }

@@ -1,10 +1,10 @@
-#include "print.hpp"
+#include "write.hpp"
 
 #include "../deps/utf8proc/utf8proc.h"
 
 namespace {
 
-void print(RT const* state, FILE* dest, ORef v) {
+void write(RT const* state, FILE* dest, ORef v) {
     switch (getTag(v)) {
     case TaggedType::FIXNUM:
         fprintf(dest, "%ld", Fixnum::fromUnchecked(v).val());
@@ -44,18 +44,18 @@ void print(RT const* state, FILE* dest, ORef v) {
             auto pair = HRef<Pair>::fromUnchecked(v);
             
             fputc('(', dest);
-            print(state, dest, pair->car().get());
+            write(state, dest, pair->car().get());
             
             for (ORef tail = pair->cdr().get(); true; tail = pair->cdr().get()) {
                 if (isa<Pair>(*state, tail)) {
                     pair = HRef<Pair>::fromUnchecked(tail);
                     fputc(' ', dest);
-                    print(state, dest, pair->car().get());
+                    write(state, dest, pair->car().get());
                 } else if (isEmptyList(state, tail)) {
                     break;
                 } else {
                     printf(" . ");
-                    print(state, dest, tail);
+                    write(state, dest, tail);
                     break;
                 }
             }
@@ -71,7 +71,7 @@ void print(RT const* state, FILE* dest, ORef v) {
             size_t const count = vs.size();
             for (size_t i = 0; i < count; ++i) {
                 fputc(' ', dest);
-                print(state, dest, vs[i]);
+                write(state, dest, vs[i]);
             }
 
             putc('>', dest);
@@ -83,7 +83,7 @@ void print(RT const* state, FILE* dest, ORef v) {
             size_t const count = vs.size();
             for (size_t i = 0; i < count; ++i) {
                 fputc(' ', dest);
-                print(state, dest, vs[i]);
+                write(state, dest, vs[i]);
             }
 
             putc('>', dest);
@@ -94,7 +94,7 @@ void print(RT const* state, FILE* dest, ORef v) {
             ORef const maybeName = method->maybeName;
             if (isHeaped(maybeName)) {
                 putc(' ', dest);
-                print(state, dest, maybeName);
+                write(state, dest, maybeName);
             }
             putc('>', dest);
         } else if (isa<Closure>(*state, v)) {
@@ -108,7 +108,7 @@ void print(RT const* state, FILE* dest, ORef v) {
                 ORef const maybeName = method->maybeName;
                 if (isHeaped(maybeName)) {
                     putc(' ', dest);
-                    print(state, dest, maybeName);
+                    write(state, dest, maybeName);
                 }
             }
 
@@ -120,7 +120,7 @@ void print(RT const* state, FILE* dest, ORef v) {
 
             if (isHeaped(multimethod->maybeName)) {
                 putc(' ', dest);
-                print(state, dest, multimethod->maybeName);
+                write(state, dest, multimethod->maybeName);
             }
 
             putc('>', dest);
@@ -128,20 +128,20 @@ void print(RT const* state, FILE* dest, ORef v) {
             auto const type = HRef<Type>::fromUnchecked(v);
 
             fprintf(dest, "#<type ");
-            print(state, dest, type->name);
+            write(state, dest, type->name);
             putc('>', dest);
         } else if (isa(state, state->types.fatalError, v)) {
             auto const err = HRef<FatalError>::fromUnchecked(v);
 
             fputs("#<fatal-error ", dest);
 
-            print(state, dest, err->name);
+            write(state, dest, err->name);
 
             ORefSpan const irritants = err->irritants();
             size_t const count = irritants.size();
             for (size_t i = 0; i < count; ++i) {
                 putc(' ', dest);
-                print(state, dest, irritants[i]);
+                write(state, dest, irritants[i]);
             }
 
             putc('>', dest);
@@ -149,35 +149,35 @@ void print(RT const* state, FILE* dest, ORef v) {
             auto const err = HRef<UnboundError>::fromUnchecked(v);
 
             fputs("#<unbound-error ", dest);
-            print(state, dest, err->name);
+            write(state, dest, err->name);
             putc('>', dest);
         } else if (isa<TypeError>(*state, v)) {
             auto const err = HRef<TypeError>::fromUnchecked(v);
 
             fputs("#<type-error ", dest);
-            print(state, dest, err->type);
+            write(state, dest, err->type);
             putc(' ', dest);
-            print(state, dest, err->val);
+            write(state, dest, err->val);
             putc('>', dest);
         } else if (isa(state, state->types.arityError, v)) {
             auto const err = HRef<ArityError>::fromUnchecked(v);
 
             fputs("#<arity-error ", dest);
-            print(state, dest, err->callee);
+            write(state, dest, err->callee);
             putc(' ', dest);
-            print(state, dest, err->callArgc);
+            write(state, dest, err->callArgc);
             putc('>', dest);
         } else if (isa(state, state->types.inapplicableError, v)) {
             auto const err = HRef<InapplicableError>::fromUnchecked(v);
 
             fputs("#<inapplicable-error ", dest);
-            print(state, dest, err->callee);
+            write(state, dest, err->callee);
             putc('>', dest);
         } else {
             auto const type = typeOf(state, v);
 
             fputs("#<", dest);
-            print(state, dest, type->name);
+            write(state, dest, type->name);
             putc('>', dest);
         }
         break;

@@ -2,7 +2,7 @@
 
 #include "../rt.hpp"
 #include "../bytecode.hpp"
-#include "../print.hpp"
+#include "../write.hpp"
 #include "tocps.hpp"
 #include "liveness.hpp"
 #include "pureloads.hpp"
@@ -371,7 +371,7 @@ void printIRName(RT const* state, FILE* dest, Compiler const* compiler, IRName n
     assert(name.index < compiler->nameSyms.count());
     ORef const maybeSym = compiler->nameSyms[name.index];
     if (isa<Symbol>(*state, maybeSym)) {
-        print(state, dest, maybeSym);
+        write(state, dest, maybeSym);
     }
     fprintf(dest, "$%ld", name.index);
 }
@@ -412,7 +412,7 @@ void printStmt(
     case IRStmt::GLOBAL_DEF: {
         Define const define = stmt->define;
         fprintf(dest, "(def ");
-        print(state, dest, define.name);
+        write(state, dest, define.name);
         fputc(' ', dest);
         printName(state, dest, compiler, define.val);
         fputc(')', dest);
@@ -421,7 +421,7 @@ void printStmt(
     case IRStmt::GLOBAL_SET: {
         GlobalSet const globalSet = stmt->globalSet;
         fprintf(dest, "(set! ");
-        print(state, dest, globalSet.name);
+        write(state, dest, globalSet.name);
         fputc(' ', dest);
         printName(state, dest, compiler, globalSet.val);
         fputc(')', dest);
@@ -432,7 +432,7 @@ void printStmt(
         fprintf(dest, "(let ");
         printName(state, dest, compiler, global.tmpName);
         fprintf(dest, " (global ");
-        print(state, dest, global.name);
+        write(state, dest, global.name);
         fprintf(dest, "))");
     }; break;
 
@@ -441,7 +441,7 @@ void printStmt(
         fprintf(dest, "(let ");
         printName(state, dest, compiler, cdef.name);
         fputc(' ', dest);
-        print(state, dest, cdef.v);
+        write(state, dest, cdef.v);
         fputc(')', dest);
     }; break;
 
@@ -644,7 +644,7 @@ void printNestedIRFn(
     fprintf(dest, "(fn ");
     
     if (isHeaped(fn->maybeName)) {
-        print(state, dest, fn->maybeName);
+        write(state, dest, fn->maybeName);
     } else {
         putc('_', dest);
     }

@@ -2,7 +2,7 @@
 
 #include <stddef.h>
 
-#include "print.hpp"
+#include "write.hpp"
 
 namespace {
 
@@ -316,7 +316,7 @@ void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t co
         fprintf(dest, "%u ", constIdx);
         disassembleReg(dest, next().val.codeByte);
         fprintf(dest, "\t; ");
-        print(state, dest, consts[constIdx]); // FIXME: Bounds check
+        write(state, dest, consts[constIdx]); // FIXME: Bounds check
     }; break;
 
     case OP_GLOBAL_SET: {
@@ -325,7 +325,7 @@ void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t co
         fprintf(dest, "%u ", constIdx);
         disassembleReg(dest, next().val.codeByte);
         fprintf(dest, "\t; ");
-        print(state, dest, consts[constIdx]); // FIXME: Bounds check
+        write(state, dest, consts[constIdx]); // FIXME: Bounds check
     }; break;
 
     case OP_GLOBAL: {
@@ -333,7 +333,7 @@ void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t co
         fprintf(dest, " = global ");
         uint8_t const constIdx = next().val.codeByte;
         fprintf(dest, "%u\t; ", constIdx);
-        print(state, dest, consts[constIdx]); // FIXME: Bounds check
+        write(state, dest, consts[constIdx]); // FIXME: Bounds check
     }; break;
 
     case OP_CONST: {
@@ -346,7 +346,7 @@ void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t co
         if (!isa<Method>(*state, c)) {
             fprintf(dest, "\t; ");
             ORef const c = consts[constIdx]; // FIXME: Bounds check
-            print(state, dest, c);
+            write(state, dest, c);
         } else {
             HRef<Method> const innerMethod = HRef<Method>::fromUnchecked(c);
 
@@ -442,7 +442,7 @@ void disassembleNested(RT const* state, FILE* dest, HRef<Method> methodRef, size
 
     ORef const maybeName = methodRef->maybeName;
     if (isa(state, state->types.symbol, maybeName)) {
-        print(state, dest, maybeName);
+        write(state, dest, maybeName);
     } else {
         putc('_', dest);
     }
@@ -454,7 +454,7 @@ void disassembleNested(RT const* state, FILE* dest, HRef<Method> methodRef, size
             fputs(". ", dest);
         }
 
-        print(state, dest, methodRef->domain()[i].get());
+        write(state, dest, methodRef->domain()[i].get());
     }
 
     fputs(")\n", dest); // TODO: Source location for function (not the same as for instr #1!)

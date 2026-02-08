@@ -4,6 +4,6 @@
 
 namespace {
 
-void print(RT const* state, FILE* dest, ORef v);
+void write(RT const* state, FILE* dest, ORef v);
 
 } // namespace

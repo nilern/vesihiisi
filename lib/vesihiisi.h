@@ -88,7 +88,7 @@ typedef struct SyntaxErrors {
 
 void freeSyntaxErrors(SyntaxErrors* syntaxErrors);
 
-void print(struct Vshs_RT const* state, FILE* dest, ORef v);
+void Vshs_write(struct Vshs_RT const* state, FILE* dest, ORef v);
 
 typedef enum ResTag {RES_ERR, RES_OK} ResTag;
 

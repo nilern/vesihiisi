@@ -9,7 +9,7 @@
 #include "rt.cpp"
 #include "flyweights.cpp"
 #include "read.cpp"
-#include "print.cpp"
+#include "write.cpp"
 #include "bytecode.cpp"
 #include "namespace.cpp"
 #include "dispatch.cpp"
@@ -156,8 +156,8 @@ EvalRes eval(Vshs_RT* extRT, ORef expr, ORef loc, bool debug) {
 }
 } // namespace
 
-extern "C" void print(Vshs_RT const* state, FILE* dest, ORef v) {
-    print((RT const*)state, dest, v);
+extern "C" void Vshs_write(Vshs_RT const* state, FILE* dest, ORef v) {
+    write((RT const*)state, dest, v);
 }
 
 extern "C" void Vshs_freeError(Vshs_Err* err) {
@@ -189,7 +189,7 @@ static Vshs_MaybeRes readEval(struct Vshs_RT* state, Parser* parser) {
 
     if (debug) {
         puts(";; # S-Expression:");
-        print(state, stdout, expr);
+        Vshs_write(state, stdout, expr);
         puts("\n");
     }
 

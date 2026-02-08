@@ -26,7 +26,7 @@ CompilationRes compile(RT* state, ORef expr, HRef<Loc> loc, bool debug) {
         puts("\n");
     }
 
-    enlivenFn(&compiler, &irFn);
+    enlivenFn(compiler, irFn);
     if (debug) {
         puts(";; # Enlivened IR:");
         printIRFn(state, stdout, &compiler, printIRName, &irFn);

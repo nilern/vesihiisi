@@ -3,7 +3,7 @@
 #include <stdlib.h>
 
 #include "util/util.hpp"
-#include "state.hpp"
+#include "rt.hpp"
 
 namespace {
 
@@ -14,7 +14,7 @@ SymbolTable::SymbolTable() { entries = (ORef*)calloc(cap, sizeof *entries); }
 
 SymbolTable::~SymbolTable() { free(entries); }
 
-void SymbolTable::prune(State const& state) {
+void SymbolTable::prune(RT const& state) {
     for (size_t i = 0; i < cap; ++i) {
         ORef* const v = &entries[i];
         if (isHeaped(*v)) {
@@ -24,7 +24,7 @@ void SymbolTable::prune(State const& state) {
     }
 }
 
-HRef<Symbol> createUninternedSymbol(State* state, Fixnum hash, Str name) {
+HRef<Symbol> createUninternedSymbol(RT* state, Fixnum hash, Str name) {
     Symbol* ptr = static_cast<decltype(ptr)>(
         state->heap.tryAllocFlex(&*state->types.symbol, Fixnum((intptr_t)name.len)));
     if (mustCollect(ptr)) {
@@ -36,7 +36,7 @@ HRef<Symbol> createUninternedSymbol(State* state, Fixnum hash, Str name) {
     return HRef{new (ptr) Symbol{hash, name}};
 }
 
-HRef<Symbol> createUninternedSymbolFromHeaped(State* state, Fixnum hash, HRef<String> name) {
+HRef<Symbol> createUninternedSymbolFromHeaped(RT* state, Fixnum hash, HRef<String> name) {
     Symbol* ptr = static_cast<decltype(ptr)>(
         state->heap.tryAllocFlex(&*state->types.symbol, name->flexCount()));
     if (mustCollect(ptr)) {
@@ -75,7 +75,7 @@ HRef<Symbol> SymbolTable::atIndexUnchecked(size_t i) const {
     return HRef<Symbol>::fromUnchecked(entries[i]);;
 }
 
-HRef<Symbol> SymbolTable::createAtUnchecked(State* state, size_t i, Fixnum hash, Str name) {
+HRef<Symbol> SymbolTable::createAtUnchecked(RT* state, size_t i, Fixnum hash, Str name) {
     size_t const newCount = count + 1;
     size_t const capacity = cap;
     if (capacity / 2 < newCount) {
@@ -91,7 +91,7 @@ HRef<Symbol> SymbolTable::createAtUnchecked(State* state, size_t i, Fixnum hash,
 
 // TODO: DRY wrt. `SymbolTable::createAtUnchecked`
 HRef<Symbol> SymbolTable::createFromHeapedAtUnchecked(
-    State* state, size_t i, Fixnum hash, HRef<String> name
+    RT* state, size_t i, Fixnum hash, HRef<String> name
 ) {
     size_t const newCount = count + 1;
     size_t const capacity = cap;
@@ -139,7 +139,7 @@ void SymbolTable::rehash() {
 }
 
 // `name` must not point into GC heap:
-HRef<Symbol> intern(State* state, Str name) {
+HRef<Symbol> intern(RT* state, Str name) {
     Fixnum const hash = hashStr(name);
 
     SymbolTable::IndexOfRes ires = state->symbols.indexOf(hash, name);
@@ -151,7 +151,7 @@ HRef<Symbol> intern(State* state, Str name) {
 }
 
 // TODO: DRY wrt. `intern`
-HRef<Symbol> internHeaped(State* state, HRef<String> name) {
+HRef<Symbol> internHeaped(RT* state, HRef<String> name) {
     Str const nameStr = name->str();
     Fixnum const hash = hashStr(nameStr);
 
@@ -170,7 +170,7 @@ Specializations::Specializations() { entries = (ORef*)calloc(cap, sizeof *entrie
 
 Specializations::~Specializations() { free(entries); }
 
-void Specializations::prune(State const& state) {
+void Specializations::prune(RT const& state) {
     for (size_t i = 0; i < cap; ++i) {
         ORef* const v = &entries[i];
         if (isHeaped(*v)) {
@@ -213,7 +213,7 @@ Fixnum hashSpecialization(HRef<Method> generic, HRef<ArrayMut> typesRef) {
 Fixnum hashSpecialized(HRef<Method> specialization) { return specialization->hash; }
 
 HRef<Method> createSpecialization(
-    State* state, HRef<Method> generic, HRef<ArrayMut> typesRef, Fixnum hash
+    RT* state, HRef<Method> generic, HRef<ArrayMut> typesRef, Fixnum hash
 ) {
     Fixnum const fxArity = generic->flexCount();
     auto const genericRefG = state->pushRoot(&generic);
@@ -257,7 +257,7 @@ HRef<Method> Specializations::atIndexUnchecked(size_t i) const {
 }
 
 HRef<Method> Specializations::createAtUnchecked(
-    State* state, size_t i, Fixnum fxHash, HRef<Method> generic, HRef<ArrayMut> types
+    RT* state, size_t i, Fixnum fxHash, HRef<Method> generic, HRef<ArrayMut> types
 ) {
     size_t const newCount = count + 1;
     size_t const capacity = cap;
@@ -304,7 +304,7 @@ void Specializations::rehash() {
     cap = newCap;
 }
 
-HRef<Method> specialize(State* state, HRef<Method> generic, HRef<ArrayMut> types) {
+HRef<Method> specialize(RT* state, HRef<Method> generic, HRef<ArrayMut> types) {
 #ifndef NDEBUG
     assert(isHeaped(generic->code));
 

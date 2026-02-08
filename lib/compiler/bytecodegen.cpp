@@ -2,7 +2,7 @@
 
 #include <string.h>
 
-#include "../state.hpp"
+#include "../rt.hpp"
 #include "../bytecode.hpp"
 #include "../util/avec.hpp"
 #include "../util/bytefulbitset.hpp"
@@ -36,7 +36,7 @@ struct MethodBuilderLoc {
     ORef maybeFilename;
     size_t srcIdx;
 
-    static MethodBuilderLoc fromORef(State const& state, ORef maybeLoc) {
+    static MethodBuilderLoc fromORef(RT const& state, ORef maybeLoc) {
         if (isa<Loc>(state, maybeLoc)) {
             auto const loc = HRef<Loc>::fromUnchecked(maybeLoc);
             return MethodBuilderLoc{loc->filename, (uint64_t)loc->byteIdx.val()};
@@ -75,7 +75,7 @@ struct MethodBuilder {
     struct MethodBuilder* parent;
 };
 
-bool markMethodBuilder(State* state, MethodBuilder* builder) {
+bool markMethodBuilder(RT* state, MethodBuilder* builder) {
     size_t const constCount = builder->constCount;
     for (size_t i = 0; i < constCount; ++i) {
         builder->consts[i].val = TRY_NULLOPT_TO_FALSE(state->heap.mark(builder->consts[i].val));
@@ -96,7 +96,7 @@ bool markMethodBuilder(State* state, MethodBuilder* builder) {
     return true;
 }
 
-void assertMethodBuilderInTospace(State const* state, MethodBuilder const* builder) {
+void assertMethodBuilderInTospace(RT const* state, MethodBuilder const* builder) {
     size_t const constCount = builder->constCount;
     for (size_t i = 0; i < constCount; ++i) {
         ORef const v = builder->consts[i].val;
@@ -123,7 +123,7 @@ void assertMethodBuilderInTospace(State const* state, MethodBuilder const* build
 void flushMethodBuilderDeltas(MethodBuilder& builder);
 
 HRef<Method> buildMethod(
-    State* state, IRFn* toplevelFn, MethodBuilder&& builder, IRFn const* fn
+    RT* state, IRFn* toplevelFn, MethodBuilder&& builder, IRFn const* fn
 ) {
     flushMethodBuilderDeltas(builder);
 
@@ -246,7 +246,7 @@ HRef<Method> buildMethod(
 }
 
 MethodBuilder createMethodBuilder(
-    State const& state, Compiler* compiler, MethodBuilder* parent, IRFn const& fn
+    RT const& state, Compiler* compiler, MethodBuilder* parent, IRFn const& fn
 ) {
     size_t const codeCap = 2;
     uint8_t* const code = (uint8_t*)amalloc(&compiler->arena, codeCap * sizeof *code);
@@ -303,7 +303,7 @@ void encodeRevDelta(AVec<uint8_t>& revIdxDeltas, int64_t delta, size_t bitsize) 
     }
 }
 
-void pushMaybeLoc(State const& state, MethodBuilder* builder, ORef maybeLoc) {
+void pushMaybeLoc(RT const& state, MethodBuilder* builder, ORef maybeLoc) {
     auto const loc = MethodBuilderLoc::fromORef(state, maybeLoc);
 
     builder->filenameCount += builder->codeCount - builder->prevMaybeLocRevIdx;
@@ -348,7 +348,7 @@ void pushCodeByte(Compiler* compiler, MethodBuilder* builder, uint8_t byte) {
 }
 
 inline void pushOp(
-    State const& state, Compiler* compiler, MethodBuilder* builder, Opcode op, ORef maybeLoc
+    RT const& state, Compiler* compiler, MethodBuilder* builder, Opcode op, ORef maybeLoc
 ) {
     pushCodeByte(compiler, builder, (uint8_t)op);
     pushMaybeLoc(state, builder, maybeLoc);
@@ -438,7 +438,7 @@ void emitConstArg(Compiler* compiler, MethodBuilder* builder, MethodBuilder::Con
 }
 
 void emitConstDef(
-    State const& state, Compiler* compiler, MethodBuilder* builder, IRName name,
+    RT const& state, Compiler* compiler, MethodBuilder* builder, IRName name,
     MethodBuilder::Const c, ORef maybeLoc
 ) {
     emitConstArg(compiler, builder, c);
@@ -450,11 +450,11 @@ void emitConstDef(
 // =================================================================================================
 
 HRef<Method> emitMethod(
-    State* state, Compiler* compiler, IRFn* toplevelFn, MethodBuilder* parentBuilder,
+    RT* state, Compiler* compiler, IRFn* toplevelFn, MethodBuilder* parentBuilder,
     IRFn const* fn);
 
 void emitStmt(
-    State* state, Compiler* compiler, IRFn* toplevelFn, MethodBuilder* builder, IRStmt* stmt
+    RT* state, Compiler* compiler, IRFn* toplevelFn, MethodBuilder* builder, IRStmt* stmt
 ) {
     switch (stmt->type) {
     case IRStmt::GLOBAL_DEF: {
@@ -557,7 +557,7 @@ void emitStmt(
 }
 
 void emitTransfer(
-    State const& state, Compiler* compiler, MethodBuilder* builder, IRTransfer const* transfer
+    RT const& state, Compiler* compiler, MethodBuilder* builder, IRTransfer const* transfer
 ) {
     switch (transfer->type) {
     case IRTransfer::CALL: {
@@ -622,7 +622,7 @@ void emitTransfer(
 }
 
 void emitBlock(
-    State* state, Compiler* compiler, IRFn* toplevelFn, MethodBuilder* builder, IRBlock const* block
+    RT* state, Compiler* compiler, IRFn* toplevelFn, MethodBuilder* builder, IRBlock const* block
 ) {
     emitTransfer(*state, compiler, builder, &block->transfer);
 
@@ -634,7 +634,7 @@ void emitBlock(
 }
 
 HRef<Method> emitMethod(
-    State* state, Compiler* compiler, IRFn* toplevelFn, MethodBuilder* parentBuilder, IRFn const* fn
+    RT* state, Compiler* compiler, IRFn* toplevelFn, MethodBuilder* parentBuilder, IRFn const* fn
 ) {
     MethodBuilder builder = createMethodBuilder(*state, compiler, parentBuilder, *fn);
 
@@ -646,7 +646,7 @@ HRef<Method> emitMethod(
     return buildMethod(state, toplevelFn, std::move(builder), fn);
 }
 
-HRef<Method> emitToplevelMethod(State* state, Compiler* compiler, IRFn* fn) {
+HRef<Method> emitToplevelMethod(RT* state, Compiler* compiler, IRFn* fn) {
     return emitMethod(state, compiler, fn, nullptr, fn);
 }
 

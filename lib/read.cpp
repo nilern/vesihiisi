@@ -4,7 +4,7 @@
 #include "../deps/utf8proc/utf8proc.h"
 
 #include "util/util.hpp"
-#include "state.hpp"
+#include "rt.hpp"
 
 namespace {
 void revealMaybeChar(FILE* dest, int32_t mc) {
@@ -39,10 +39,10 @@ private:
     uint8_t const* start;
     uint8_t const* const end;
     size_t byteIdx;
-    Vshs_State* state;
+    Vshs_RT* state;
 
     HRef<Loc> currLoc() const {
-        return createLoc((State*)state, HRef<String>::fromUnchecked(filename),
+        return createLoc((RT*)state, HRef<String>::fromUnchecked(filename),
                          Fixnum{(int64_t)byteIdx});
     }
 
@@ -52,11 +52,11 @@ public:
     using PeekRes = Res<ParseError, int32_t>;
     using MatchRes = Res<ParseError, bool>;
 
-    explicit Parser(State* t_state, Str str, Str t_filename) :
+    explicit Parser(RT* t_state, Str str, Str t_filename) :
         start{str.data}, // HACK
         end{str.data + str.len}, // HACK
         byteIdx{0},
-        state{(Vshs_State*)t_state},
+        state{(Vshs_RT*)t_state},
         filename{createString(t_state, t_filename)}
     {}
 
@@ -203,10 +203,10 @@ SkipWhitespaceRes skipWhitespace(Parser* parser) {
 
 using ReadExprTailRes = Res<ParseError, ORef>;
 
-ReadExprRes readExpr(State* state, Parser* parser);
+ReadExprRes readExpr(RT* state, Parser* parser);
 
 // <ws> (')' | <expr> <ws> (<expr> <ws>)* (')' | '.' <expr> <ws> ')')
-ReadExprTailRes readListTail(State* state, Parser* parser) {
+ReadExprTailRes readListTail(RT* state, Parser* parser) {
     TRY(ReadExprTailRes, skipWhitespace(parser)); // <ws>
 
     if (TRY(ReadExprTailRes, parser->peek()) == ')') { // Empty list
@@ -307,7 +307,7 @@ ReadExprTailRes readNumber(Parser* parser, int radix) {
 }
 
 // <initial> <subsequent>*
-ReadExprTailRes readSymbolTail(State* state, Parser* parser, uint8_t const* start) {
+ReadExprTailRes readSymbolTail(RT* state, Parser* parser, uint8_t const* start) {
     assert(start == parser->curr() - 1 && isInitial(*start)); // <initial>
     // <subsequent>*
     while (TRY(ReadExprTailRes, parser->match(isSubsequent))) {}
@@ -336,7 +336,7 @@ EscapeCharRes escapeChar(int mc) {
 }
 
 // [^"]* '"'
-ReadExprTailRes readStringTail(State* state, Parser* parser) {
+ReadExprTailRes readStringTail(RT* state, Parser* parser) {
     StringBuilder builder = createStringBuilder(); // OPTIMIZE: Reusable one in `Parser`
 
     // [^"]*
@@ -429,7 +429,7 @@ ReadExprTailRes readAltTail(Parser* parser) {
 }
 
 // <ws> (<list> | <alt> | <string> | <symbol> | <number>)
-ReadExprRes readExpr(State* state, Parser* parser) {
+ReadExprRes readExpr(RT* state, Parser* parser) {
     TRY(ReadExprRes, skipWhitespace(parser)); // <ws>
 
     size_t const byteIdx = parser->currIdx();
@@ -513,7 +513,7 @@ ReadExprRes readExpr(State* state, Parser* parser) {
 }
 
 // <ws> (<expr> | $)
-ParseRes read(State* state, Parser* parser) {
+ParseRes read(RT* state, Parser* parser) {
     auto const wsRes = skipWhitespace(parser); // <ws>
     if (!wsRes.success) { return ParseRes{{.err = wsRes.err}, false}; }
 

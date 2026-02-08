@@ -6,7 +6,7 @@
 #include "../lib/vesihiisi.cpp"
 
 static void testBootstrap(void) {
-    State* const state = State::tryCreate(10*1024*1024);
+    RT* const state = RT::tryCreate(10*1024*1024);
     assert(state);
     
     HRef<Type> const typeType = state->types.type;
@@ -25,11 +25,11 @@ static void testBootstrap(void) {
     assert(stringTypePtr->isBytes.val());
     assert(stringTypePtr->isFlex.val());
 
-    freeState(state);
+    freeRT(state);
 }
 
 static void testIntern(void) {
-    State* const state = State::tryCreate(10*1024*1024);
+    RT* const state = RT::tryCreate(10*1024*1024);
     assert(state);
 
     char const nameChars[] = "foo";
@@ -45,7 +45,7 @@ static void testIntern(void) {
     
     assert(eq(dupSym, sym));
 
-    freeState(state);
+    freeRT(state);
 }
 
 int main(int /*argc*/, char** /*argv*/) {

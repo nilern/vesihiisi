@@ -1,36 +1,36 @@
 #pragma once
 
 #include "value.hpp"
-#include "state.hpp"
+#include "rt.hpp"
 #include "bytecode.hpp"
 
 namespace {
 
-ORef getErrorHandler(State const* state);
+ORef getErrorHandler(RT const* state);
 
 [[nodiscard]]
-PrimopRes primopError(State* state, ORef err);
+PrimopRes primopError(RT* state, ORef err);
 [[nodiscard]]
-PrimopRes primopArityError(State* state, HRef<Closure> callee, size_t argc);
+PrimopRes primopArityError(RT* state, HRef<Closure> callee, size_t argc);
 [[nodiscard]]
-PrimopRes primopTypeError(State* state, HRef<Type> type, ORef v);
+PrimopRes primopTypeError(RT* state, HRef<Type> type, ORef v);
 template<typename T>
 [[nodiscard]]
-PrimopRes primopTypeError(State* state, ORef v) {
+PrimopRes primopTypeError(RT* state, ORef v) {
     return primopTypeError(state, state->reify<T>(), v);
 }
 
 // TODO: Move to dispatch.hpp:
 template<bool hasVararg, typename... Domain>
 [[nodiscard]]
-PrimopRes checkDomain(State* state) {
-    if (state->domainChecking == State::DomainChecking::SKIP) {
-        state->domainChecking = State::DomainChecking::CHECK;
+PrimopRes checkDomain(RT* state) {
+    if (state->domainChecking == RT::DomainChecking::SKIP) {
+        state->domainChecking = RT::DomainChecking::CHECK;
         return PrimopRes::CONTINUE; // HACK
     }
 
     switch (state->domainChecking) {
-    case State::DomainChecking::CHECK: {
+    case RT::DomainChecking::CHECK: {
         size_t const argc = state->entryRegc - firstArgReg;
         static constexpr size_t arity = sizeof...(Domain);
         if (argc != arity) {
@@ -74,8 +74,8 @@ PrimopRes checkDomain(State* state) {
         }
     }; break;
 
-    case State::DomainChecking::SPECULATE: {
-        state->domainChecking = State::DomainChecking::CHECK;
+    case RT::DomainChecking::SPECULATE: {
+        state->domainChecking = RT::DomainChecking::CHECK;
 
         size_t const argc = state->entryRegc - firstArgReg;
         static constexpr size_t arity = sizeof...(Domain);
@@ -117,7 +117,7 @@ PrimopRes checkDomain(State* state) {
         }
     }; break;
 
-    case State::DomainChecking::SKIP: PANIC("Unreachable code reached.");
+    case RT::DomainChecking::SKIP: PANIC("Unreachable code reached.");
     }
 
     return PrimopRes::CONTINUE; // HACK
@@ -128,13 +128,13 @@ PrimopRes checkDomain(State* state) {
 
 template<typename CRTPSub, typename... Domain>
 struct Primop {
-    static void install(State& state) {
+    static void install(RT& state) {
         installPrimop(&state, Str{CRTPSub::name, sizeof CRTPSub::name - 1},
                       static_cast<MethodCode>(invoke), CRTPSub::hasVararg,
                       Fixnum{int64_t(sizeof...(Domain))}, state.reify<Domain>()...);
     }
 
-    static PrimopRes invoke(State* state) {
+    static PrimopRes invoke(RT* state) {
         auto const checkRes = checkDomain<CRTPSub::hasVararg, Domain...>(state);
         switch (checkRes) {
         case PrimopRes::CONTINUE: break;
@@ -158,245 +158,245 @@ struct VarargsPrimop : public Primop<CRTPSub, Domain...> {
 };
 
 // Pseudo-Operation
-PrimopRes callBytecode(State* state);
+PrimopRes callBytecode(RT* state);
 
 // Control Flow
-PrimopRes primopAbort(State* state);
+PrimopRes primopAbort(RT* state);
 struct PrimopApplyArray : public FixedArityPrimop<PrimopApplyArray, ORef, Array> {
     static constexpr uint8_t name[] = "apply-array";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopApplyArrayMut : public FixedArityPrimop<PrimopApplyArrayMut, ORef, ArrayMut> {
     static constexpr uint8_t name[] = "apply-array!"; // TODO: `array!` -> `array-mut` (everywhere)
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopApplyList : public FixedArityPrimop<PrimopApplyList, ORef, ORef> {
     static constexpr uint8_t name[] = "apply-list";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopCallCC : public FixedArityPrimop<PrimopCallCC, Closure> {
     static constexpr uint8_t name[] = "call-with-current-continuation";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopContinue : public FixedArityPrimop<PrimopContinue, Continuation, ORef> {
     static constexpr uint8_t name[] = "continue";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 
 // For Any Value
 struct PrimopIdentical : public FixedArityPrimop<PrimopIdentical, ORef, ORef> {
     static constexpr uint8_t name[] = "identical?";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopTypeOf : public FixedArityPrimop<PrimopTypeOf, ORef> {
     static constexpr uint8_t name[] = "type-of";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 
 // Heap Objects
 struct PrimopMakeSlotsType : public FixedArityPrimop<PrimopMakeSlotsType, Symbol, Fixnum, Bool> {
     static constexpr uint8_t name[] = "make-slots-type";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopMake : public VarargsPrimop<PrimopMake, Type, ORef> {
     static constexpr uint8_t name[] = "make";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopSlotGet : public FixedArityPrimop<PrimopSlotGet, ORef, Fixnum> {
     static constexpr uint8_t name[] = "slot-get";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopSlotSet : public FixedArityPrimop<PrimopSlotSet, ORef, Fixnum, ORef> {
     static constexpr uint8_t name[] = "slot-set!";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopMakeFlex : public FixedArityPrimop<PrimopMakeFlex, Type, Fixnum> {
     static constexpr uint8_t name[] = "make-flex";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopFlexCount : public FixedArityPrimop<PrimopFlexCount, ORef> {
     static constexpr uint8_t name[] = "flex-count";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopFlexGet : public FixedArityPrimop<PrimopFlexGet, ORef, Fixnum> {
     static constexpr uint8_t name[] = "flex-get";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopFlexSet : public FixedArityPrimop<PrimopFlexSet, ORef, Fixnum, ORef> {
     static constexpr uint8_t name[] = "flex-set!";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopFlexCopy
     : public FixedArityPrimop<PrimopFlexCopy, ORef, Fixnum, ORef, Fixnum, Fixnum>
 {
     static constexpr uint8_t name[] = "flex-copy!";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopFlexClone : public FixedArityPrimop<PrimopFlexClone, ORef, Fixnum, Fixnum> {
     static constexpr uint8_t name[] = "flex-copy";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 
 // Fixnums
 struct PrimopFxAdd : public FixedArityPrimop<PrimopFxAdd, Fixnum, Fixnum> {
     static constexpr uint8_t name[] = "fx+";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopFxSub : public FixedArityPrimop<PrimopFxSub, Fixnum, Fixnum> {
     static constexpr uint8_t name[] = "fx-";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopFxMul : public FixedArityPrimop<PrimopFxMul, Fixnum, Fixnum> {
     static constexpr uint8_t name[] = "fx*";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopFxQuot : public FixedArityPrimop<PrimopFxQuot, Fixnum, Fixnum> {
     static constexpr uint8_t name[] = "fx-quot";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopFxLt : public FixedArityPrimop<PrimopFxLt, Fixnum, Fixnum> {
     static constexpr uint8_t name[] = "fx<";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopFixnumToFlonum : public FixedArityPrimop<PrimopFixnumToFlonum, Fixnum> {
     static constexpr uint8_t name[] = "fixnum->flonum";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 
 // Flonums
 struct PrimopFlAdd : public FixedArityPrimop<PrimopFlAdd, Flonum, Flonum> {
     static constexpr uint8_t name[] = "fl+";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopFlSub : public FixedArityPrimop<PrimopFlSub, Flonum, Flonum> {
     static constexpr uint8_t name[] = "fl-";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopFlMul : public FixedArityPrimop<PrimopFlMul, Flonum, Flonum> {
     static constexpr uint8_t name[] = "fl*";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopFlDiv : public FixedArityPrimop<PrimopFlDiv, Flonum, Flonum> {
     static constexpr uint8_t name[] = "fl/";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 
 // Characters
 struct PrimopCharLt : public FixedArityPrimop<PrimopCharLt, Char, Char> {
     static constexpr uint8_t name[] = "char<";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopCharToInteger : public FixedArityPrimop<PrimopCharToInteger, Char> {
     static constexpr uint8_t name[] = "char->integer";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopCharIsAlphabetic : public FixedArityPrimop<PrimopCharIsAlphabetic, Char> {
     static constexpr uint8_t name[] = "char-alphabetic?";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopCharIsNumeric : public FixedArityPrimop<PrimopCharIsNumeric, Char> {
     static constexpr uint8_t name[] = "char-numeric?";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopCharIsWhitespace : public FixedArityPrimop<PrimopCharIsWhitespace, Char> {
     static constexpr uint8_t name[] = "char-whitespace?";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 
 // Strings
 struct PrimopArrayMutToString : public FixedArityPrimop<PrimopArrayMutToString, ArrayMut> {
     static constexpr uint8_t name[] = "array!->string";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopStringIteratorPeek
     : public FixedArityPrimop<PrimopStringIteratorPeek, StringIterator>
 {
     static constexpr uint8_t name[] = "string-iterator-peek";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopStringIteratorNext
     : public FixedArityPrimop<PrimopStringIteratorNext, StringIterator>
 {
     static constexpr uint8_t name[] = "string-iterator-next!";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopStringToSymbol : public FixedArityPrimop<PrimopStringToSymbol, String> {
     static constexpr uint8_t name[] = "string->symbol";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 
 // I/O
 struct PrimopFileExists : public FixedArityPrimop<PrimopFileExists, String> {
     static constexpr uint8_t name[] = "file-exists?";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopOpenInputFile : public FixedArityPrimop<PrimopOpenInputFile, String> {
     static constexpr uint8_t name[] = "open-input-file";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopClosePort : public FixedArityPrimop<PrimopClosePort, InputFile> {
     static constexpr uint8_t name[] = "close-port";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopPeekChar : public FixedArityPrimop<PrimopPeekChar, InputFile> {
     static constexpr uint8_t name[] = "peek-char";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopReadChar : public FixedArityPrimop<PrimopReadChar, InputFile> {
     static constexpr uint8_t name[] = "read-char";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopWrite : public FixedArityPrimop<PrimopWrite, ORef> {
     static constexpr uint8_t name[] = "write";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopWriteChar : public FixedArityPrimop<PrimopWriteChar, Char> {
     static constexpr uint8_t name[] = "write-char";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopWriteString : public FixedArityPrimop<PrimopWriteString, String> {
     static constexpr uint8_t name[] = "write-string";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopFlushOutputPort : public FixedArityPrimop<PrimopFlushOutputPort> {
     static constexpr uint8_t name[] = "flush-output-port";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 
 // Time
 struct PrimopCurrentSecond : public FixedArityPrimop<PrimopCurrentSecond> {
     static constexpr uint8_t name[] = "current-second";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopCurrentJiffy : public FixedArityPrimop<PrimopCurrentJiffy> {
     static constexpr uint8_t name[] = "current-jiffy";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopJiffiesPerSecond : public FixedArityPrimop<PrimopJiffiesPerSecond> {
     static constexpr uint8_t name[] = "jiffies-per-second";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 
 // Reflection
 struct PrimopResolve : public FixedArityPrimop<PrimopResolve, Symbol> {
     static constexpr uint8_t name[] = "resolve";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopEval : public FixedArityPrimop<PrimopEval, ORef, Loc, Bool> {
     static constexpr uint8_t name[] = "eval";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopContinuationCallLoc
     : public FixedArityPrimop<PrimopContinuationCallLoc, Continuation>
 {
     static constexpr uint8_t name[] = "continuation-call-loc";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 
 // System Interface
 struct PrimopExit : public FixedArityPrimop<PrimopExit, ORef> {
     static constexpr uint8_t name[] = "exit";
-    static PrimopRes uncheckedInvoke(State* state);
+    static PrimopRes uncheckedInvoke(RT* state);
 };
 
 } // namespace

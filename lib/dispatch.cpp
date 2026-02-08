@@ -7,7 +7,7 @@ namespace {
 
 [[nodiscard]]
 PrimopRes doCheckDomain(
-    State* state, HRef<Closure> callee, ORef const* args, size_t argc
+    RT* state, HRef<Closure> callee, ORef const* args, size_t argc
 ) {
     assert(isa<Method>(*state, callee->method));
     HRef<Method> const method = HRef<Method>::fromUnchecked(callee->method);
@@ -50,7 +50,7 @@ PrimopRes doCheckDomain(
 // TODO: Can we somehow (efficiently!) DRY this wrt. `doCheckDomain`?
 [[nodiscard]]
 bool closureIsApplicable(
-    State const* state, Closure const* callee, ORef const* args, size_t argc
+    RT const* state, Closure const* callee, ORef const* args, size_t argc
 ) {
     assert(isa<Method>(*state, callee->method));
     HRef<Method> const method = HRef<Method>::fromUnchecked(callee->method);
@@ -93,7 +93,7 @@ bool closureIsApplicable(
 
 // TODO: DRY wrt. `closureIsApplicable`:
 [[nodiscard]]
-bool closureIsApplicableToList(State const* state, Closure const* callee, ORef args) {
+bool closureIsApplicableToList(RT const* state, Closure const* callee, ORef args) {
     assert(isa<Method>(*state, callee->method));
     HRef<Method> const method = HRef<Method>::fromUnchecked(callee->method);
     size_t const arity = (uint64_t)method->flexCount().val();
@@ -150,38 +150,38 @@ bool closureIsApplicableToList(State const* state, Closure const* callee, ORef a
 }
 
 DomainCheckRes checkDomainForArgs(
-    State* state, HRef<Closure> calleeRef, ORef const* args, size_t argc
+    RT* state, HRef<Closure> calleeRef, ORef const* args, size_t argc
 ) {
-    if (state->domainChecking == State::DomainChecking::SKIP) {
-        state->domainChecking = State::DomainChecking::CHECK;
+    if (state->domainChecking == RT::DomainChecking::SKIP) {
+        state->domainChecking = RT::DomainChecking::CHECK;
         return DomainCheckRes::OK;
     }
 
     switch (state->domainChecking) {
-    case State::DomainChecking::CHECK: {
+    case RT::DomainChecking::CHECK: {
         if (doCheckDomain(state, calleeRef, args, argc) == PrimopRes::ERROR) {
             return DomainCheckRes::ERROR;
         }
     }; break;
 
-    case State::DomainChecking::SPECULATE: {
-        state->domainChecking = State::DomainChecking::CHECK;
+    case RT::DomainChecking::SPECULATE: {
+        state->domainChecking = RT::DomainChecking::CHECK;
 
         if (!closureIsApplicable(state, &*calleeRef, args, argc)) {
             return DomainCheckRes::MISSPECULATION;
         }
     }; break;
 
-    case State::DomainChecking::SKIP: PANIC("Unreachable code reached.");
+    case RT::DomainChecking::SKIP: PANIC("Unreachable code reached.");
     }
 
     return DomainCheckRes::OK;
 }
 
 // TODO: DRY wrt. `checkDomainForArgs`:
-DomainCheckRes checkDomain(State* state) {
-    if (state->domainChecking == State::DomainChecking::SKIP) {
-        state->domainChecking = State::DomainChecking::CHECK;
+DomainCheckRes checkDomain(RT* state) {
+    if (state->domainChecking == RT::DomainChecking::SKIP) {
+        state->domainChecking = RT::DomainChecking::CHECK;
         return DomainCheckRes::OK;
     }
 
@@ -191,21 +191,21 @@ DomainCheckRes checkDomain(State* state) {
     size_t const argc = state->entryRegc - firstArgReg;
 
     switch (state->domainChecking) {
-    case State::DomainChecking::CHECK: {
+    case RT::DomainChecking::CHECK: {
         if (doCheckDomain(state, calleeRef, args, argc) == PrimopRes::ERROR) {
             return DomainCheckRes::ERROR;
         }
     }; break;
 
-    case State::DomainChecking::SPECULATE: {
-        state->domainChecking = State::DomainChecking::CHECK;
+    case RT::DomainChecking::SPECULATE: {
+        state->domainChecking = RT::DomainChecking::CHECK;
 
         if (!closureIsApplicable(state, &*calleeRef, args, argc)) {
             return DomainCheckRes::MISSPECULATION;
         }
     }; break;
 
-    case State::DomainChecking::SKIP: PANIC("Unreachable code reached.");
+    case RT::DomainChecking::SKIP: PANIC("Unreachable code reached.");
     }
 
     return DomainCheckRes::OK;
@@ -213,7 +213,7 @@ DomainCheckRes checkDomain(State* state) {
 
 /// Returns applicable closure from `callee`, `Default` if none is found.
 ORef applicableClosureForArgs(
-    State* state, Multimethod const* callee, ORef const* args, size_t argc
+    RT* state, Multimethod const* callee, ORef const* args, size_t argc
 ) {
     HRef<Array> const methodsRef = callee->methods().get();
     ORefSpan const methods = methodsRef->flexItems();
@@ -224,7 +224,7 @@ ORef applicableClosureForArgs(
         auto const methodRef = HRef<Closure>::fromUnchecked(methods[i]);
 
         if (closureIsApplicable(state, &*methodRef, args, argc)) {
-            state->domainChecking = State::DomainChecking::SKIP;
+            state->domainChecking = RT::DomainChecking::SKIP;
             return methodRef;
         }
     }
@@ -234,7 +234,7 @@ ORef applicableClosureForArgs(
 
 // TODO: DRY wrt. `applicableClosureForArgs`:
 /// Returns applicable closure from `callee`, `Default` if none is found.
-ORef applicableClosureForArglist(State* state, Multimethod const* callee, ORef args) {
+ORef applicableClosureForArglist(RT* state, Multimethod const* callee, ORef args) {
     HRef<Array> const methodsRef = callee->methods().get();
     ORefSpan const methods = methodsRef->flexItems();
 
@@ -244,7 +244,7 @@ ORef applicableClosureForArglist(State* state, Multimethod const* callee, ORef a
         HRef<Closure> const methodRef = HRef<Closure>::fromUnchecked(methods[i]);
 
         if (closureIsApplicableToList(state, &*methodRef, args)) {
-            state->domainChecking = State::DomainChecking::SKIP;
+            state->domainChecking = RT::DomainChecking::SKIP;
             return methodRef;
         }
     }
@@ -252,7 +252,7 @@ ORef applicableClosureForArglist(State* state, Multimethod const* callee, ORef a
     return Default;
 }
 
-bool calleeClosureForArgs(State* state, ORef callee, ORef const* args, size_t argc) {
+bool calleeClosureForArgs(RT* state, ORef callee, ORef const* args, size_t argc) {
     // TODO: Make continuations directly callable?
     // TODO: Make this extensible (à la JVM `invokedynamic`)?:
 
@@ -286,7 +286,7 @@ bool calleeClosureForArgs(State* state, ORef callee, ORef const* args, size_t ar
 }
 
 // TODO: DRY wrt. `calleeClosureForArgs`:
-bool calleeClosureForArglist(State* state, ORef callee, ORef args) {
+bool calleeClosureForArglist(RT* state, ORef callee, ORef args) {
     // TODO: Make continuations directly callable?
     // TODO: Make this extensible (à la JVM `invokedynamic`)?:
 
@@ -320,7 +320,7 @@ bool calleeClosureForArglist(State* state, ORef callee, ORef args) {
 }
 
 // TODO: DRY wrt. `calleeClosureForArgs`:
-bool calleeClosure(State* state, ORef callee, std::optional<uint8_t> inlineCacheIdx) {
+bool calleeClosure(RT* state, ORef callee, std::optional<uint8_t> inlineCacheIdx) {
     // TODO: Make continuations directly callable?
     // TODO: Make this extensible (à la JVM `invokedynamic`)?:
 
@@ -333,7 +333,7 @@ bool calleeClosure(State* state, ORef callee, std::optional<uint8_t> inlineCache
         if (inlineCacheIdx) {
             if (eq(state->consts[*inlineCacheIdx].get(), multiCalleeRef->methods().get())) {
                 state->regs[calleeReg] = state->consts[*inlineCacheIdx + 1].get();
-                state->domainChecking = State::DomainChecking::SPECULATE;
+                state->domainChecking = RT::DomainChecking::SPECULATE;
 
                 assert(isa<Closure>(*state, state->regs[calleeReg]));
                 return true;

@@ -22,7 +22,7 @@ int64_t decodeVarInt(size_t* i, std::span<uint8_t const> src) {
     return res;
 }
 
-void ZLoc::print(State const& state, FILE *dest) const {
+void ZLoc::print(RT const& state, FILE *dest) const {
     bool posPrinted = false;
     if (isa<String>(*&state, maybeFilename)) {
         auto const filename = HRef<String>::fromUnchecked(maybeFilename);
@@ -43,7 +43,7 @@ void ZLoc::print(State const& state, FILE *dest) const {
 
 class Disassembler {
 protected:
-    State const* state;
+    RT const* state;
     Method const* method;
     std::span<uint8_t const> codeSlice;
     size_t pc;
@@ -54,17 +54,17 @@ public:
         Maybe<ZLoc> loc;
     };
 
-    Disassembler(State const* t_state, Method const* t_method, size_t t_pc) :
+    Disassembler(RT const* t_state, Method const* t_method, size_t t_pc) :
         state{t_state}, method{t_method}, pc{t_pc}
     {
         assert(isHeaped(t_method->code));
         codeSlice = HRef<ByteArray>::fromUnchecked(t_method->code)->items();
     }
 
-    Disassembler(State const* t_state, Method const* t_method)
+    Disassembler(RT const* t_state, Method const* t_method)
         : Disassembler{t_state, t_method, 0} {}
 
-    static Disassembler* create(State const* t_state, Method const* t_method);
+    static Disassembler* create(RT const* t_state, Method const* t_method);
 
     virtual ~Disassembler() = default;
 
@@ -106,7 +106,7 @@ class LocDisassembler : public Disassembler {
 private:
     friend Disassembler;
 
-    LocDisassembler(State const* t_state, Method const* t_method) :
+    LocDisassembler(RT const* t_state, Method const* t_method) :
         Disassembler{t_state, t_method}, srcByteIdx{0}, filenameIdx{0}, srcByteIdxsIdx{0}
     {
         assert(isa(state, state->types.array, method->maybeFilenames));
@@ -157,7 +157,7 @@ public:
     }
 };
 
-Disassembler* Disassembler::create(State const* state, Method const* method) {
+Disassembler* Disassembler::create(RT const* state, Method const* method) {
     if (isa(state, state->types.array, method->maybeFilenames)
         && isa(state, state->types.byteArray, method->maybeSrcByteIdxs)
         ) {
@@ -288,7 +288,7 @@ void Disassembler::disassembleRegBits(FILE* dest) {
     }
 }
 
-void disassembleNested(State const* state, FILE* dest, HRef<Method> methodRef, size_t nesting);
+void disassembleNested(RT const* state, FILE* dest, HRef<Method> methodRef, size_t nesting);
 
 void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t codeByte) {
     ORef const* const consts = HRef<ArrayMut>::fromUnchecked(method->consts)->flexData();
@@ -436,7 +436,7 @@ void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t co
 }
 
 // TODO: Print labels for BR(F) and their targets:
-void disassembleNested(State const* state, FILE* dest, HRef<Method> methodRef, size_t nesting) {
+void disassembleNested(RT const* state, FILE* dest, HRef<Method> methodRef, size_t nesting) {
     for (size_t j = 0; j < nesting; ++j) { putc('\t', dest); }
     putc('(', dest);
 
@@ -508,11 +508,11 @@ void disassembleNested(State const* state, FILE* dest, HRef<Method> methodRef, s
     }
 }
 
-void disassemble(State const* state, FILE* dest, HRef<Method> methodRef) {
+void disassemble(RT const* state, FILE* dest, HRef<Method> methodRef) {
     disassembleNested(state, dest, methodRef, 0);
 }
 
-void disassembleInstrAt(State const* state, FILE* dest, HRef<Method> method, size_t pc) {
+void disassembleInstrAt(RT const* state, FILE* dest, HRef<Method> method, size_t pc) {
     assert(isHeaped(method->code));
 
     auto dis = Disassembler{state, &*method, pc + 1};
@@ -552,7 +552,7 @@ Maybe<ZLoc> locatePc(HRef<Method> method, size_t pc) {
     return Maybe{ZLoc{maybeFilename, size_t(srcByteIdx)}};
 }
 
-Maybe<ZLoc> locateCallerPc(State const* state, HRef<Method> method, size_t retPc) {
+Maybe<ZLoc> locateCallerPc(RT const* state, HRef<Method> method, size_t retPc) {
     if (isHeaped(method->code)) {
         Disassembler* const dis = Disassembler::create(state, &*method);
 

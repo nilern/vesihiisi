@@ -1,6 +1,6 @@
 #include "compiler.hpp"
 
-#include "../state.hpp"
+#include "../rt.hpp"
 #include "../bytecode.hpp"
 #include "../print.hpp"
 #include "tocps.hpp"
@@ -34,9 +34,9 @@ IRName renameIRName(Compiler* compiler, IRName name) {
 }
 
 [[nodiscard]]
-bool markIRBlock(State* state, struct IRBlock* block);
+bool markIRBlock(RT* state, struct IRBlock* block);
 
-bool markIRFn(State* state, IRFn* fn) {
+bool markIRFn(RT* state, IRFn* fn) {
     size_t const blockCount = fn->blockCount;
     for (size_t i = 0; i < blockCount; ++i) {
         if (!markIRBlock(state, fn->blocks[i])) { return false; }
@@ -47,9 +47,9 @@ bool markIRFn(State* state, IRFn* fn) {
     return true;
 }
 
-void assertIRBlockInTospace(State const* state, struct IRBlock const* block);
+void assertIRBlockInTospace(RT const* state, struct IRBlock const* block);
 
-void assertIRFnInTospace(State const* state, IRFn const* fn) {
+void assertIRFnInTospace(RT const* state, IRFn const* fn) {
     size_t const blockCount = fn->blockCount;
     for (size_t i = 0; i < blockCount; ++i) {
         assertIRBlockInTospace(state, fn->blocks[i]);
@@ -80,7 +80,7 @@ void pushArg(Compiler* compiler, Args* args, IRName arg) {
 }
 
 [[nodiscard]]
-bool markIRStmt(State* state, IRStmt* stmt) {
+bool markIRStmt(RT* state, IRStmt* stmt) {
     stmt->maybeLoc = TRY_NULLOPT_TO_FALSE(state->heap.mark(stmt->maybeLoc));
 
     switch (stmt->type) {
@@ -117,7 +117,7 @@ bool markIRStmt(State* state, IRStmt* stmt) {
     return true;
 }
 
-void assertIRStmtInTospace(State const* state, IRStmt const* stmt) {
+void assertIRStmtInTospace(RT const* state, IRStmt const* stmt) {
     if (isHeaped(stmt->maybeLoc)) {
         assert(state->heap.evacuated(&*HRef<Object>::fromUnchecked(stmt->maybeLoc)));
     }
@@ -152,12 +152,12 @@ void assertIRStmtInTospace(State const* state, IRStmt const* stmt) {
 }
 
 [[nodiscard]]
-bool markIRTransfer(State& state, IRTransfer& transfer) {
+bool markIRTransfer(RT& state, IRTransfer& transfer) {
     transfer.maybeLoc = TRY_NULLOPT_TO_FALSE(state.heap.mark(transfer.maybeLoc));
     return true;
 }
 
-void assertIRTransferInTospace([[maybe_unused]] State const& state, IRTransfer const& transfer) {
+void assertIRTransferInTospace([[maybe_unused]] RT const& state, IRTransfer const& transfer) {
     if (isHeaped(transfer.maybeLoc)) {
         assert(state.heap.evacuated(&*HRef<Object>::fromUnchecked(transfer.maybeLoc)));
     }
@@ -177,7 +177,7 @@ Stmts newStmtsWithCap(Compiler* compiler, size_t cap) {
 
 inline Stmts newStmts(Compiler* compiler) { return newStmtsWithCap(compiler, 2); }
 
-bool markIRBlock(State* state, IRBlock* block) {
+bool markIRBlock(RT* state, IRBlock* block) {
     size_t stmtCount = block->stmts.count;
     for (size_t i = 0; i < stmtCount; ++i) {
         if (!markIRStmt(state, &block->stmts.vals[i])) { return false; }
@@ -186,7 +186,7 @@ bool markIRBlock(State* state, IRBlock* block) {
     return markIRTransfer(*state, block->transfer);
 }
 
-void assertIRBlockInTospace(State const* state, IRBlock const* block) {
+void assertIRBlockInTospace(RT const* state, IRBlock const* block) {
     size_t stmtCount = block->stmts.count;
     for (size_t i = 0; i < stmtCount; ++i) {
         assertIRStmtInTospace(state, &block->stmts.vals[i]);
@@ -365,9 +365,9 @@ void createIRReturn(IRBlock* block, IRName callee, IRName arg, ORef maybeLoc) {
     };
 }
 
-typedef void (PrintIRNameFn)(State const* state, FILE* dest, Compiler const* compiler, IRName name);
+typedef void (PrintIRNameFn)(RT const* state, FILE* dest, Compiler const* compiler, IRName name);
 
-void printIRName(State const* state, FILE* dest, Compiler const* compiler, IRName name) {
+void printIRName(RT const* state, FILE* dest, Compiler const* compiler, IRName name) {
     assert(name.index < compiler->nameSyms.count());
     ORef const maybeSym = compiler->nameSyms[name.index];
     if (isa<Symbol>(*state, maybeSym)) {
@@ -377,7 +377,7 @@ void printIRName(State const* state, FILE* dest, Compiler const* compiler, IRNam
 }
 
 inline void printIRReg(
-    State const* /*state*/, FILE* dest, Compiler const* /*compiler*/, IRName name
+    RT const* /*state*/, FILE* dest, Compiler const* /*compiler*/, IRName name
 ) {
     fprintf(dest, "r%ld", name.index);
 }
@@ -387,7 +387,7 @@ void printIRLabel(FILE* dest, IRLabel label) {
 }
 
 void printArgs(
-    State const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
+    RT const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
     Args const* args
 ) {
     size_t const count = args->count;
@@ -398,12 +398,12 @@ void printArgs(
 }
 
 void printNestedIRFn(
-    State const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
+    RT const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
     IRFn const* fn, size_t nesting
 );
 
 void printStmt(
-    State const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
+    RT const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
     size_t nesting, IRStmt const* stmt
 ) {
     for (size_t i = 0; i < nesting + 1; ++i) { fprintf(dest, "  "); }
@@ -522,7 +522,7 @@ void printStmt(
 }
 
 void printTransfer(
-    State const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
+    RT const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
     size_t nesting, IRTransfer const* transfer
 ) {
     for (size_t i = 0; i < nesting + 1; ++i) { fprintf(dest, "  "); }
@@ -579,7 +579,7 @@ void printTransfer(
 }
 
 void printBlock(
-    State const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
+    RT const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
     IRFn const* fn, size_t nesting, IRBlock* block
 ) {
     for (size_t i = 0; i < nesting; ++i) { fprintf(dest, "  "); }
@@ -637,7 +637,7 @@ void printBlock(
 }
 
 void printNestedIRFn(
-    State const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
+    RT const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
     IRFn const* fn, size_t nesting
 ) {
     for (size_t i = 0; i < nesting; ++i) { fprintf(dest, "  "); }
@@ -668,13 +668,13 @@ void printNestedIRFn(
 }
 
 void printIRFn(
-    State const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
+    RT const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
     IRFn const* fn
 ) {
     printNestedIRFn(state, dest, compiler, printName, fn, 0);
 }
 
-CompilationRes compile(State* state, ORef expr, HRef<Loc> loc, bool debug) {
+CompilationRes compile(RT* state, ORef expr, HRef<Loc> loc, bool debug) {
     auto compiler = Compiler{};
 
     ToIRRes const toIRRes = topLevelExprToIR(state, &compiler, expr, loc);

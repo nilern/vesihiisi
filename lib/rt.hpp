@@ -61,11 +61,11 @@ struct NamedSingletons {
 static_assert(sizeof(NamedSingletons) / sizeof(ORef) == BOOTSTRAP_SINGLETON_COUNT);
 
 class RootGuard {
-    State* state;
+    RT* state;
 
-    RootGuard(State* state, ORef* handle);
+    RootGuard(RT* state, ORef* handle);
 
-    friend State;
+    friend RT;
 public:
     RootGuard() : state{nullptr} {}
 
@@ -78,7 +78,7 @@ public:
     RootGuard& operator=(RootGuard const&) = delete;
 };
 
-struct State {
+struct RT {
     enum class DomainChecking : uint8_t { CHECK, SPECULATE, SKIP };
 
     ORef method;
@@ -110,7 +110,7 @@ struct State {
 
     std::vector<ORef*> shadowstack;
 
-    static State* tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* argv[]);
+    static RT* tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* argv[]);
 
     [[nodiscard]]
     RootGuard pushRoot(ORef* handle) { return RootGuard{this, handle}; } // RVO => not even move
@@ -128,108 +128,108 @@ struct State {
     }
 
 private:
-    State(Heap heap, NamedTypes types, NamedSingletons singletons, HRef<Namespace> ns,
+    RT(Heap heap, NamedTypes types, NamedSingletons singletons, HRef<Namespace> ns,
           HRef<Var> debug, HRef<Var> errorHandler);
 };
 
-HRef<Type> typeOf(State const* state, ORef v);
-Type const* typePtrOf(State const* state, ORef v);
+HRef<Type> typeOf(RT const* state, ORef v);
+Type const* typePtrOf(RT const* state, ORef v);
 
 template<typename T>
-bool isa(State const& state, ORef v) { return T::contains(state, v); }
+bool isa(RT const& state, ORef v) { return T::contains(state, v); }
 template<typename T> requires (std::is_same<T, ORef>{}())
-bool isa(State const& /*state*/, ORef /*v*/) { return true; }
+bool isa(RT const& /*state*/, ORef /*v*/) { return true; }
 
-bool isa(State const* state, HRef<Type> type, ORef v);
+bool isa(RT const* state, HRef<Type> type, ORef v);
 
-inline bool isEmptyList(State const* state, ORef v) {
+inline bool isEmptyList(RT const* state, ORef v) {
     return eq(v, state->singletons.emptyList);
 }
 
-HRef<Type> createSlotsType(State* state, HRef<Symbol> name, Fixnum slotCount, Bool isFlex);
+HRef<Type> createSlotsType(RT* state, HRef<Symbol> name, Fixnum slotCount, Bool isFlex);
 
-String* allocString(State* state, Fixnum byteCount);
+String* allocString(RT* state, Fixnum byteCount);
 
-HRef<String> createString(State* state, Str str);
+HRef<String> createString(RT* state, Str str);
 
 // `name` must not point into GC heap:
-HRef<Symbol> intern(State* state, Str name);
+HRef<Symbol> intern(RT* state, Str name);
 
-HRef<Symbol> internHeaped(State* state, HRef<String> name);
+HRef<Symbol> internHeaped(RT* state, HRef<String> name);
 
-inline Array* tryAllocArray(State* state, Fixnum count) {
+inline Array* tryAllocArray(RT* state, Fixnum count) {
     return (Array*)state->heap.tryAllocFlex(&*state->types.array, count);
 }
 
-inline Array* allocArrayOrDie(State* state, Fixnum count) {
+inline Array* allocArrayOrDie(RT* state, Fixnum count) {
     return (Array*)state->heap.allocFlexOrDie(&*state->types.array, count);
 }
 
-HRef<Array> createArray(State* state, Fixnum count);
+HRef<Array> createArray(RT* state, Fixnum count);
 
-inline ArrayMut* tryAllocArrayMut(State* state, Fixnum count) {
+inline ArrayMut* tryAllocArrayMut(RT* state, Fixnum count) {
     return (ArrayMut*)state->heap.tryAllocFlex(&*state->types.arrayMut, count);
 }
 
-inline ArrayMut* allocArrayMutOrDie(State* state, Fixnum count) {
+inline ArrayMut* allocArrayMutOrDie(RT* state, Fixnum count) {
     return (ArrayMut*)state->heap.allocFlexOrDie(&*state->types.arrayMut, count);
 }
 
-HRef<ArrayMut> createArrayMut(State* state, Fixnum count);
+HRef<ArrayMut> createArrayMut(RT* state, Fixnum count);
 
-inline ByteArray* tryAllocByteArray(State* state, Fixnum count) {
+inline ByteArray* tryAllocByteArray(RT* state, Fixnum count) {
     return (ByteArray*)state->heap.tryAllocFlex(&*state->types.byteArray, count);
 }
 
-inline ByteArray* allocByteArrayOrDie(State* state, Fixnum count) {
+inline ByteArray* allocByteArrayOrDie(RT* state, Fixnum count) {
     return (ByteArray*)state->heap.allocFlexOrDie(&*state->types.byteArray, count);
 }
 
-HRef<ByteArrayMut> createByteArrayMut(State* state, Fixnum count);
+HRef<ByteArrayMut> createByteArrayMut(RT* state, Fixnum count);
 
-HRef<Loc> createLoc(State* state, HRef<String> filename, Fixnum byteIdx);
+HRef<Loc> createLoc(RT* state, HRef<String> filename, Fixnum byteIdx);
 
-HRef<Pair> allocPair(State* state);
-HRef<Pair> createPair(State* state, ORef car, ORef cdr, ORef maybeLoc);
+HRef<Pair> allocPair(RT* state);
+HRef<Pair> createPair(RT* state, ORef car, ORef cdr, ORef maybeLoc);
 
 Method* tryAllocBytecodeMethod(
-    State* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
+    RT* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
     Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs);
 
 Method* allocBytecodeMethodOrDie(
-    State* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
+    RT* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
     Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs);
 
 HRef<Method> allocBytecodeMethod(
-    State* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
+    RT* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
     Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs);
 
-HRef<Closure> allocClosure(State* state, HRef<Method> method, Fixnum cloverCount);
+HRef<Closure> allocClosure(RT* state, HRef<Method> method, Fixnum cloverCount);
 
 HRef<Continuation> allocContinuation(
-    State* state, HRef<Method> method, Fixnum pc, Fixnum cloverCount);
+    RT* state, HRef<Method> method, Fixnum pc, Fixnum cloverCount);
 
-HRef<Knot> allocKnot(State* state);
+HRef<Knot> allocKnot(RT* state);
 
-HRef<InputFile> createInputFile(State* state, UTF8InputFile&& file);
+HRef<InputFile> createInputFile(RT* state, UTF8InputFile&& file);
 
-HRef<UnboundError> createUnboundError(State* state, HRef<Symbol> name);
+HRef<UnboundError> createUnboundError(RT* state, HRef<Symbol> name);
 
-HRef<TypeError> createTypeError(State* state, HRef<Type> type, ORef val);
+HRef<TypeError> createTypeError(RT* state, HRef<Type> type, ORef val);
 
-HRef<ArityError> createArityError(State* state, HRef<Closure> callee, Fixnum callArgc);
+HRef<ArityError> createArityError(RT* state, HRef<Closure> callee, Fixnum callArgc);
 
-HRef<InapplicableError> createInapplicableError(State* state, HRef<Multimethod> callee);
+HRef<InapplicableError> createInapplicableError(RT* state, HRef<Multimethod> callee);
 
-HRef<FatalError> createOverflowError(State* state, HRef<Closure> callee, Fixnum x, Fixnum y);
+HRef<FatalError> createOverflowError(RT* state, HRef<Closure> callee, Fixnum x, Fixnum y);
 
-HRef<FatalError> createDivByZeroError(State* state, HRef<Closure> callee, Fixnum x, Fixnum y);
+HRef<FatalError> createDivByZeroError(RT* state, HRef<Closure> callee, Fixnum x, Fixnum y);
 
-void collect(State* state);
+void collect(RT* state);
 
 struct IRFn;
 struct MethodBuilder;
 
-void collectTracingIR(State* state, struct IRFn* fn, struct MethodBuilder* builder);
+void collectTracingIR(RT* state, struct IRFn* fn, struct MethodBuilder* builder);
 
 } // namespace

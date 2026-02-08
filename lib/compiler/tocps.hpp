@@ -6,6 +6,6 @@ namespace {
 
 using ToIRRes = Res<SyntaxErrors, IRFn>;
 
-ToIRRes topLevelExprToIR(State const* state, Compiler* compiler, ORef expr, HRef<Loc> loc);
+ToIRRes topLevelExprToIR(RT const* state, Compiler* compiler, ORef expr, HRef<Loc> loc);
 
 }

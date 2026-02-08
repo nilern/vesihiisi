@@ -5,10 +5,10 @@
 namespace {
 
 [[nodiscard]]
-bool markMethodBuilder(State* state, struct MethodBuilder* builder);
+bool markMethodBuilder(RT* state, struct MethodBuilder* builder);
 [[maybe_unused]]
-void assertMethodBuilderInTospace(State const* state, struct MethodBuilder const* builder);
+void assertMethodBuilderInTospace(RT const* state, struct MethodBuilder const* builder);
 
-HRef<Method> emitToplevelMethod(State* state, Compiler* compiler, IRFn* fn);
+HRef<Method> emitToplevelMethod(RT* state, Compiler* compiler, IRFn* fn);
 
 } // namespace

@@ -43,11 +43,11 @@ public:
 
     HRef<Symbol> atIndexUnchecked(size_t i) const;
 
-    HRef<Symbol> createAtUnchecked(State* state, size_t i, Fixnum hash, Str name);
+    HRef<Symbol> createAtUnchecked(RT* state, size_t i, Fixnum hash, Str name);
     HRef<Symbol> createFromHeapedAtUnchecked(
-        State* state, size_t i, Fixnum hash, HRef<String> name);
+        RT* state, size_t i, Fixnum hash, HRef<String> name);
 
-    void prune(State const& state);
+    void prune(RT const& state);
 
     class const_iterator {
         ORef const* ptr;
@@ -120,9 +120,9 @@ public:
     HRef<Method> atIndexUnchecked(size_t i) const;
 
     HRef<Method> createAtUnchecked(
-        State* state, size_t i, Fixnum fxHash, HRef<Method> generic, HRef<ArrayMut> types);
+        RT* state, size_t i, Fixnum fxHash, HRef<Method> generic, HRef<ArrayMut> types);
 
-    void prune(State const& state);
+    void prune(RT const& state);
 
     class const_iterator {
         ORef const* ptr;
@@ -156,6 +156,6 @@ private:
     void rehash();
 };
 
-HRef<Method> specialize(State* state, HRef<Method> generic, HRef<ArrayMut> types);
+HRef<Method> specialize(RT* state, HRef<Method> generic, HRef<ArrayMut> types);
 
 } // namespace

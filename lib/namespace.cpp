@@ -1,6 +1,6 @@
 #include "namespace.hpp"
 
-#include "state.hpp"
+#include "rt.hpp"
 
 namespace {
 
@@ -11,7 +11,7 @@ Var* tryCreateUnboundVar(Heap& heap, Type const* varType, HRef<Unbound> unbound)
     return new (ptr) Var{unbound, False};
 }
 
-HRef<Var> createUnboundVar(State* state) {
+HRef<Var> createUnboundVar(RT* state) {
     Var* ptr = static_cast<decltype(ptr)>(state->heap.tryAlloc(&*state->types.var));
     if (mustCollect(ptr)) {
         collect(state);
@@ -37,7 +37,7 @@ FindVarRes findVar(HRef<Namespace> ns, HRef<Symbol> name) {
     }
 }
 
-void rehashNamespace(State* state, HRef<Namespace> const* nsHandle) {
+void rehashNamespace(RT* state, HRef<Namespace> const* nsHandle) {
     size_t const oldCap = (uint64_t)(*nsHandle)->keys().get()->flexCount().val();
     size_t const newCap = oldCap << 1;
     HRef<ArrayMut> newKeysRef = createArrayMut(state, Fixnum((intptr_t)newCap)); // May GC
@@ -74,7 +74,7 @@ void rehashNamespace(State* state, HRef<Namespace> const* nsHandle) {
     ns->vals().set(*state, newValsRef); // May GC
 }
 
-HRef<Var> getVar(State* state, HRef<Namespace> ns, HRef<Symbol> name) {
+HRef<Var> getVar(RT* state, HRef<Namespace> ns, HRef<Symbol> name) {
     FindVarRes findRes = findVar(ns, name);
     switch (findRes.type) {
     case FindVarRes::NS_FOUND_VAR: return findRes.var;

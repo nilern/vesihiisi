@@ -16,7 +16,7 @@
 
 namespace {
 
-ORef getErrorHandler(State const* state) {
+ORef getErrorHandler(RT const* state) {
     ORef const v = state->errorHandler->val().get();
     if (eq(v, state->singletons.unbound)) {
         PANIC("Unbound *error-handler*");
@@ -25,24 +25,24 @@ ORef getErrorHandler(State const* state) {
     return v;
 }
 
-PrimopRes primopError(State* state, ORef err) {
+PrimopRes primopError(RT* state, ORef err) {
     state->regs[calleeReg] = getErrorHandler(state);
     state->regs[firstArgReg] = err;
     state->entryRegc = firstArgReg + 1;
     return PrimopRes::ERROR;
 }
 
-PrimopRes primopArityError(State* state, HRef<Closure> callee, size_t argc) {
+PrimopRes primopArityError(RT* state, HRef<Closure> callee, size_t argc) {
     return primopError(state, createArityError(state, callee, Fixnum{int64_t(argc)}));
 }
 
-PrimopRes primopTypeError(State* state, HRef<Type> type, ORef v) {
+PrimopRes primopTypeError(RT* state, HRef<Type> type, ORef v) {
     return primopError(state, createTypeError(state, type, v));
 }
 
-PrimopRes callBytecode(State* /*state*/) { return PrimopRes::TAILCALL; }
+PrimopRes callBytecode(RT* /*state*/) { return PrimopRes::TAILCALL; }
 
-PrimopRes primopAbort(State* state) {
+PrimopRes primopAbort(RT* state) {
     switch (checkDomain(state)) {
     case DomainCheckRes::OK: break;
     case DomainCheckRes::MISSPECULATION: return PrimopRes::MISSPECULATION;
@@ -83,7 +83,7 @@ PrimopRes primopAbort(State* state) {
     return PrimopRes::ABORT;
 }
 
-PrimopRes PrimopApplyArray::uncheckedInvoke(State* state) {
+PrimopRes PrimopApplyArray::uncheckedInvoke(RT* state) {
     ORef const callee = state->regs[firstArgReg];
     // Could also be an `<array!>`, but we "illegally" cast that here to avoid duplicating this
     // function for no actual benefit:
@@ -132,15 +132,15 @@ PrimopRes PrimopApplyArray::uncheckedInvoke(State* state) {
     }
 
     state->entryRegc = (uint8_t)(firstArgReg + argc);
-    state->domainChecking = State::DomainChecking::SKIP;
+    state->domainChecking = RT::DomainChecking::SKIP;
     return PrimopRes::TAILAPPLY;
 }
 
-PrimopRes PrimopApplyArrayMut::uncheckedInvoke(State* state) {
+PrimopRes PrimopApplyArrayMut::uncheckedInvoke(RT* state) {
     return PrimopApplyArray::uncheckedInvoke(state);
 }
 
-PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
+PrimopRes PrimopApplyList::uncheckedInvoke(RT* state) {
     ORef const callee = state->regs[firstArgReg];
     ORef args = state->regs[firstArgReg + 1];
 
@@ -157,7 +157,7 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
     // Put args in place and check them (if not already checked by dispatch):
     size_t const arity = (uint64_t)methodRef->flexCount().val();
     size_t argc = 0;
-    if (state->domainChecking != State::DomainChecking::SKIP) {
+    if (state->domainChecking != RT::DomainChecking::SKIP) {
         bool const hasVarArg = methodRef->hasVarArg.val();
         size_t const minArity = !hasVarArg ? arity : arity - 1;
 
@@ -296,7 +296,7 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
 
             argc = minArity + varargCount;
         }
-    } else { // `state->domainChecking == State::DomainChecking::SKIP`
+    } else { // `state->domainChecking == RT::DomainChecking::SKIP`
         bool const hasVarArg = methodRef->hasVarArg.val();
         size_t const minArity = !hasVarArg ? arity : arity - 1;
 
@@ -382,24 +382,24 @@ PrimopRes PrimopApplyList::uncheckedInvoke(State* state) {
     }
 
     state->entryRegc = (uint8_t)(firstArgReg + argc);
-    state->domainChecking = State::DomainChecking::SKIP;
+    state->domainChecking = RT::DomainChecking::SKIP;
     return PrimopRes::TAILAPPLY;
 }
 
-PrimopRes PrimopCallCC::uncheckedInvoke(State* state) {
+PrimopRes PrimopCallCC::uncheckedInvoke(RT* state) {
     state->regs[calleeReg] = state->regs[firstArgReg];
     state->regs[firstArgReg] = state->regs[retContReg];
     state->entryRegc = firstArgReg + 1;
     return PrimopRes::TAILCALL;
 }
 
-PrimopRes PrimopContinue::uncheckedInvoke(State* state) {
+PrimopRes PrimopContinue::uncheckedInvoke(RT* state) {
     state->regs[retContReg] = state->regs[firstArgReg];
     state->regs[retReg] = state->regs[firstArgReg + 1];
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopIdentical::uncheckedInvoke(State* state) {
+PrimopRes PrimopIdentical::uncheckedInvoke(RT* state) {
     ORef const x = state->regs[firstArgReg];
     ORef const y = state->regs[firstArgReg + 1];
 
@@ -408,13 +408,13 @@ PrimopRes PrimopIdentical::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopTypeOf::uncheckedInvoke(State* state) {
+PrimopRes PrimopTypeOf::uncheckedInvoke(RT* state) {
     state->regs[retReg] = typeOf(state, state->regs[firstArgReg]);
 
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopMakeSlotsType::uncheckedInvoke(State* state) {
+PrimopRes PrimopMakeSlotsType::uncheckedInvoke(RT* state) {
     auto const name = HRef<Symbol>::fromUnchecked(state->regs[firstArgReg]);
     auto const slotCount = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]);
     auto const isFlex = Bool::fromUnchecked(state->regs[firstArgReg + 2]);
@@ -424,7 +424,7 @@ PrimopRes PrimopMakeSlotsType::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopMake::uncheckedInvoke(State* state) {
+PrimopRes PrimopMake::uncheckedInvoke(RT* state) {
     HRef<Type> type = HRef<Type>::fromUnchecked(state->regs[firstArgReg]);
     uint8_t const callArity = state->entryRegc - firstArgReg;
 
@@ -463,7 +463,7 @@ PrimopRes PrimopMake::uncheckedInvoke(State* state) {
     }
 }
 
-PrimopRes PrimopSlotGet::uncheckedInvoke(State* state) {
+PrimopRes PrimopSlotGet::uncheckedInvoke(RT* state) {
     ORef const v = state->regs[firstArgReg];
     size_t const slotIdx = (uint64_t)Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -485,7 +485,7 @@ PrimopRes PrimopSlotGet::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopSlotSet::uncheckedInvoke(State* state) {
+PrimopRes PrimopSlotSet::uncheckedInvoke(RT* state) {
     ORef const v = state->regs[firstArgReg];
     size_t const slotIdx = (uint64_t)Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
     ORef slotV = state->regs[firstArgReg + 2];
@@ -512,7 +512,7 @@ PrimopRes PrimopSlotSet::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopMakeFlex::uncheckedInvoke(State* state) {
+PrimopRes PrimopMakeFlex::uncheckedInvoke(RT* state) {
     HRef<Type> type = HRef<Type>::fromUnchecked(state->regs[firstArgReg]);
     Fixnum const count = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]);
 
@@ -532,7 +532,7 @@ PrimopRes PrimopMakeFlex::uncheckedInvoke(State* state) {
     }
 }
 
-PrimopRes PrimopFlexCount::uncheckedInvoke(State* state) {
+PrimopRes PrimopFlexCount::uncheckedInvoke(RT* state) {
     ORef const v = state->regs[firstArgReg];
 
     Type const* const type = typePtrOf(state, v);
@@ -546,7 +546,7 @@ PrimopRes PrimopFlexCount::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopFlexGet::uncheckedInvoke(State* state) {
+PrimopRes PrimopFlexGet::uncheckedInvoke(RT* state) {
     ORef const v = state->regs[firstArgReg];
     int64_t const i = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -571,7 +571,7 @@ PrimopRes PrimopFlexGet::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopFlexSet::uncheckedInvoke(State* state) {
+PrimopRes PrimopFlexSet::uncheckedInvoke(RT* state) {
     ORef const v = state->regs[firstArgReg];
     int64_t const i = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
     ORef const iv = state->regs[firstArgReg + 2];
@@ -598,7 +598,7 @@ PrimopRes PrimopFlexSet::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopFlexCopy::uncheckedInvoke(State* state) {
+PrimopRes PrimopFlexCopy::uncheckedInvoke(RT* state) {
     ORef const dest = state->regs[firstArgReg];
     intptr_t const offsetS = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
     ORef const src = state->regs[firstArgReg + 2];
@@ -648,7 +648,7 @@ PrimopRes PrimopFlexCopy::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopFlexClone::uncheckedInvoke(State* state) {
+PrimopRes PrimopFlexClone::uncheckedInvoke(RT* state) {
     ORef const src = state->regs[firstArgReg];
     intptr_t const startS = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
     intptr_t const endS = Fixnum::fromUnchecked(state->regs[firstArgReg + 2]).val();
@@ -686,7 +686,7 @@ PrimopRes PrimopFlexClone::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopFxAdd::uncheckedInvoke(State* state) {
+PrimopRes PrimopFxAdd::uncheckedInvoke(RT* state) {
     int64_t const x = Fixnum::fromUnchecked(state->regs[firstArgReg]).val();
     int64_t const y = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -707,7 +707,7 @@ PrimopRes PrimopFxAdd::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopFxSub::uncheckedInvoke(State* state) {
+PrimopRes PrimopFxSub::uncheckedInvoke(RT* state) {
     int64_t const x = Fixnum::fromUnchecked(state->regs[firstArgReg]).val();
     int64_t const y = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -728,7 +728,7 @@ PrimopRes PrimopFxSub::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopFxMul::uncheckedInvoke(State* state) {
+PrimopRes PrimopFxMul::uncheckedInvoke(RT* state) {
     int64_t const x = Fixnum::fromUnchecked(state->regs[firstArgReg]).val();
     int64_t const y = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -755,7 +755,7 @@ PrimopRes PrimopFxMul::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopFxQuot::uncheckedInvoke(State* state) {
+PrimopRes PrimopFxQuot::uncheckedInvoke(RT* state) {
     intptr_t const x = Fixnum::fromUnchecked(state->regs[firstArgReg]).val();
     intptr_t const y = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -781,7 +781,7 @@ PrimopRes PrimopFxQuot::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopFxLt::uncheckedInvoke(State* state) {
+PrimopRes PrimopFxLt::uncheckedInvoke(RT* state) {
     intptr_t const x = Fixnum::fromUnchecked(state->regs[firstArgReg]).val();
     intptr_t const y = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -790,7 +790,7 @@ PrimopRes PrimopFxLt::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopFixnumToFlonum::uncheckedInvoke(State* state) {
+PrimopRes PrimopFixnumToFlonum::uncheckedInvoke(RT* state) {
     intptr_t const n = Fixnum::fromUnchecked(state->regs[firstArgReg]).val();
 
     state->regs[retReg] = Flonum((double)n);
@@ -798,7 +798,7 @@ PrimopRes PrimopFixnumToFlonum::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopFlAdd::uncheckedInvoke(State* state) {
+PrimopRes PrimopFlAdd::uncheckedInvoke(RT* state) {
     double const x = Flonum::fromUnchecked(state->regs[firstArgReg]).val();
     double const y = Flonum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -807,7 +807,7 @@ PrimopRes PrimopFlAdd::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopFlSub::uncheckedInvoke(State* state) {
+PrimopRes PrimopFlSub::uncheckedInvoke(RT* state) {
     double const x = Flonum::fromUnchecked(state->regs[firstArgReg]).val();
     double const y = Flonum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -816,7 +816,7 @@ PrimopRes PrimopFlSub::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopFlMul::uncheckedInvoke(State* state) {
+PrimopRes PrimopFlMul::uncheckedInvoke(RT* state) {
     double const x = Flonum::fromUnchecked(state->regs[firstArgReg]).val();
     double const y = Flonum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -825,7 +825,7 @@ PrimopRes PrimopFlMul::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopFlDiv::uncheckedInvoke(State* state) {
+PrimopRes PrimopFlDiv::uncheckedInvoke(RT* state) {
     double const x = Flonum::fromUnchecked(state->regs[firstArgReg]).val();
     double const y = Flonum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -834,7 +834,7 @@ PrimopRes PrimopFlDiv::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopCharLt::uncheckedInvoke(State* state) {
+PrimopRes PrimopCharLt::uncheckedInvoke(RT* state) {
     uint32_t const c1 = Char::fromUnchecked(state->regs[firstArgReg]).val();
     uint32_t const c2 = Char::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
@@ -843,7 +843,7 @@ PrimopRes PrimopCharLt::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopCharToInteger::uncheckedInvoke(State* state) {
+PrimopRes PrimopCharToInteger::uncheckedInvoke(RT* state) {
     uint32_t const c = Char::fromUnchecked(state->regs[firstArgReg]).val();
 
     state->regs[retReg] = Fixnum{int64_t(c)};
@@ -851,7 +851,7 @@ PrimopRes PrimopCharToInteger::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopCharIsAlphabetic::uncheckedInvoke(State* state) {
+PrimopRes PrimopCharIsAlphabetic::uncheckedInvoke(RT* state) {
     auto const c = int32_t(Char::fromUnchecked(state->regs[firstArgReg]).val());
 
     utf8proc_category_t const cat = utf8proc_category(c);
@@ -862,14 +862,14 @@ PrimopRes PrimopCharIsAlphabetic::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopCharIsNumeric::uncheckedInvoke(State* state) {
+PrimopRes PrimopCharIsNumeric::uncheckedInvoke(RT* state) {
     auto const c = Char::fromUnchecked(state->regs[firstArgReg]).val();
 
     state->regs[retReg] = Bool{utf8proc_category(int32_t(c)) == UTF8PROC_CATEGORY_ND};
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopCharIsWhitespace::uncheckedInvoke(State* state) {
+PrimopRes PrimopCharIsWhitespace::uncheckedInvoke(RT* state) {
     auto const c = Char::fromUnchecked(state->regs[firstArgReg]).val();
 
     utf8proc_category_t const cat = utf8proc_category(int32_t(c));
@@ -881,7 +881,7 @@ PrimopRes PrimopCharIsWhitespace::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopArrayMutToString::uncheckedInvoke(State* state) {
+PrimopRes PrimopArrayMutToString::uncheckedInvoke(RT* state) {
     auto vs = HRef<ArrayMut>::fromUnchecked(state->regs[firstArgReg]);
     auto const vsG = state->pushRoot(&vs);
 
@@ -909,7 +909,7 @@ PrimopRes PrimopArrayMutToString::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopStringIteratorPeek::uncheckedInvoke(State* state) {
+PrimopRes PrimopStringIteratorPeek::uncheckedInvoke(RT* state) {
     auto const iter = HRef<StringIterator>::fromUnchecked(state->regs[firstArgReg]);
 
     ORef const maybeString = iter->string;
@@ -941,7 +941,7 @@ PrimopRes PrimopStringIteratorPeek::uncheckedInvoke(State* state) {
 
 // TODO: Very similar to `primopStringIteratorPeek`, but would it make sense to abstract out what is
 // mostly sanity checks on the iterator?
-PrimopRes PrimopStringIteratorNext::uncheckedInvoke(State* state) {
+PrimopRes PrimopStringIteratorNext::uncheckedInvoke(RT* state) {
     auto const iter = HRef<StringIterator>::fromUnchecked(state->regs[firstArgReg]);
 
     ORef const maybeString = iter->string;
@@ -971,7 +971,7 @@ PrimopRes PrimopStringIteratorNext::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopStringToSymbol::uncheckedInvoke(State* state) {
+PrimopRes PrimopStringToSymbol::uncheckedInvoke(RT* state) {
     auto const str = HRef<String>::fromUnchecked(state->regs[firstArgReg]);
 
     state->regs[retReg] = internHeaped(state, str);
@@ -979,7 +979,7 @@ PrimopRes PrimopStringToSymbol::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopFileExists::uncheckedInvoke(State* state) {
+PrimopRes PrimopFileExists::uncheckedInvoke(RT* state) {
     auto const filename = HRef<String>::fromUnchecked(state->regs[firstArgReg]);
 
     // TODO: Avoid copy (with null termination of String?):
@@ -994,7 +994,7 @@ PrimopRes PrimopFileExists::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopOpenInputFile::uncheckedInvoke(State* state) {
+PrimopRes PrimopOpenInputFile::uncheckedInvoke(RT* state) {
     auto const filename = HRef<String>::fromUnchecked(state->regs[firstArgReg]);
 
     ORef port = Default;
@@ -1007,7 +1007,7 @@ PrimopRes PrimopOpenInputFile::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopClosePort::uncheckedInvoke(State* state) {
+PrimopRes PrimopClosePort::uncheckedInvoke(RT* state) {
     auto const port = HRef<InputFile>::fromUnchecked(state->regs[firstArgReg]);
 
     port->file.close();
@@ -1015,7 +1015,7 @@ PrimopRes PrimopClosePort::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE; // Implicitly returns `port`
 }
 
-PrimopRes PrimopPeekChar::uncheckedInvoke(State* state) {
+PrimopRes PrimopPeekChar::uncheckedInvoke(RT* state) {
     auto const port = HRef<InputFile>::fromUnchecked(state->regs[firstArgReg]);
 
     auto const maybeCp = port->file.peec();
@@ -1030,7 +1030,7 @@ PrimopRes PrimopPeekChar::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopReadChar::uncheckedInvoke(State* state) {
+PrimopRes PrimopReadChar::uncheckedInvoke(RT* state) {
     auto const port = HRef<InputFile>::fromUnchecked(state->regs[firstArgReg]);
 
     auto const maybeCp = port->file.getc();
@@ -1046,13 +1046,13 @@ PrimopRes PrimopReadChar::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopWrite::uncheckedInvoke(State* state) {
+PrimopRes PrimopWrite::uncheckedInvoke(RT* state) {
     print(state, stdout, state->regs[firstArgReg]);
 
     return PrimopRes::CONTINUE; // TODO: Maybe do not return written value?
 }
 
-PrimopRes PrimopWriteChar::uncheckedInvoke(State* state) {
+PrimopRes PrimopWriteChar::uncheckedInvoke(RT* state) {
     uint32_t const c = Char::fromUnchecked(state->regs[firstArgReg]).val();
 
     uint8_t buf[4];
@@ -1063,7 +1063,7 @@ PrimopRes PrimopWriteChar::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE; // TODO: Maybe do not return written value?
 }
 
-PrimopRes PrimopWriteString::uncheckedInvoke(State* state) {
+PrimopRes PrimopWriteString::uncheckedInvoke(RT* state) {
     auto const str = HRef<String>::fromUnchecked(state->regs[firstArgReg]);
 
     // TODO: Avoid POSIX format spec extension:
@@ -1072,7 +1072,7 @@ PrimopRes PrimopWriteString::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE; // TODO: Maybe do not return written value?
 }
 
-PrimopRes PrimopFlushOutputPort::uncheckedInvoke(State* state) {
+PrimopRes PrimopFlushOutputPort::uncheckedInvoke(RT* state) {
     if (fflush(stdout) == EOF) {
         state->regs[retReg] = False;
         return PrimopRes::CONTINUE;
@@ -1082,25 +1082,25 @@ PrimopRes PrimopFlushOutputPort::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopCurrentSecond::uncheckedInvoke(State* state) {
+PrimopRes PrimopCurrentSecond::uncheckedInvoke(RT* state) {
     state->regs[retReg] = Fixnum{(int64_t)time(nullptr)};
 
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopCurrentJiffy::uncheckedInvoke(State* state) {
+PrimopRes PrimopCurrentJiffy::uncheckedInvoke(RT* state) {
     state->regs[retReg] = Fixnum{(int64_t)clock()};
 
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopJiffiesPerSecond::uncheckedInvoke(State* state) {
+PrimopRes PrimopJiffiesPerSecond::uncheckedInvoke(RT* state) {
     state->regs[retReg] = Fixnum{(int64_t)CLOCKS_PER_SEC};
 
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopResolve::uncheckedInvoke(State* state) {
+PrimopRes PrimopResolve::uncheckedInvoke(RT* state) {
     auto const name = HRef<Symbol>::fromUnchecked(state->regs[firstArgReg]);
 
     FindVarRes const findRes = findVar(state->ns, name);
@@ -1115,7 +1115,7 @@ PrimopRes PrimopResolve::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopEval::uncheckedInvoke(State* state) {
+PrimopRes PrimopEval::uncheckedInvoke(RT* state) {
     ORef const expr = state->regs[firstArgReg];
     auto const loc = HRef<Loc>::fromUnchecked(state->regs[firstArgReg + 1]);
     bool const debug = Bool::fromUnchecked(state->regs[firstArgReg + 2]).val();
@@ -1132,7 +1132,7 @@ PrimopRes PrimopEval::uncheckedInvoke(State* state) {
     return PrimopRes::TAILCALL;
 }
 
-PrimopRes PrimopContinuationCallLoc::uncheckedInvoke(State* state) {
+PrimopRes PrimopContinuationCallLoc::uncheckedInvoke(RT* state) {
     auto const cont = HRef<Continuation>::fromUnchecked(state->regs[firstArgReg]);
 
     if (!isa<Method>(*state, cont->method)) { PANIC("TODO"); }
@@ -1150,7 +1150,7 @@ PrimopRes PrimopContinuationCallLoc::uncheckedInvoke(State* state) {
     return PrimopRes::CONTINUE;
 }
 
-PrimopRes PrimopExit::uncheckedInvoke(State* state) {
+PrimopRes PrimopExit::uncheckedInvoke(RT* state) {
     ORef const v = state->regs[firstArgReg];
 
     int const exitCode = Fixnum::contains(v)

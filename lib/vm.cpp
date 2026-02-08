@@ -2,7 +2,7 @@
 #include <string.h>
 
 #include "vesihiisi.h"
-#include "state.hpp"
+#include "rt.hpp"
 #include "bytecode.hpp"
 #include "dispatch.hpp"
 #include "primops.hpp"
@@ -24,7 +24,7 @@ typedef struct VMRes {
     bool success;
 } VMRes;
 
-VMRes run(State* state, HRef<Closure> self) {
+VMRes run(RT* state, HRef<Closure> self) {
     // TODO: Debug index & type checks & bytecode verifier
 
     {
@@ -429,7 +429,7 @@ VMRes run(State* state, HRef<Closure> self) {
                     state->setMethod(method);
                     state->pc = 0;
 
-                    state->domainChecking = State::DomainChecking::CHECK;
+                    state->domainChecking = RT::DomainChecking::CHECK;
 
                     VM_CONTINUE;
                 } else {

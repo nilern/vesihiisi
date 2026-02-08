@@ -3,7 +3,7 @@
 #include "../util/arena.hpp"
 #include "../util/avec.hpp"
 #include "../util/bitset.hpp"
-#include "../state.hpp"
+#include "../rt.hpp"
 
 namespace {
 
@@ -313,12 +313,12 @@ void createIRGoto(Compiler* compiler, IRBlock* block, IRLabel destLabel, IRName 
 void createIRReturn(IRBlock* block, IRName callee, IRName arg, ORef maybeLoc);
 
 [[nodiscard]]
-bool markIRFn(State* state, struct IRFn* fn);
+bool markIRFn(RT* state, struct IRFn* fn);
 [[maybe_unused]]
-void assertIRFnInTospace(State const* state, struct IRFn const* fn);
+void assertIRFnInTospace(RT const* state, struct IRFn const* fn);
 
 using CompilationRes = Res<SyntaxErrors, HRef<Method>>;
 
-CompilationRes compile(State* state, ORef expr, HRef<Loc> loc, bool debug);
+CompilationRes compile(RT* state, ORef expr, HRef<Loc> loc, bool debug);
 
 } // namespace

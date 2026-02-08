@@ -2,7 +2,7 @@
 
 #include <string.h>
 
-#include "../state.hpp"
+#include "../rt.hpp"
 #include "../util/avec.hpp"
 
 namespace {
@@ -243,7 +243,7 @@ ORef toCpsContDestSymbol(ToCpsCont k) {
 // =================================================================================================
 
 struct CPSConv {
-    CPSConv(State const* t_state, Compiler* t_compiler) :
+    CPSConv(RT const* t_state, Compiler* t_compiler) :
         state{t_state}, compiler{t_compiler}, errs{&compiler->arena} {}
 
     void error(SyntaxError err) { errs.push(err); }
@@ -251,7 +251,7 @@ struct CPSConv {
     Slice<SyntaxError const> errors() const { return errs.slice(); }
 
 public:
-    State const* state;
+    RT const* state;
     Compiler* compiler;
 private:
     AVec<SyntaxError> errs;
@@ -919,7 +919,7 @@ IRName exprToIR(
 // Pass API
 // =================================================================================================
 
-ToIRRes topLevelExprToIR(State const* state, Compiler* compiler, ORef expr, HRef<Loc> loc) {
+ToIRRes topLevelExprToIR(RT const* state, Compiler* compiler, ORef expr, HRef<Loc> loc) {
     CPSConv pass{state, compiler};
 
     IRFn fn = createIRFn(pass.compiler, Default);

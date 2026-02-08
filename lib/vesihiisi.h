@@ -21,11 +21,11 @@ typedef struct MaybeORef {
     bool hasVal;
 } MaybeORef;
 
-struct Vshs_State;
+struct Vshs_RT;
 
-struct Vshs_State* tryCreateState(
+struct Vshs_RT* tryCreateRT(
     size_t heapSize, char const* vshsHome, int argc, char const* argv[]);
-void freeState(struct Vshs_State* state);
+void freeRT(struct Vshs_RT* state);
 
 typedef struct Parser Parser;
 
@@ -79,7 +79,7 @@ typedef struct SyntaxError {
 } SyntaxError;
 
 void printSyntaxError(
-    struct Vshs_State const* extState, FILE* dest, Str src, SyntaxError const* err);
+    struct Vshs_RT const* extRT, FILE* dest, Str src, SyntaxError const* err);
 
 typedef struct SyntaxErrors {
     SyntaxError* vals;
@@ -88,7 +88,7 @@ typedef struct SyntaxErrors {
 
 void freeSyntaxErrors(SyntaxErrors* syntaxErrors);
 
-void print(struct Vshs_State const* state, FILE* dest, ORef v);
+void print(struct Vshs_RT const* state, FILE* dest, ORef v);
 
 typedef enum ResTag {RES_ERR, RES_OK} ResTag;
 
@@ -119,9 +119,9 @@ typedef struct Vshs_MaybeRes {
     bool hasVal;
 } Vshs_MaybeRes;
 
-bool bootstrap(struct Vshs_State* state, char const* bootstrapFilename);
+bool bootstrap(struct Vshs_RT* state, char const* bootstrapFilename);
 
-Vshs_MaybeRes Vshs_evalString(struct Vshs_State* state, Str src, Str filename);
+Vshs_MaybeRes Vshs_evalString(struct Vshs_RT* state, Str src, Str filename);
 
 #ifdef __cplusplus
 }

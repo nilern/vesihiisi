@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "state.hpp"
+#include "rt.hpp"
 
 namespace {
 
@@ -52,16 +52,16 @@ struct ZLoc {
     ORef maybeFilename;
     size_t srcByteIdx;
 
-    void print(State const& state, FILE* dest) const;
+    void print(RT const& state, FILE* dest) const;
 };
 
-void disassemble(State const* state, FILE* dest, HRef<Method> methodRef);
+void disassemble(RT const* state, FILE* dest, HRef<Method> methodRef);
 
 [[maybe_unused]]
-void disassembleInstrAt(State const* state, FILE* dest, HRef<Method> methodRef, size_t pc);
+void disassembleInstrAt(RT const* state, FILE* dest, HRef<Method> methodRef, size_t pc);
 
 [[maybe_unused]]
 Maybe<ZLoc> locatePc(HRef<Method> methodRef, size_t pc);
-Maybe<ZLoc> locateCallerPc(State const* state, HRef<Method> methodRef, size_t retPc);
+Maybe<ZLoc> locateCallerPc(RT const* state, HRef<Method> methodRef, size_t retPc);
 
 } // namespace

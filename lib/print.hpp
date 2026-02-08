@@ -1,9 +1,9 @@
 #pragma once
 
-#include "state.hpp"
+#include "rt.hpp"
 
 namespace {
 
-void print(State const* state, FILE* dest, ORef v);
+void print(RT const* state, FILE* dest, ORef v);
 
 } // namespace

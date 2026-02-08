@@ -3,7 +3,7 @@
 #include <string.h>
 
 #include "../util/util.hpp"
-#include "../state.hpp"
+#include "../rt.hpp"
 #include "../bytecode.hpp"
 
 namespace {

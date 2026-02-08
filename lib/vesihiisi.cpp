@@ -6,7 +6,7 @@
 #include "util/bytefulbitset.cpp"
 #include "value.cpp"
 #include "heap.cpp"
-#include "state.cpp"
+#include "rt.cpp"
 #include "flyweights.cpp"
 #include "read.cpp"
 #include "print.cpp"
@@ -23,31 +23,31 @@
 #include "compiler/cloverindexing.cpp"
 #include "compiler/bytecodegen.cpp"
 
-extern "C" Vshs_State* tryCreateState(
+extern "C" Vshs_RT* tryCreateRT(
     size_t heapSize, char const* vshsHome, int argc, char const* argv[]
     ) {
-    return (Vshs_State*)State::tryCreate(heapSize, vshsHome, argc, argv);
+    return (Vshs_RT*)RT::tryCreate(heapSize, vshsHome, argc, argv);
 }
 
-extern "C" void freeState(Vshs_State* state) { freeState((State*)state); }
+extern "C" void freeRT(Vshs_RT* state) { freeRT((RT*)state); }
 
 namespace {
 typedef struct Vshs_RootGuard {
-    struct Vshs_State* state;
+    struct Vshs_RT* state;
 } Vshs_RootGuard;
 
-Vshs_RootGuard* pushRoot(Vshs_State* state, ORef* stackLoc) {
+Vshs_RootGuard* pushRoot(Vshs_RT* state, ORef* stackLoc) {
     auto const guard = new RootGuard{}; // So that we do not move-assign into uninitialized
-    *guard = ((State*)state)->pushRoot(stackLoc);
+    *guard = ((RT*)state)->pushRoot(stackLoc);
     return (Vshs_RootGuard*)guard;
 }
 
 void popRoot(Vshs_RootGuard* guard) { delete (RootGuard*)guard; }
 
-Parser* createParser(Vshs_State* state, Str src, Str filename) {
+Parser* createParser(Vshs_RT* state, Str src, Str filename) {
     Parser* const parser = (Parser*)malloc(sizeof *parser);
     if (!parser) { return nullptr; }
-    return new (parser) Parser{(State*)state, src, filename};
+    return new (parser) Parser{(RT*)state, src, filename};
 }
 
 void freeParser(Parser* parser) {
@@ -55,12 +55,12 @@ void freeParser(Parser* parser) {
     return free(parser);
 }
 
-Vshs_RootGuard* pushFilenameRoot(struct Vshs_State* state, Parser* parser) {
+Vshs_RootGuard* pushFilenameRoot(struct Vshs_RT* state, Parser* parser) {
     return pushRoot(state, &parser->filename);
 }
 
-ParseRes Vshs_read(struct Vshs_State* state, Parser* parser) {
-    return read((State*)state, parser);
+ParseRes Vshs_read(struct Vshs_RT* state, Parser* parser) {
+    return read((RT*)state, parser);
 }
 } // namespace
 
@@ -88,9 +88,9 @@ extern "C" void printParseError(FILE* dest, Str src, ParseError const* err) {
 extern "C" void freeSyntaxErrors(SyntaxErrors* errs) { free(errs->vals); }
 
 extern "C" void printSyntaxError(
-    Vshs_State const* extState, FILE* dest, Str src, SyntaxError const* err
-    ) {
-    auto const state = (State*)extState;
+    Vshs_RT const* extRT, FILE* dest, Str src, SyntaxError const* err
+) {
+    auto const state = (RT*)extRT;
 
     switch (err->type) {
     case INVALID_DEFINIEND: fputs("Invalid definiend", dest); break;
@@ -121,7 +121,7 @@ typedef enum EvalErrorType {
 typedef struct EvalError {
     union {
         SyntaxErrors syntaxErrs;
-        // Runtime errors are handled by `State::errorHandler`, we just need to know it failed
+        // Runtime errors are handled by `RT::errorHandler`, we just need to know it failed
     };
     EvalErrorType type;
 } EvalError;
@@ -134,8 +134,8 @@ typedef struct EvalRes {
     bool success;
 } EvalRes;
 
-EvalRes eval(Vshs_State* extState, ORef expr, ORef loc, bool debug) {
-    State* const state = (State*)extState;
+EvalRes eval(Vshs_RT* extRT, ORef expr, ORef loc, bool debug) {
+    RT* const state = (RT*)extRT;
 
     assert(isa(state, state->types.loc, loc));
     CompilationRes const compilationRes =
@@ -156,8 +156,8 @@ EvalRes eval(Vshs_State* extState, ORef expr, ORef loc, bool debug) {
 }
 } // namespace
 
-extern "C" void print(Vshs_State const* state, FILE* dest, ORef v) {
-    print((State const*)state, dest, v);
+extern "C" void print(Vshs_RT const* state, FILE* dest, ORef v) {
+    print((RT const*)state, dest, v);
 }
 
 extern "C" void Vshs_freeError(Vshs_Err* err) {
@@ -172,8 +172,8 @@ extern "C" void Vshs_freeError(Vshs_Err* err) {
     }
 }
 
-static Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser) {
-    bool const debug = !eq(reinterpret_cast<State const*>(state)->debug->val().get(), False);
+static Vshs_MaybeRes readEval(struct Vshs_RT* state, Parser* parser) {
+    bool const debug = !eq(reinterpret_cast<RT const*>(state)->debug->val().get(), False);
 
     ParseRes const readRes = Vshs_read(state, parser);
     if (!readRes.success) {
@@ -218,7 +218,7 @@ static Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser) {
     }
 }
 
-extern "C" bool bootstrap(struct Vshs_State* state, char const* bootstrapFilename) {
+extern "C" bool bootstrap(struct Vshs_RT* state, char const* bootstrapFilename) {
     char* fchars = nullptr;
     size_t fsize = 0;
     // OPTIMIZE: Use `mmap`:
@@ -289,7 +289,7 @@ extern "C" bool bootstrap(struct Vshs_State* state, char const* bootstrapFilenam
     return !loadFailed;
 }
 
-extern "C" Vshs_MaybeRes Vshs_evalString(struct Vshs_State* state, Str src, Str filename) {
+extern "C" Vshs_MaybeRes Vshs_evalString(struct Vshs_RT* state, Str src, Str filename) {
     Parser* parser = createParser(state, src, filename);
     Vshs_RootGuard* filenameG = pushFilenameRoot(state, parser);
 

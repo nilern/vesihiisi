@@ -20,7 +20,7 @@ int main(int argc, char const* argv[static argc]) {
         return EXIT_FAILURE;
     }
 
-    struct Vshs_State* state = tryCreateState(10*1024*1024, vshsHome, argc, argv);
+    struct Vshs_RT* state = tryCreateRT(10*1024*1024, vshsHome, argc, argv);
     if (!state) {
         puts("Insufficient memory");
         return EXIT_FAILURE;
@@ -55,11 +55,11 @@ int main(int argc, char const* argv[static argc]) {
         }
     }
 
-    freeState(state);
+    freeRT(state);
     return EXIT_SUCCESS;
 
 error:
-    freeState(state);
+    freeRT(state);
     return EXIT_FAILURE;
 }
 

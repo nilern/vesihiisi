@@ -4,7 +4,7 @@
 
 namespace {
 
-void print(State const* state, FILE* dest, ORef v) {
+void print(RT const* state, FILE* dest, ORef v) {
     switch (getTag(v)) {
     case TaggedType::FIXNUM:
         fprintf(dest, "%ld", Fixnum::fromUnchecked(v).val());

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "state.hpp"
+#include "rt.hpp"
 
 namespace {
 
@@ -17,6 +17,6 @@ typedef struct FindVarRes {
 
 FindVarRes findVar(HRef<Namespace> nsRef, HRef<Symbol> name);
 
-HRef<Var> getVar(State* state, HRef<Namespace> nsRef, HRef<Symbol> name);
+HRef<Var> getVar(RT* state, HRef<Namespace> nsRef, HRef<Symbol> name);
 
 } // namespace

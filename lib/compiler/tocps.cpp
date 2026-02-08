@@ -246,15 +246,15 @@ struct CPSConv {
     CPSConv(RT const* t_state, Compiler* t_compiler) :
         state{t_state}, compiler{t_compiler}, errs{&compiler->arena} {}
 
-    void error(SyntaxError err) { errs.push(err); }
+    void error(Vshs_SyntaxError err) { errs.push(err); }
 
-    Slice<SyntaxError const> errors() const { return errs.slice(); }
+    Slice<Vshs_SyntaxError const> errors() const { return errs.slice(); }
 
 public:
     RT const* state;
     Compiler* compiler;
 private:
-    AVec<SyntaxError> errs;
+    AVec<Vshs_SyntaxError> errs;
 };
 
 IRName constToCPS(CPSConv& pass, IRBlock* block, ORef expr, ORef maybeLoc, ToCpsCont k) {
@@ -939,13 +939,13 @@ ToIRRes topLevelExprToIR(RT const* state, Compiler* compiler, ORef expr, HRef<Lo
         freeToCpsEnv(&env);
     }
 
-    Slice<SyntaxError const> const errSlice = pass.errors();
+    Slice<Vshs_SyntaxError const> const errSlice = pass.errors();
     if (errSlice.count == 0) {
         return ToIRRes{fn};
     } else {
-        SyntaxError* errVals = (SyntaxError*)malloc(errSlice.count * sizeof *errVals);
+        Vshs_SyntaxError* errVals = (Vshs_SyntaxError*)malloc(errSlice.count * sizeof *errVals);
         memcpy(errVals, errSlice.data, errSlice.count * sizeof *errVals);
-        SyntaxErrors const errs = {errVals, errSlice.count};
+        Vshs_SyntaxErrors const errs = {errVals, errSlice.count};
         return ToIRRes{errs};
     }
 }

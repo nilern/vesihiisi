@@ -20,7 +20,7 @@ int main(int argc, char const* argv[static argc]) {
         return EXIT_FAILURE;
     }
 
-    struct Vshs_RT* state = tryCreateRT(10*1024*1024, vshsHome, argc, argv);
+    struct Vshs_RT* state = Vshs_tryCreateRT(10*1024*1024, vshsHome, argc, argv);
     if (!state) {
         puts("Insufficient memory");
         return EXIT_FAILURE;
@@ -36,7 +36,7 @@ int main(int argc, char const* argv[static argc]) {
         strcpy(fullBootstrapFilename + vshsHomeCount + 1, bootstrapFilename);
         fullBootstrapFilename[fullbootstrapFilenameCount - 1] = '\0';
 
-        bool const bootstrapped = bootstrap(state, fullBootstrapFilename);
+        bool const bootstrapped = Vshs_bootstrap(state, fullBootstrapFilename);
 
         free(fullBootstrapFilename);
         if (!bootstrapped) { goto error; }
@@ -55,11 +55,11 @@ int main(int argc, char const* argv[static argc]) {
         }
     }
 
-    freeRT(state);
+    Vshs_freeRT(state);
     return EXIT_SUCCESS;
 
 error:
-    freeRT(state);
+    Vshs_freeRT(state);
     return EXIT_FAILURE;
 }
 

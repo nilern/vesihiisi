@@ -23,13 +23,13 @@
 #include "compiler/cloverindexing.cpp"
 #include "compiler/bytecodegen.cpp"
 
-extern "C" Vshs_RT* tryCreateRT(
+extern "C" Vshs_RT* Vshs_tryCreateRT(
     size_t heapSize, char const* vshsHome, int argc, char const* argv[]
     ) {
     return (Vshs_RT*)RT::tryCreate(heapSize, vshsHome, argc, argv);
 }
 
-extern "C" void freeRT(Vshs_RT* state) { freeRT((RT*)state); }
+extern "C" void Vshs_freeRT(Vshs_RT* state) { freeRT((RT*)state); }
 
 namespace {
 typedef struct Vshs_RootGuard {
@@ -59,12 +59,12 @@ Vshs_RootGuard* pushFilenameRoot(struct Vshs_RT* state, Parser* parser) {
     return pushRoot(state, &parser->filename);
 }
 
-ParseRes Vshs_read(struct Vshs_RT* state, Parser* parser) {
+Vshs_ParseRes Vshs_read(struct Vshs_RT* state, Parser* parser) {
     return read((RT*)state, parser);
 }
 } // namespace
 
-extern "C" void printParseError(FILE* dest, Str src, ParseError const* err) {
+extern "C" void Vshs_printParseError(FILE* dest, Str src, Vshs_ParseError const* err) {
     if (err->type == INVALID_UTF8) {
         fputs("invalid UTF-8", dest);
     } else {
@@ -85,10 +85,10 @@ extern "C" void printParseError(FILE* dest, Str src, ParseError const* err) {
     }
 }
 
-extern "C" void freeSyntaxErrors(SyntaxErrors* errs) { free(errs->vals); }
+extern "C" void Vshs_freeSyntaxErrors(Vshs_SyntaxErrors* errs) { free(errs->vals); }
 
-extern "C" void printSyntaxError(
-    Vshs_RT const* extRT, FILE* dest, Str src, SyntaxError const* err
+extern "C" void Vshs_printSyntaxError(
+    Vshs_RT const* extRT, FILE* dest, Str src, Vshs_SyntaxError const* err
 ) {
     auto const state = (RT*)extRT;
 
@@ -120,7 +120,7 @@ typedef enum EvalErrorType {
 
 typedef struct EvalError {
     union {
-        SyntaxErrors syntaxErrs;
+        Vshs_SyntaxErrors syntaxErrs;
         // Runtime errors are handled by `RT::errorHandler`, we just need to know it failed
     };
     EvalErrorType type;
@@ -165,7 +165,7 @@ extern "C" void Vshs_freeError(Vshs_Err* err) {
     case Vshs_Err::VSHS_PARSE_ERR: break;
 
     case Vshs_Err::VSHS_SYNTAX_ERRS: {
-        freeSyntaxErrors(&err->syntaxErrs);
+        Vshs_freeSyntaxErrors(&err->syntaxErrs);
     }; break;
 
     case Vshs_Err::VSHS_RUNTIME_ERR: break;
@@ -175,7 +175,7 @@ extern "C" void Vshs_freeError(Vshs_Err* err) {
 static Vshs_MaybeRes readEval(struct Vshs_RT* state, Parser* parser) {
     bool const debug = !eq(reinterpret_cast<RT const*>(state)->debug->val().get(), False);
 
-    ParseRes const readRes = Vshs_read(state, parser);
+    Vshs_ParseRes const readRes = Vshs_read(state, parser);
     if (!readRes.success) {
         return (Vshs_MaybeRes){
             {{.err = {{.parseErr = readRes.err}, Vshs_Err::VSHS_PARSE_ERR}}, RES_ERR},
@@ -218,7 +218,7 @@ static Vshs_MaybeRes readEval(struct Vshs_RT* state, Parser* parser) {
     }
 }
 
-extern "C" bool bootstrap(struct Vshs_RT* state, char const* bootstrapFilename) {
+extern "C" bool Vshs_bootstrap(struct Vshs_RT* state, char const* bootstrapFilename) {
     char* fchars = nullptr;
     size_t fsize = 0;
     // OPTIMIZE: Use `mmap`:
@@ -256,20 +256,20 @@ extern "C" bool bootstrap(struct Vshs_RT* state, char const* bootstrapFilename) 
         case RES_ERR: {
             switch (res.err.type) {
             case Vshs_Err::VSHS_PARSE_ERR: {
-                ParseError const* const err = &res.err.parseErr;
+                Vshs_ParseError const* const err = &res.err.parseErr;
 
                 fputs("ParseError: ", stderr);
-                printParseError(stderr, src, err);
+                Vshs_printParseError(stderr, src, err);
                 putc('\n', stderr);
             }; break;
 
             case Vshs_Err::VSHS_SYNTAX_ERRS: {
-                SyntaxErrors const* const errs = &res.err.syntaxErrs;
+                Vshs_SyntaxErrors const* const errs = &res.err.syntaxErrs;
 
                 size_t const errorCount = errs->count;
                 for (size_t i = 0; i < errorCount; ++i) {
                     fputs("SyntaxError: ", stderr);
-                    printSyntaxError(state, stderr, src, &errs->vals[i]);
+                    Vshs_printSyntaxError(state, stderr, src, &errs->vals[i]);
                     putc('\n', stderr);
                 }
             }; break;

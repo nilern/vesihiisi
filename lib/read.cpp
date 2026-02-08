@@ -29,7 +29,7 @@ void revealMaybeChar(FILE* dest, int32_t mc) {
 }
 } // namespace
 
-using ReadExprRes = Res<ParseError, Vshs_LocatedORef>;
+using ReadExprRes = Res<Vshs_ParseError, Vshs_LocatedORef>;
 
 using MaybeCharPred = bool (*)(int mc);
 
@@ -49,8 +49,8 @@ private:
 public:
     ORef filename; // FIXME: Actually `HRef<String>` but that would use anonymous namespace
 
-    using PeekRes = Res<ParseError, int32_t>;
-    using MatchRes = Res<ParseError, bool>;
+    using PeekRes = Res<Vshs_ParseError, int32_t>;
+    using MatchRes = Res<Vshs_ParseError, bool>;
 
     explicit Parser(RT* t_state, Str str, Str t_filename) :
         start{str.data}, // HACK
@@ -110,25 +110,25 @@ public:
         return MatchRes{false};
     }
 
-    ParseError error(char c) const {
+    Vshs_ParseError error(char c) const {
         auto const loc = currLoc();
         // If this were to fail we should have bailed out with `utf8Error` already:
         assert(peek().success);
         int32_t const actual = peek().val;
-        return ParseError{loc, actual, {.expectedChar = c}, EXPECTED_CHAR};
+        return Vshs_ParseError{loc, actual, {.expectedChar = c}, EXPECTED_CHAR};
     }
 
-    ParseError error(char const* charClass) const {
+    Vshs_ParseError error(char const* charClass) const {
         auto const loc = currLoc();
         // If this were to fail we should have bailed out with `utf8Error` already:
         assert(peek().success);
         int32_t const actual = peek().val;
-        return ParseError{loc, actual, {.expectedCharClass = charClass}, EXPECTED_CHAR_CLASS};
+        return Vshs_ParseError{loc, actual, {.expectedCharClass = charClass}, EXPECTED_CHAR_CLASS};
     }
 
-    ParseError utf8Error() const {
+    Vshs_ParseError utf8Error() const {
         auto const loc = currLoc();
-        return ParseError{loc, UTF8PROC_ERROR_INVALIDUTF8, {}, INVALID_UTF8};
+        return Vshs_ParseError{loc, UTF8PROC_ERROR_INVALIDUTF8, {}, INVALID_UTF8};
     }
 };
 
@@ -174,7 +174,7 @@ MaybeCharPred const isDigit[] = {
 static_assert(sizeof isDigit / sizeof *isDigit == 17);
 
 /// The `uintptr_t` carries no information but we can't use `void` or an empty struct...
-using SkipWhitespaceRes = Res<ParseError, uintptr_t>;
+using SkipWhitespaceRes = Res<Vshs_ParseError, uintptr_t>;
 
 /// (\s+|;[^\n]*(\n|$))*
 [[nodiscard]]
@@ -201,7 +201,7 @@ SkipWhitespaceRes skipWhitespace(Parser* parser) {
     return SkipWhitespaceRes{0};
 }
 
-using ReadExprTailRes = Res<ParseError, ORef>;
+using ReadExprTailRes = Res<Vshs_ParseError, ORef>;
 
 ReadExprRes readExpr(RT* state, Parser* parser);
 
@@ -513,17 +513,17 @@ ReadExprRes readExpr(RT* state, Parser* parser) {
 }
 
 // <ws> (<expr> | $)
-ParseRes read(RT* state, Parser* parser) {
+Vshs_ParseRes read(RT* state, Parser* parser) {
     auto const wsRes = skipWhitespace(parser); // <ws>
-    if (!wsRes.success) { return ParseRes{{.err = wsRes.err}, false}; }
+    if (!wsRes.success) { return Vshs_ParseRes{{.err = wsRes.err}, false}; }
 
     auto const peekRes = parser->peek();
-    if (!peekRes.success) { return ParseRes{{.err = peekRes.err}, false}; }
-    if (peekRes.val == EOF) { return ParseRes{{.val = {}}, true}; }
+    if (!peekRes.success) { return Vshs_ParseRes{{.err = peekRes.err}, false}; }
+    if (peekRes.val == EOF) { return Vshs_ParseRes{{.val = {}}, true}; }
 
     ReadExprRes const exprRes = readExpr(state, parser);
-    if (!exprRes.success) { return ParseRes{{.err = exprRes.err}, false}; }
-    return ParseRes{{.val = Vshs_MaybeLocatedORef{{exprRes.val.val, exprRes.val.loc}, true}}, true};
+    if (!exprRes.success) { return Vshs_ParseRes{{.err = exprRes.err}, false}; }
+    return Vshs_ParseRes{{.val = Vshs_MaybeLocatedORef{{exprRes.val.val, exprRes.val.loc}, true}}, true};
 }
 
 } // namespace

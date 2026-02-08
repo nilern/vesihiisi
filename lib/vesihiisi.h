@@ -23,17 +23,15 @@ typedef struct MaybeORef {
 
 struct Vshs_RT;
 
-struct Vshs_RT* tryCreateRT(
+struct Vshs_RT* Vshs_tryCreateRT(
     size_t heapSize, char const* vshsHome, int argc, char const* argv[]);
-void freeRT(struct Vshs_RT* state);
+void Vshs_freeRT(struct Vshs_RT* state);
 
-typedef struct Parser Parser;
-
-typedef enum ParseErrorType {
+typedef enum Vshs_ParseErrorType {
     EXPECTED_CHAR,
     EXPECTED_CHAR_CLASS,
     INVALID_UTF8
-} ParseErrorType;
+} Vshs_ParseErrorType;
 
 typedef struct Vshs_LocatedORef {
     ORef val;
@@ -45,48 +43,48 @@ typedef struct Vshs_MaybeLocatedORef {
     bool hasVal;
 } Vshs_MaybeLocatedORef;
 
-typedef struct ParseError {
+typedef struct Vshs_ParseError {
     ORef loc; // Actually `HRef<Loc>` but obviously we can't have that in C
     int32_t actualMaybeChar;
     union {
         char expectedChar;
         char const* expectedCharClass; // With static storage duration
     };
-    ParseErrorType type;
-} ParseError;
+    Vshs_ParseErrorType type;
+} Vshs_ParseError;
 
-typedef struct ParseRes {
+typedef struct Vshs_ParseRes {
     union {
         Vshs_MaybeLocatedORef val;
-        ParseError err;
+        Vshs_ParseError err;
     };
     bool success;
-} ParseRes;
+} Vshs_ParseRes;
 
-void printParseError(FILE* dest, Str src, ParseError const* err);
+void Vshs_printParseError(FILE* dest, Str src, Vshs_ParseError const* err);
 
-typedef enum SyntaxErrorType {
+typedef enum Vshs_SyntaxErrorType {
     INVALID_DEFINIEND,
     INVALID_PARAM,
     INVALID_BINDING,
     INVALID_BINDER,
     OVERLONG_BINDING,
-} SyntaxErrorType;
+} Vshs_SyntaxErrorType;
 
-typedef struct SyntaxError {
+typedef struct Vshs_SyntaxError {
     ORef maybeLoc;
-    SyntaxErrorType type;
-} SyntaxError;
+    Vshs_SyntaxErrorType type;
+} Vshs_SyntaxError;
 
-void printSyntaxError(
-    struct Vshs_RT const* extRT, FILE* dest, Str src, SyntaxError const* err);
+void Vshs_printSyntaxError(
+    struct Vshs_RT const* extRT, FILE* dest, Str src, Vshs_SyntaxError const* err);
 
-typedef struct SyntaxErrors {
-    SyntaxError* vals;
+typedef struct Vshs_SyntaxErrors {
+    Vshs_SyntaxError* vals;
     size_t count;
-} SyntaxErrors;
+} Vshs_SyntaxErrors;
 
-void freeSyntaxErrors(SyntaxErrors* syntaxErrors);
+void Vshs_freeSyntaxErrors(Vshs_SyntaxErrors* syntaxErrors);
 
 void Vshs_write(struct Vshs_RT const* state, FILE* dest, ORef v);
 
@@ -94,8 +92,8 @@ typedef enum ResTag {RES_ERR, RES_OK} ResTag;
 
 typedef struct Vshs_Err {
     union {
-        ParseError parseErr;
-        SyntaxErrors syntaxErrs;
+        Vshs_ParseError parseErr;
+        Vshs_SyntaxErrors syntaxErrs;
     };
     enum {
         VSHS_PARSE_ERR,
@@ -119,7 +117,7 @@ typedef struct Vshs_MaybeRes {
     bool hasVal;
 } Vshs_MaybeRes;
 
-bool bootstrap(struct Vshs_RT* state, char const* bootstrapFilename);
+bool Vshs_bootstrap(struct Vshs_RT* state, char const* bootstrapFilename);
 
 Vshs_MaybeRes Vshs_evalString(struct Vshs_RT* state, Str src, Str filename);
 

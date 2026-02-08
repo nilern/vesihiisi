@@ -317,7 +317,7 @@ bool markIRFn(RT* state, struct IRFn* fn);
 [[maybe_unused]]
 void assertIRFnInTospace(RT const* state, struct IRFn const* fn);
 
-using CompilationRes = Res<SyntaxErrors, HRef<Method>>;
+using CompilationRes = Res<Vshs_SyntaxErrors, HRef<Method>>;
 
 CompilationRes compile(RT* state, ORef expr, HRef<Loc> loc, bool debug);
 

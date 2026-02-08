@@ -176,3 +176,14 @@ extern "C" Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser) {
         }
     }
 }
+
+extern "C" Vshs_MaybeRes Vshs_evalString(struct Vshs_State* state, Str src, Str filename) {
+    Parser* parser = createParser(state, src, filename);
+    Vshs_RootGuard* filenameG = pushFilenameRoot(state, parser);
+
+    Vshs_MaybeRes const maybeRes = readEval(state, parser);
+
+    popRoot(filenameG);
+    freeParser(parser);
+    return maybeRes;
+}

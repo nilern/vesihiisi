@@ -46,6 +46,7 @@ int main(int argc, char const* argv[static argc]) {
     FILE* const file = fopen(fullBootstrapFilename, "rb");
     if (!file) {
         fprintf(stderr, "Can't open %s: %s\n", fullBootstrapFilename, strerror(errno));
+        freeState(state);
         free(fullBootstrapFilename);
         return EXIT_FAILURE;
     }
@@ -108,22 +109,17 @@ int main(int argc, char const* argv[static argc]) {
     free(fchars);
 
     {
-        uint8_t rawSrc[] = "(load \"base/interpreter.lisp\" *vm-debug*)";
-        Str src = {rawSrc, (sizeof rawSrc / sizeof *rawSrc) - 1};
-        Parser* parser = createParser(state, src, replFilenameStr);
-        pushFilenameRoot(state, parser);
-
-        Vshs_MaybeRes const maybeRes = readEval(state, parser);
+        uint8_t const rawSrc[] = "(load \"base/interpreter.lisp\" *vm-debug*)";
+        Str const src = {rawSrc, (sizeof rawSrc / sizeof *rawSrc) - 1};
+        Vshs_MaybeRes const maybeRes = Vshs_evalString(state, src, replFilenameStr);
         assert(maybeRes.hasVal);
         Vshs_Res const res = maybeRes.val;
         if (res.tag != RES_OK) {
             fputs("Bad interpreter file\n", stderr);
+            freeState(state);
             free(fullBootstrapFilename);
             return EXIT_FAILURE;
         }
-
-        popRoot(filenameG);
-        freeParser(parser);
     }
 
     freeState(state);

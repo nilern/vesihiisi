@@ -27,8 +27,6 @@ struct Vshs_State* tryCreateState(
     size_t heapSize, char const* vshsHome, int argc, char const* argv[]);
 void freeState(struct Vshs_State* state);
 
-bool Vshs_debug(struct Vshs_State const* state);
-
 typedef struct Vshs_RootGuard {
     struct Vshs_State* state;
 } Vshs_RootGuard;
@@ -128,6 +126,35 @@ typedef struct EvalRes {
 EvalRes eval(struct Vshs_State* state, ORef expr, ORef loc, bool debug);
 
 void print(struct Vshs_State const* state, FILE* dest, ORef v);
+
+typedef enum ResTag {RES_ERR, RES_OK} ResTag;
+
+typedef struct Vshs_Err {
+    union {
+        ParseError parseErr;
+        SyntaxErrors syntaxErrs;
+    };
+    enum {
+        VSHS_PARSE_ERR,
+        VSHS_SYNTAX_ERRS,
+        VSHS_RUNTIME_ERR
+    } type;
+} Vshs_Err;
+
+typedef struct Vshs_Res {
+    union {
+        Vshs_Err err;
+        ORef val;
+    };
+    ResTag tag;
+} Vshs_Res;
+
+typedef struct Vshs_MaybeRes {
+    Vshs_Res val;
+    bool hasVal;
+} Vshs_MaybeRes;
+
+static Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser);
 
 #ifdef __cplusplus
 }

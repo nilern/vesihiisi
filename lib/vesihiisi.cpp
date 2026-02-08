@@ -31,10 +31,6 @@ extern "C" Vshs_State* tryCreateState(
 
 extern "C" void freeState(Vshs_State* state) { freeState((State*)state); }
 
-extern "C" bool Vshs_debug(Vshs_State const* state) {
-    return !eq(reinterpret_cast<State const*>(state)->debug->val().get(), False);
-}
-
 extern "C" Vshs_RootGuard* pushRoot(Vshs_State* state, ORef* stackLoc) {
     auto const guard = new RootGuard{}; // So that we do not move-assign into uninitialized
     *guard = ((State*)state)->pushRoot(stackLoc);
@@ -133,4 +129,50 @@ extern "C" EvalRes eval(Vshs_State* extState, ORef expr, ORef loc, bool debug) {
 
 extern "C" void print(Vshs_State const* state, FILE* dest, ORef v) {
     print((State const*)state, dest, v);
+}
+
+extern "C" Vshs_MaybeRes readEval(struct Vshs_State* state, Parser* parser) {
+    bool const debug = !eq(reinterpret_cast<State const*>(state)->debug->val().get(), False);
+
+    ParseRes const readRes = Vshs_read(state, parser);
+    if (!readRes.success) {
+        return (Vshs_MaybeRes){
+            {{.err = {{.parseErr = readRes.err}, Vshs_Err::VSHS_PARSE_ERR}}, RES_ERR},
+            true
+        };
+    }
+    Vshs_MaybeLocatedORef const maybeExpr = readRes.val;
+    if (!maybeExpr.hasVal) { return (Vshs_MaybeRes){}; }
+    ORef const expr = maybeExpr.val.val;
+    ORef const loc = maybeExpr.val.loc;
+
+    if (debug) {
+        puts(";; # S-Expression:");
+        print(state, stdout, expr);
+        puts("\n");
+    }
+
+    EvalRes const res = eval(state, expr, loc, debug);
+    if (res.success) {
+        return (Vshs_MaybeRes){{{.val = res.val}, RES_OK}, true};
+    } else {
+        switch (res.err.type) {
+        case SYNTAX_ERROR:
+            return (Vshs_MaybeRes){
+                {
+                    {.err = {{.syntaxErrs = res.err.syntaxErrs}, Vshs_Err::VSHS_SYNTAX_ERRS}},
+                    RES_ERR
+                },
+                true
+            };
+
+        case RUNTIME_ERROR:
+            return (Vshs_MaybeRes){
+                {{.err = {{}, Vshs_Err::VSHS_RUNTIME_ERR}}, RES_ERR},
+                true
+            };
+
+        default: exit(EXIT_FAILURE); // Unreachable
+        }
+    }
 }

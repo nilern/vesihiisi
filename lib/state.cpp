@@ -521,7 +521,7 @@ State* State::tryCreate(size_t heapSize, char const* vshsHome, int argc, char co
         HRef<Symbol> const debugNameSym = intern(dest, debugName); // Cannot (alloc => GC)
         FindVarRes const varRes = findVar(dest->ns, debugNameSym);
         assert(varRes.type == FindVarRes::NS_FOUND_VAR);
-        dest->errorHandler = varRes.var;
+        dest->debug = varRes.var;
     }
     {
         HRef<Method> const abortMethod = // TODO: `PrimopAbort::install(*dest);`

@@ -36,13 +36,10 @@ int main(int argc, char const* argv[static argc]) {
         strcpy(fullBootstrapFilename + vshsHomeCount + 1, bootstrapFilename);
         fullBootstrapFilename[fullbootstrapFilenameCount - 1] = '\0';
 
-        if (!bootstrap(state, fullBootstrapFilename)) {
-            free(fullBootstrapFilename);
-            freeState(state);
-            return EXIT_FAILURE;
-        }
+        bool const bootstrapped = bootstrap(state, fullBootstrapFilename);
 
         free(fullBootstrapFilename);
+        if (!bootstrapped) { goto error; }
     }
 
     {
@@ -53,12 +50,15 @@ int main(int argc, char const* argv[static argc]) {
         Vshs_Res const res = maybeRes.val;
         if (res.tag != RES_OK) {
             fputs("Bad interpreter file\n", stderr);
-            freeState(state);
-            return EXIT_FAILURE;
+            goto error;
         }
     }
 
     freeState(state);
     return EXIT_SUCCESS;
+
+error:
+    freeState(state);
+    return EXIT_FAILURE;
 }
 

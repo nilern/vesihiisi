@@ -40,7 +40,7 @@ CompilationRes compile(RT* state, ORef expr, HRef<Loc> loc, bool debug) {
         puts("\n");
     }
 
-    regAllocFn(&compiler, &irFn);
+    regAllocFn(compiler, irFn);
     if (debug) {
         puts(";; # Registral IR:");
         printIRFn(state, stdout, &compiler, printIRReg, &irFn);

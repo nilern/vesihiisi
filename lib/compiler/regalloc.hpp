@@ -6,8 +6,12 @@
 
 namespace {
 
-typedef struct { uint8_t index; } Reg;
+struct Reg {
+    uint8_t index;
 
-void regAllocFn(Compiler* compiler, IRFn* fn);
+    bool operator==(Reg that) const { return index == that.index; }
+};
+
+void regAllocFn(Compiler& compiler, IRFn& fn);
 
 } // namespace

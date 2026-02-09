@@ -82,15 +82,9 @@ class SavedPureLoadsEnvs {
 public:
     SavedPureLoadsEnvs(Arena* arena, size_t blockCount) : envs_{arena, blockCount, std::nullopt} {}
 
-    void save(IRLabel label, PureLoadsEnv env) {
-        assert(label.blockIndex < envs_.count());
-        envs_[label.blockIndex] = std::optional{env};
-    }
+    void save(IRLabel label, PureLoadsEnv env) { envs_[label.blockIndex] = std::optional{env}; }
 
-    std::optional<PureLoadsEnv> const& get(IRLabel label) const {
-        assert(label.blockIndex < envs_.count());
-        return envs_[label.blockIndex];
-    }
+    std::optional<PureLoadsEnv> const& get(IRLabel label) const { return envs_[label.blockIndex]; }
 };
 
 // Pass Algorithm

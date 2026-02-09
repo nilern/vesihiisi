@@ -4,6 +4,6 @@
 
 namespace {
 
-void fnWithPureLoads(Compiler* compiler, IRFn* fn);
+void fnWithPureLoads(Compiler& compiler, IRFn& fn);
 
 } // namespace

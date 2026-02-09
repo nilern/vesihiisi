@@ -33,7 +33,7 @@ CompilationRes compile(RT* state, ORef expr, HRef<Loc> loc, bool debug) {
         puts("\n");
     }
 
-    fnWithPureLoads(&compiler, &irFn);
+    fnWithPureLoads(compiler, irFn);
     if (debug) {
         puts(";; # Cachy-loading IR:");
         printIRFn(state, stdout, &compiler, printIRName, &irFn);

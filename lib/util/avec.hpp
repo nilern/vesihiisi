@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <type_traits>
+#include <algorithm>
 
 #include "arena.hpp"
 #include "util.hpp"
@@ -17,7 +18,7 @@ class AVec {
 
 public:
     AVec(Arena* t_arena, size_t capacity) {
-        assert(capacity >= 2);
+        if (capacity < 2) { capacity = 2; }
 
         start = static_cast<decltype(start)>(amalloc(t_arena, capacity * sizeof *start));
         end = start;
@@ -26,6 +27,11 @@ public:
     }
 
     AVec(Arena* t_arena) : AVec{t_arena, 2} {}
+
+    AVec(Arena* t_arena, size_t count, T const& v) : AVec{t_arena, count} {
+        end = start + count;
+        std::fill(start, end, v);
+    }
 
     // We do not have a destructor but nevertheless e.g. pushing and popping could cause bad stuff
     // if we do not deep copy. And implicit deep copies are terrible, so just prevent copying:

@@ -1,150 +1,140 @@
 #include "pureloads.hpp"
 
 #include <string.h>
+#include <optional>
 
 namespace {
 
 // OPTIMIZE: At this point bitsets are slow because we are usually iterating over them.
 
-typedef struct MaybeIRName {
-    IRName val;
-    bool hasVal;
-} MaybeIRName;
+// Context Data Structures
+// =================================================================================================
 
-typedef struct CloverLoc {
-    MaybeIRName reg;
-} CloverLoc;
+struct CloverLoc {
+    std::optional<IRName> reg;
+};
 
-typedef struct CloverLocs {
-    CloverLoc* vals;
-    size_t count;
-} CloverLocs;
+class CloverLocs {
+    CloverLoc* vals_;
+    size_t count_;
+    Arena* arena_;
 
-inline void freeCloverLocs(CloverLocs* locs) { free(locs->vals); }
+    CloverLocs(CloverLoc* vals, size_t count, Arena* arena) :
+        vals_{vals}, count_{count}, arena_{arena} {}
 
-CloverLocs newCloverLocs(BitSet const vars) {
-    size_t const count = bitSetLimit(&vars);
-    CloverLoc* const vals = (CloverLoc*)malloc(count * sizeof *vals);
-
-    for (size_t i = 0; i < count; ++i) {
-        if (bitSetContains(&vars, i)) {
-            vals[i] = CloverLoc{.reg = {}};
-        } else {
-            vals[i] = CloverLoc{.reg = {.val = invalidIRName, .hasVal = true}};
+public:
+    CloverLocs(Arena* arena, BitSet const& vars) :
+        vals_{static_cast<CloverLoc*>(amalloc(arena, bitSetLimit(&vars) * sizeof *vals_))},
+        count_{bitSetLimit(&vars)},
+        arena_{arena}
+    {
+        for (size_t i = 0; i < count_; ++i) {
+            if (bitSetContains(&vars, i)) {
+                vals_[i] = CloverLoc{.reg = std::nullopt};
+            } else {
+                vals_[i] = CloverLoc{.reg = std::optional{invalidIRName}};
+            }
         }
     }
 
-    return CloverLocs{.vals = vals, .count = count};
-}
-
-CloverLocs cloneCloverLocs(CloverLocs const locs) {
-    size_t const count = locs.count;
-    CloverLoc* const vals = (CloverLoc*)malloc(count * sizeof *vals);
-
-    memcpy(vals, locs.vals, count * sizeof *vals);
-
-    return CloverLocs{.vals = vals, .count = count};
-}
-
-typedef struct MaybeCloverLoc {
-    CloverLoc val;
-    bool hasVal;
-} MaybeCloverLoc;
-
-MaybeCloverLoc getCloverLoc(CloverLocs const locs, IRName name) {
-    size_t const idx = name.index;
-    if (idx >= locs.count) { return MaybeCloverLoc{}; }
-
-    CloverLoc const loc = locs.vals[idx];
-    if (loc.reg.hasVal && irNameEq(loc.reg.val, invalidIRName)) {
-        return MaybeCloverLoc{};
-    } else {
-        return MaybeCloverLoc{.val = loc, .hasVal = true};
+    CloverLocs clone() const {
+        auto const vals = static_cast<CloverLoc*>(amalloc(arena_, count_ * sizeof *vals_));
+        memcpy(vals, vals_, count_ * sizeof *vals);
+        return CloverLocs{vals, count_, arena_};
     }
-}
 
-void setCloverReg(CloverLocs* locs, IRName name, IRName reg) {
-    assert(name.index < locs->count);
-    locs->vals[name.index].reg = MaybeIRName{.val = reg, .hasVal = true};
-}
+    std::optional<CloverLoc> get(IRName name) const {
+        size_t const idx = name.index;
+        if (idx >= count_) { return std::nullopt; }
 
-typedef struct PureLoadsEnv {
+        CloverLoc const loc = vals_[idx];
+        if (loc.reg && irNameEq(*loc.reg, invalidIRName)) {
+            return std::nullopt;
+        } else {
+            return std::optional{loc};
+        }
+    }
+
+    void set(IRName name, IRName reg) {
+        assert(name.index < count_);
+        vals_[name.index].reg = std::optional{reg};
+    }
+};
+
+struct PureLoadsEnv {
     IRName closure;
     CloverLocs locs;
-} PureLoadsEnv;
 
-inline void freePureLoadsEnv(PureLoadsEnv* env) { freeCloverLocs(&env->locs); }
+private:
+    PureLoadsEnv(IRName t_closure, CloverLocs const& t_locs) : closure{t_closure}, locs{t_locs} {}
 
-inline PureLoadsEnv newPureLoadsEnv(IRName closure, BitSet const vars) {
-    return PureLoadsEnv{
-        .closure = closure,
-        .locs = newCloverLocs(vars)
-    };
-}
+public:
+    PureLoadsEnv(Arena* arena, IRName t_closure, BitSet const& t_vars) :
+        closure{t_closure}, locs{arena, t_vars}
+    {}
 
-inline PureLoadsEnv clonePureLoadsEnv(PureLoadsEnv const env) {
-    return PureLoadsEnv{
-        .closure = env.closure,
-        .locs = cloneCloverLocs(env.locs)
-    };
-}
+    PureLoadsEnv clone() const { return PureLoadsEnv{closure, locs.clone()}; }
+};
 
-typedef struct MaybePureLoadsEnv {
-    PureLoadsEnv val;
-    bool hasVal;
-} MaybePureLoadsEnv;
+class SavedPureLoadsEnvs {
+    AVec<std::optional<PureLoadsEnv>> envs_;
 
-// TODO: `struct SavedPureLoadsEnvs` to avoid passing size separately:
-void freeSavedEnvs(MaybePureLoadsEnv* savedEnvs, size_t blockCount) {
-    for (size_t i = 0; i < blockCount; ++i) {
-        MaybePureLoadsEnv* const env = &savedEnvs[i];
-        if (env->hasVal) {
-            freePureLoadsEnv(&env->val);
-        }
+public:
+    SavedPureLoadsEnvs(Arena* arena, size_t blockCount) : envs_{arena, blockCount, std::nullopt} {}
+
+    void save(IRLabel label, PureLoadsEnv env) {
+        assert(label.blockIndex < envs_.count());
+        envs_[label.blockIndex] = std::optional{env};
     }
 
-    free(savedEnvs);
-}
+    std::optional<PureLoadsEnv> const& get(IRLabel label) const {
+        assert(label.blockIndex < envs_.count());
+        return envs_[label.blockIndex];
+    }
+};
+
+// Pass Algorithm
+// =================================================================================================
 
 IRName deepLexicalUse(
-    Compiler* compiler, PureLoadsEnv* env, Stmts* newStmts, IRName use, ORef maybeSrcLoc
+    Compiler& compiler, PureLoadsEnv& env, Stmts& newStmts, IRName use, ORef maybeSrcLoc
 ) {
-    MaybeCloverLoc const maybeLoc = getCloverLoc(env->locs, use);
-    if (!maybeLoc.hasVal) { return use; }
-    CloverLoc const loc = maybeLoc.val;
+    std::optional<CloverLoc> const optLoc = env.locs.get(use);;
+    if (!optLoc) { return use; }
+    CloverLoc const loc = *optLoc;
 
-    if (loc.reg.hasVal) { return loc.reg.val; } // Already loaded
+    if (loc.reg) { return *loc.reg; } // Already loaded
 
-    IRName const newReg = renameIRName(compiler, use);
-    pushIRStmt(compiler, newStmts, IRStmt{
+    IRName const newReg = renameIRName(&compiler, use);
+    pushIRStmt(&compiler, &newStmts, IRStmt{
         .maybeLoc = maybeSrcLoc,
-        .clover = {newReg, env->closure, use, 0},
+        .clover = {newReg, env.closure, use, 0},
         .type = IRStmt::CLOVER
     });
-    setCloverReg(&env->locs, use, newReg);
+    env.locs.set(use, newReg);
     return newReg;
 }
 
-typedef struct LiftingAnalysis {
+struct LiftingAnalysis {
     BitSet liftees;
     IRName closure;
-} LiftingAnalysis;
+};
 
 LiftingAnalysis joinLambdaLiftees(
-    Compiler* compiler, MaybePureLoadsEnv* savedEnvs, IRBlock const* block
+    Compiler& compiler, SavedPureLoadsEnvs& savedEnvs, IRBlock const& block
 ) {
-    size_t const callerCount = block->callers.count;
+    size_t const callerCount = block.callers.count;
 
     IRName closure = invalidIRName;
     for (size_t i = 0; i < callerCount; ++i) {
-        IRLabel const callerLabel = block->callers.vals[i];
-        assert(savedEnvs[callerLabel.blockIndex].hasVal);
-        IRName const callerClosure = savedEnvs[callerLabel.blockIndex].val.closure;
+        IRLabel const callerLabel = block.callers.vals[i];
+        assert(savedEnvs.get(callerLabel));
+        IRName const callerClosure = savedEnvs.get(callerLabel)->closure;
         if (i == 0) {
             closure = callerClosure; // Init to first one
         } else if (!irNameEq(callerClosure, closure)) { // Disagreement on `closure`
             return LiftingAnalysis{
-                .liftees = bitSetClone(&compiler->arena, &block->liveIns),
+                .liftees = bitSetClone(&compiler.arena, &block.liveIns),
                 .closure = invalidIRName
             };
         }
@@ -152,41 +142,41 @@ LiftingAnalysis joinLambdaLiftees(
 
     // At this point all callers share the closure so only lift vars preloaded in all callers:
 
-    BitSet liftees = createBitSet(&compiler->arena, bitSetBitCap(&block->liveIns));
-    for (BitSetIter it = newBitSetIter(&block->liveIns);;) {
+    BitSet liftees = createBitSet(&compiler.arena, bitSetBitCap(&block.liveIns));
+    for (BitSetIter it = newBitSetIter(&block.liveIns);;) {
         Maybe<size_t> const maybeIdx = bitSetIterNext(&it);
         if (!maybeIdx.hasVal) { break; }
         IRName const liftee = {maybeIdx.val};
 
         bool liftable = true;
         for (size_t i = 0; i < callerCount; ++i) {
-            IRLabel const callerLabel = block->callers.vals[i];
-            assert(savedEnvs[callerLabel.blockIndex].hasVal);
-            PureLoadsEnv const callerEnv = savedEnvs[callerLabel.blockIndex].val;
+            IRLabel const callerLabel = block.callers.vals[i];
+            assert(savedEnvs.get(callerLabel));
+            PureLoadsEnv const callerEnv = *savedEnvs.get(callerLabel);
 
-            MaybeCloverLoc const maybeLoc = getCloverLoc(callerEnv.locs, liftee);
-            if (maybeLoc.hasVal && !maybeLoc.val.reg.hasVal) { // In closure & not preloaded
+            std::optional<CloverLoc> const optLoc = callerEnv.locs.get(liftee);
+            if (optLoc && !optLoc->reg) { // In closure & not preloaded
                 liftable = false;
                 break;
             }
         }
 
-        if (liftable) { bitSetSet(&compiler->arena, &liftees, liftee.index); }
+        if (liftable) { bitSetSet(&compiler.arena, &liftees, liftee.index); }
     }
 
     return LiftingAnalysis{.liftees = liftees, .closure = closure};
 }
 
 void liftArgs(
-    Compiler* compiler, MaybePureLoadsEnv* savedEnvs, IRFn* fn, IRLabel label, BitSet liftees
+    Compiler& compiler, SavedPureLoadsEnvs& savedEnvs, IRFn& fn, IRLabel label, BitSet liftees
 ) {
-    assert(savedEnvs[label.blockIndex].hasVal);
-    PureLoadsEnv* env = &savedEnvs[label.blockIndex].val;
-    assert(label.blockIndex < fn->blockCount);
-    IRBlock* const block = fn->blocks[label.blockIndex];
-    IRTransfer* const transfer = &block->transfer;
-    assert(transfer->type == IRTransfer::GOTO);
-    Args* const args = &transfer->gotoo.args;
+    assert(savedEnvs.get(label));
+    PureLoadsEnv env = *savedEnvs.get(label);
+    assert(label.blockIndex < fn.blockCount);
+    IRBlock& block = *fn.blocks[label.blockIndex];
+    IRTransfer& transfer = block.transfer;
+    assert(transfer.type == IRTransfer::GOTO);
+    Args& args = transfer.gotoo.args;
 
     for (BitSetIter it = newBitSetIter(&liftees);;) {
         Maybe<size_t> const maybeIdx = bitSetIterNext(&it);
@@ -194,50 +184,50 @@ void liftArgs(
         IRName const liftee = {maybeIdx.val};
 
         // OPTIMIZE: Does not need to `setCloverReg`, which `deepLexicalUse` will do:
-        pushArg(compiler, args,
-                deepLexicalUse(compiler, env, &block->stmts, liftee, transfer->maybeLoc));
+        pushArg(&compiler, &args,
+                deepLexicalUse(compiler, env, block.stmts, liftee, transfer.maybeLoc));
     }
 }
 
-void liftParams(Compiler* compiler, PureLoadsEnv* env, IRBlock* block, BitSet liftees) {
+void liftParams(Compiler& compiler, PureLoadsEnv& env, IRBlock& block, BitSet liftees) {
     for (BitSetIter it = newBitSetIter(&liftees);;) {
         Maybe<size_t> const maybeIdx = bitSetIterNext(&it);
         if (!maybeIdx.hasVal) { break; }
         IRName const liftee = {maybeIdx.val};
 
-        IRName const phi = renameIRName(compiler, liftee);
-        pushIRParam(compiler, block, phi);
-        setCloverReg(&env->locs, liftee, phi);
+        IRName const phi = renameIRName(&compiler, liftee);
+        pushIRParam(&compiler, &block, phi);
+        env.locs.set(liftee, phi);
     }
 }
 
 PureLoadsEnv blockPureLoadsEnv(
-    Compiler* compiler, MaybePureLoadsEnv* savedEnvs, IRFn* fn, IRBlock* block
+    Compiler& compiler, SavedPureLoadsEnvs& savedEnvs, IRFn& fn, IRBlock& block
 ) {
-    switch (block->callers.count) {
+    switch (block.callers.count) {
     case 0: { // Escaping block; new env from block live-ins:
-        assert(block->paramCount > 0);
-        IRName const closure = block->params[0];
-        return newPureLoadsEnv(closure, block->liveIns);
+        assert(block.paramCount > 0);
+        IRName const closure = block.params[0];
+        return PureLoadsEnv{&compiler.arena, closure, block.liveIns};
     }
 
     case 1: { // Non-join; env from end of predecessor (live-ins = live-outs of predecessor):
-        assert(savedEnvs[block->callers.vals[0].blockIndex].hasVal);
-        return clonePureLoadsEnv(savedEnvs[block->callers.vals[0].blockIndex].val);
+        assert(savedEnvs.get(block.callers.vals[0]));
+        return savedEnvs.get(block.callers.vals[0])->clone();
     }
 
     default: { // Join: lambda-lift some or all of block live-ins:
         LiftingAnalysis const lifting = joinLambdaLiftees(compiler, savedEnvs, block);
 
         { // Lambda-lift caller args:
-            size_t const callerCount = block->callers.count;
+            size_t const callerCount = block.callers.count;
             for (size_t i = 0; i < callerCount; ++i) {
-                liftArgs(compiler, savedEnvs, fn, block->callers.vals[i], lifting.liftees);
+                liftArgs(compiler, savedEnvs, fn, block.callers.vals[i], lifting.liftees);
             }
         }
 
-        PureLoadsEnv env = newPureLoadsEnv(lifting.closure, block->liveIns);
-        liftParams(compiler, &env, block, lifting.liftees);
+        auto env = PureLoadsEnv{&compiler.arena, lifting.closure, block.liveIns};
+        liftParams(compiler, env, block, lifting.liftees);
 
         return env;
     }
@@ -245,33 +235,33 @@ PureLoadsEnv blockPureLoadsEnv(
 }
 
 void linearizeCloses(
-    Compiler* compiler, PureLoadsEnv* env, Stmts* newStmts, Args* dest, ORef maybeLoc,
-    BitSet const* closes
+    Compiler& compiler, PureLoadsEnv& env, Stmts& newStmts, Args& dest, ORef maybeLoc,
+    BitSet const& closes
 ) {
-    for (BitSetIter it = newBitSetIter(closes);;) {
+    for (BitSetIter it = newBitSetIter(&closes);;) {
         Maybe<size_t> const maybeIdx = bitSetIterNext(&it);
         if (!maybeIdx.hasVal) { break; }
 
         IRName const closee =
             deepLexicalUse(compiler, env, newStmts, IRName{maybeIdx.val}, maybeLoc);
-        pushArg(compiler, dest, closee);
+        pushArg(&compiler, &dest, closee);
     }
 }
 
 IRStmt stmtWithPureLoads(
-    Compiler* compiler, PureLoadsEnv* env, Stmts* newStmts, IRStmt stmt
+    Compiler& compiler, PureLoadsEnv& env, Stmts& newStmts, IRStmt stmt
 ) {
     switch (stmt.type) {
     case IRStmt::GLOBAL_DEF: {
-        Define* const define = &stmt.define;
+        Define& define = stmt.define;
 
-        define->val = deepLexicalUse(compiler, env, newStmts, define->val, stmt.maybeLoc);
+        define.val = deepLexicalUse(compiler, env, newStmts, define.val, stmt.maybeLoc);
     }; break;
 
     case IRStmt::GLOBAL_SET: {
-        GlobalSet* const globalSet = &stmt.globalSet;
+        GlobalSet& globalSet = stmt.globalSet;
 
-        globalSet->val = deepLexicalUse(compiler, env, newStmts, globalSet->val, stmt.maybeLoc);
+        globalSet.val = deepLexicalUse(compiler, env, newStmts, globalSet.val, stmt.maybeLoc);
     }; break;
 
     case IRStmt::GLOBAL: case IRStmt::CONST_DEF: break; // These do not contain any uses
@@ -279,27 +269,27 @@ IRStmt stmtWithPureLoads(
     case IRStmt::CLOVER: assert(false); break; // Should not exist yet
 
     case IRStmt::METHOD_DEF: {
-        MethodDef* const methodDef = &stmt.methodDef;
-        IRFn* const fn = &methodDef->fn;
+        MethodDef& methodDef = stmt.methodDef;
+        IRFn& fn = methodDef.fn;
 
         // Domain:
-        size_t const domainCount = fn->domain.count;
+        size_t const domainCount = fn.domain.count;
         for (size_t i = 0; i < domainCount; ++i) {
-            fn->domain.vals[i] =
-                deepLexicalUse(compiler, env, newStmts, fn->domain.vals[i], stmt.maybeLoc);
+            fn.domain.vals[i] =
+                deepLexicalUse(compiler, env, newStmts, fn.domain.vals[i], stmt.maybeLoc);
         }
 
         // Method:
         fnWithPureLoads(compiler, fn);
-        IRName const closureName = methodDef->name;
-        IRName const methodName = renameIRName(compiler, closureName);
-        methodDef->name = methodName;
-        pushIRStmt(compiler, newStmts, stmt);
+        IRName const closureName = methodDef.name;
+        IRName const methodName = renameIRName(&compiler, closureName);
+        methodDef.name = methodName;
+        pushIRStmt(&compiler, &newStmts, stmt);
 
         // Closure:
         IRClosure closure =
-            IRClosure{.name = closureName, .method = methodName, .closes = methodDef->closes};
-        linearizeCloses(compiler, env, newStmts, closure.closes, stmt.maybeLoc, fnFreeVars(fn));
+            IRClosure{.name = closureName, .method = methodName, .closes = methodDef.closes};
+        linearizeCloses(compiler, env, newStmts, *closure.closes, stmt.maybeLoc, *fnFreeVars(&fn));
         stmt = IRStmt{stmt.maybeLoc, {.closure = closure}, IRStmt::CLOSURE};
     }; break;
 
@@ -309,14 +299,14 @@ IRStmt stmtWithPureLoads(
     case IRStmt::KNOT: break; // Does not contain any uses
 
     case IRStmt::KNOT_INIT: {
-        KnotInitStmt* const knotInit = &stmt.knotInit;
-        knotInit->knot = deepLexicalUse(compiler, env, newStmts, knotInit->knot, stmt.maybeLoc);
-        knotInit->v = deepLexicalUse(compiler, env, newStmts, knotInit->v, stmt.maybeLoc);
+        KnotInitStmt& knotInit = stmt.knotInit;
+        knotInit.knot = deepLexicalUse(compiler, env, newStmts, knotInit.knot, stmt.maybeLoc);
+        knotInit.v = deepLexicalUse(compiler, env, newStmts, knotInit.v, stmt.maybeLoc);
     }; break;
 
     case IRStmt::KNOT_GET: {
-        KnotGetStmt* const knotGet = &stmt.knotGet;
-        knotGet->knot = deepLexicalUse(compiler, env, newStmts, knotGet->knot, stmt.maybeLoc);
+        KnotGetStmt& knotGet = stmt.knotGet;
+        knotGet.knot = deepLexicalUse(compiler, env, newStmts, knotGet.knot, stmt.maybeLoc);
     }; break;
     }
 
@@ -324,104 +314,95 @@ IRStmt stmtWithPureLoads(
 }
 
 void transferWithPureLoads(
-    Compiler* compiler, MaybePureLoadsEnv* savedEnvs, PureLoadsEnv* env,
-    IRFn const* fn, IRBlock const* block, Stmts* newStmts, IRTransfer* transfer
+    Compiler& compiler, SavedPureLoadsEnvs& savedEnvs, PureLoadsEnv& env,
+    IRFn const& fn, IRBlock const& block, Stmts& newStmts, IRTransfer& transfer
 ) {
-    switch (transfer->type) {
+    switch (transfer.type) {
     case IRTransfer::CALL: {
-        Call* const call = &transfer->call;
-        ORef const maybeLoc = transfer->maybeLoc;
+        Call& call = transfer.call;
+        ORef const maybeLoc = transfer.maybeLoc;
 
-        call->callee = deepLexicalUse(compiler, env, newStmts, call->callee, maybeLoc);
+        call.callee = deepLexicalUse(compiler, env, newStmts, call.callee, maybeLoc);
 
-        size_t const arity = call->args.count;
+        size_t const arity = call.args.count;
         for (size_t i = 0; i < arity; ++i) {
-            call->args.names[i] =
-                deepLexicalUse(compiler, env, newStmts, call->args.names[i], maybeLoc);
+            call.args.names[i] =
+                deepLexicalUse(compiler, env, newStmts, call.args.names[i], maybeLoc);
         }
 
-        IRBlock const* const retBlock = fn->blocks[call->retLabel.blockIndex];
-        linearizeCloses(compiler, env, newStmts, &call->closes, maybeLoc, &retBlock->liveIns);
-
-        freePureLoadsEnv(env);
+        IRBlock const& retBlock = *fn.blocks[call.retLabel.blockIndex];
+        linearizeCloses(compiler, env, newStmts, call.closes, maybeLoc, retBlock.liveIns);
     }; break;
 
     case IRTransfer::TAILCALL: {
-        Tailcall* const tailcall = &transfer->tailcall;
-        ORef const maybeLoc = transfer->maybeLoc;
+        Tailcall& tailcall = transfer.tailcall;
+        ORef const maybeLoc = transfer.maybeLoc;
 
-        tailcall->callee = deepLexicalUse(compiler, env, newStmts, tailcall->callee, maybeLoc);
-        tailcall->retFrame = deepLexicalUse(compiler, env, newStmts, tailcall->retFrame, maybeLoc);
+        tailcall.callee = deepLexicalUse(compiler, env, newStmts, tailcall.callee, maybeLoc);
+        tailcall.retFrame = deepLexicalUse(compiler, env, newStmts, tailcall.retFrame, maybeLoc);
 
-        size_t const arity = tailcall->args.count;
+        size_t const arity = tailcall.args.count;
         for (size_t i = 0; i < arity; ++i) {
-            tailcall->args.names[i] =
-                deepLexicalUse(compiler, env, newStmts, tailcall->args.names[i], maybeLoc);
+            tailcall.args.names[i] =
+                deepLexicalUse(compiler, env, newStmts, tailcall.args.names[i], maybeLoc);
         }
-
-        freePureLoadsEnv(env);
     }; break;
 
     case IRTransfer::IF: {
-        IRIf* const iff = &transfer->iff;
-        iff->cond = deepLexicalUse(compiler, env, newStmts, iff->cond, transfer->maybeLoc);
+        IRIf& iff = transfer.iff;
+        iff.cond = deepLexicalUse(compiler, env, newStmts, iff.cond, transfer.maybeLoc);
 
-        savedEnvs[block->label.blockIndex] = MaybePureLoadsEnv{.val = *env, .hasVal = true};
+        savedEnvs.save(block.label, env);
     }; break;
 
     case IRTransfer::GOTO: {
-        IRGoto* const gotoo = &transfer->gotoo;
-        ORef const maybeLoc = transfer->maybeLoc;
+        IRGoto& gotoo = transfer.gotoo;
+        ORef const maybeLoc = transfer.maybeLoc;
 
-        size_t const arity = gotoo->args.count;
+        size_t const arity = gotoo.args.count;
         for (size_t i = 0; i < arity; ++i) {
-            gotoo->args.names[i] =
-                deepLexicalUse(compiler, env, newStmts, gotoo->args.names[i], maybeLoc);
+            gotoo.args.names[i] =
+                deepLexicalUse(compiler, env, newStmts, gotoo.args.names[i], maybeLoc);
         }
 
-        savedEnvs[block->label.blockIndex] = MaybePureLoadsEnv{.val = *env, .hasVal = true};
+        savedEnvs.save(block.label, env);
     }; break;
 
     case IRTransfer::RETURN: {
-        IRReturn* const ret = &transfer->ret;
-        ORef const maybeLoc = transfer->maybeLoc;
+        IRReturn& ret = transfer.ret;
+        ORef const maybeLoc = transfer.maybeLoc;
 
-        ret->callee = deepLexicalUse(compiler, env, newStmts, ret->callee, maybeLoc);
-        ret->arg = deepLexicalUse(compiler, env, newStmts, ret->arg, maybeLoc);
-
-        freePureLoadsEnv(env);
+        ret.callee = deepLexicalUse(compiler, env, newStmts, ret.callee, maybeLoc);
+        ret.arg = deepLexicalUse(compiler, env, newStmts, ret.arg, maybeLoc);
     }; break;
     }
 }
 
 void blockWithPureLoads(
-    Compiler* compiler, MaybePureLoadsEnv* savedEnvs, IRFn* fn, IRBlock* block
+    Compiler& compiler, SavedPureLoadsEnvs& savedEnvs, IRFn& fn, IRBlock& block
 ) {
     PureLoadsEnv env = blockPureLoadsEnv(compiler, savedEnvs, fn, block);
 
-    Stmts newStmts = newStmtsWithCap(compiler, block->stmts.count);
+    Stmts newStmts = newStmtsWithCap(&compiler, block.stmts.count);
 
-    size_t const stmtCount = block->stmts.count;
+    size_t const stmtCount = block.stmts.count;
     for (size_t i = 0; i < stmtCount; ++i) {
-        pushIRStmt(compiler, &newStmts,
-                   stmtWithPureLoads(compiler, &env, &newStmts, block->stmts.vals[i]));
+        pushIRStmt(&compiler, &newStmts,
+                   stmtWithPureLoads(compiler, env, newStmts, block.stmts.vals[i]));
     }
 
-    transferWithPureLoads(compiler, savedEnvs, &env, fn, block, &newStmts, &block->transfer);
+    transferWithPureLoads(compiler, savedEnvs, env, fn, block, newStmts, block.transfer);
 
-    block->stmts = newStmts;
+    block.stmts = newStmts;
 }
 
-void fnWithPureLoads(Compiler* compiler, IRFn* fn) {
-    MaybePureLoadsEnv* const savedEnvs =
-        (MaybePureLoadsEnv*)calloc(fn->blockCount, sizeof *savedEnvs);
+void fnWithPureLoads(Compiler& compiler, IRFn& fn) {
+    auto savedEnvs = SavedPureLoadsEnvs{&compiler.arena, fn.blockCount};
 
-    size_t const blockCount = fn->blockCount;
+    size_t const blockCount = fn.blockCount;
     for (size_t i = 0; i < blockCount; ++i) {
-        blockWithPureLoads(compiler, savedEnvs, fn, fn->blocks[i]);
+        blockWithPureLoads(compiler, savedEnvs, fn, *fn.blocks[i]);
     }
-
-    freeSavedEnvs(savedEnvs, fn->blockCount);
 }
 
 } // namespace

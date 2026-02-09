@@ -13,7 +13,7 @@ class CloverIdxs {
     size_t cap;
 
 public:
-    CloverIdxs(Compiler& compiler) :
+    explicit CloverIdxs(Compiler& compiler) :
         idxs{static_cast<Maybe<uint8_t>*>(acalloc(
               &compiler.arena,  compiler.nameSyms.count(), sizeof *idxs))},
         cap{compiler.nameSyms.count()}

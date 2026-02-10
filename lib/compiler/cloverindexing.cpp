@@ -4,27 +4,27 @@
 
 #include "../util/util.hpp"
 #include "../util/bitset.hpp"
+#include "../util/asmallmap.hpp"
 #include "regalloc.hpp"
 
 namespace {
 
 class CloverIdxs {
-    Maybe<uint8_t>* idxs;
-    size_t cap;
+    ASmallMap<IRName, uint8_t> idxs_;
+
+    explicit CloverIdxs(ASmallMap<IRName, uint8_t>&& idxs) : idxs_{std::move(idxs)} {}
 
 public:
-    explicit CloverIdxs(Compiler& compiler) :
-        idxs{static_cast<Maybe<uint8_t>*>(acalloc(
-              &compiler.arena,  compiler.nameSyms.count(), sizeof *idxs))},
-        cap{compiler.nameSyms.count()}
-    {}
+    explicit CloverIdxs(Arena* arena) : idxs_{arena} {}
 
-    void set(IRName name, uint8_t idx) { idxs[name.index] = Maybe{idx}; }
+    CloverIdxs clone() const { return CloverIdxs{idxs_.clone()}; }
+
+    void set(IRName name, uint8_t idx) { idxs_.set(name, idx); }
 
     uint8_t get(IRName origName) const {
-        Maybe<uint8_t> const maybeIdx = idxs[origName.index];
-        assert(maybeIdx.hasVal);
-        return maybeIdx.val;
+        std::optional<uint8_t> const optIdx = idxs_.tryGet(origName);
+        assert(optIdx);
+        return *optIdx;
     }
 };
 
@@ -40,7 +40,7 @@ public:
     {}
 
     void saveBlockEnv(IRLabel label, CloverIdxs const& env) {
-        savedEnvs[label.blockIndex] = std::optional{env};
+        savedEnvs[label.blockIndex] = std::optional{env.clone()};
     }
 
     CloverIdxs const& getBlockEnv(IRLabel label) const {
@@ -51,7 +51,7 @@ public:
 };
 
 CloverIdxs closeCloverIdxs(Compiler& compiler, BitSet const& clovers, Args const& close) {
-    auto env = CloverIdxs{compiler};
+    auto env = CloverIdxs{&compiler.arena};
 
     {
         size_t const cloverCount = close.count;
@@ -158,7 +158,7 @@ void indexFnClovers(Compiler& compiler, CloverIdxs const& fnEnv, IRFn& fn) {
 }
 
 void indexToplevelFnClovers(Compiler& compiler, IRFn& fn) {
-    auto const emptyFnEnv = CloverIdxs{compiler};
+    auto const emptyFnEnv = CloverIdxs{&compiler.arena};
     indexFnClovers(compiler, emptyFnEnv, fn);
 }
 

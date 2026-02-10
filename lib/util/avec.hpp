@@ -11,26 +11,38 @@ namespace {
 
 template<typename T> requires std::is_trivially_copyable_v<T>
 class AVec {
-    T* start;
-    T* end;
-    T* capEnd;
-    Arena* arena;
+    T* start_;
+    T* end_;
+    T* capEnd_;
+    Arena* arena_;
+
+    AVec(T* start, T* end, T* capEnd, Arena* arena) :
+        start_{start}, end_{end}, capEnd_{capEnd}, arena_{arena}
+    {}
 
 public:
     AVec(Arena* t_arena, size_t capacity) {
         if (capacity < 2) { capacity = 2; }
 
-        start = static_cast<decltype(start)>(amalloc(t_arena, capacity * sizeof *start));
-        end = start;
-        capEnd = start + capacity;
-        arena = t_arena;
+        start_ = static_cast<decltype(start_)>(amalloc(t_arena, capacity * sizeof *start_));
+        end_ = start_;
+        capEnd_ = start_ + capacity;
+        arena_ = t_arena;
     }
 
-    AVec(Arena* t_arena) : AVec{t_arena, 2} {}
+    explicit AVec(Arena* t_arena) : AVec{t_arena, 2} {}
 
     AVec(Arena* t_arena, size_t count, T const& v) : AVec{t_arena, count} {
-        end = start + count;
-        std::fill(start, end, v);
+        end_ = start_ + count;
+        std::fill(start_, end_, v);
+    }
+
+    AVec<T> clone() const {
+        size_t const cloneCap = cap();
+        auto const data = static_cast<decltype(start_)>(amalloc(arena_, cloneCap * sizeof *start_));
+        std::copy(start_, end_, data);
+
+        return AVec{data, data + count(), data + cloneCap, arena_};
     }
 
     // We do not have a destructor but nevertheless e.g. pushing and popping could cause bad stuff
@@ -41,29 +53,38 @@ public:
     AVec(AVec<T>&&) = default;
     AVec<T>& operator=(AVec<T>&&) = default;
 
-    Slice<T const> slice() const { return Slice{static_cast<T const*>(start), count()}; }
+    Slice<T const> slice() const { return Slice{static_cast<T const*>(start_), count()}; }
 
-    size_t count() const { return end - start; }
+    size_t count() const { return end_ - start_; }
 
-    size_t cap() const { return capEnd - start; }
+    size_t cap() const { return capEnd_ - start_; }
 
     T const& operator[](size_t i) const {
-        assert(start + i < end);
-        return start[i];
+        assert(start_ + i < end_);
+        return start_[i];
     }
 
     T& operator[](size_t i) {
-        assert(start + i < end);
-        return start[i];
+        assert(start_ + i < end_);
+        return start_[i];
     }
 
     void push(T v) {
-        if (end == capEnd) {
+        if (end_ == capEnd_) {
             grow();
         }
 
-        *end++ = v;
+        *end_++ = v;
     }
+
+    using iterator = T*;
+    using const_iterator = T const*;
+
+    iterator begin() { return start_; }
+    iterator end() { return end_; }
+
+    const_iterator begin() const { return start_; }
+    const_iterator end() const { return end_; }
 
 private:
     void grow() {
@@ -71,10 +92,10 @@ private:
         size_t const currCap = cap();
         size_t const newCap = currCap + currCap / 2;
 
-        start = static_cast<decltype(start)>(
-            arealloc(arena, start, currCap * sizeof *start, newCap * sizeof *start));
-        end = start + currCount;
-        capEnd = start + newCap;
+        start_ = static_cast<decltype(start_)>(
+            arealloc(arena_, start_, currCap * sizeof *start_, newCap * sizeof *start_));
+        end_ = start_ + currCount;
+        capEnd_ = start_ + newCap;
     }
 };
 

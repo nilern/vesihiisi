@@ -278,8 +278,8 @@ MethodBuilder createMethodBuilder(
         .prevDeltaCodeByteRevIdx = 0,
         .maybeFilename = lastLoc.maybeFilename,
         .filenameCount = 0,
-        .revIdxDeltas = {&compiler->arena},
-        .revFilenameRuns = {&compiler->arena},
+        .revIdxDeltas = AVec<uint8_t>{&compiler->arena},
+        .revFilenameRuns = AVec<ORef>{&compiler->arena},
 
         .parent = parent
     };

@@ -3,6 +3,8 @@
 #include <string.h>
 #include <optional>
 
+#include "../util/asmallmap.hpp"
+
 namespace {
 
 // OPTIMIZE: At this point bitsets are slow because we are usually iterating over them.
@@ -15,50 +17,25 @@ struct CloverLoc {
 };
 
 class CloverLocs {
-    CloverLoc* vals_;
-    size_t count_;
-    Arena* arena_;
+    ASmallMap<IRName, CloverLoc> locs_;
 
-    CloverLocs(CloverLoc* vals, size_t count, Arena* arena) :
-        vals_{vals}, count_{count}, arena_{arena} {}
+    explicit CloverLocs(ASmallMap<IRName, CloverLoc>&& locs) : locs_{std::move(locs)} {}
 
 public:
-    CloverLocs(Arena* arena, BitSet const& vars) :
-        vals_{static_cast<CloverLoc*>(amalloc(arena, bitSetLimit(&vars) * sizeof *vals_))},
-        count_{bitSetLimit(&vars)},
-        arena_{arena}
-    {
-        for (size_t i = 0; i < count_; ++i) {
+    CloverLocs(Arena* arena, BitSet const& vars) : locs_{arena} {
+        size_t const count = bitSetLimit(&vars);
+        for (size_t i = 0; i < count; ++i) {
             if (bitSetContains(&vars, i)) {
-                vals_[i] = CloverLoc{.reg = std::nullopt};
-            } else {
-                vals_[i] = CloverLoc{.reg = std::optional{invalidIRName}};
+                locs_.set(IRName{i}, CloverLoc{.reg = std::nullopt});
             }
         }
     }
 
-    CloverLocs clone() const {
-        auto const vals = static_cast<CloverLoc*>(amalloc(arena_, count_ * sizeof *vals_));
-        memcpy(vals, vals_, count_ * sizeof *vals);
-        return CloverLocs{vals, count_, arena_};
-    }
+    CloverLocs clone() const { return CloverLocs{locs_.clone()}; }
 
-    std::optional<CloverLoc> get(IRName name) const {
-        size_t const idx = name.index;
-        if (idx >= count_) { return std::nullopt; }
+    std::optional<CloverLoc> get(IRName name) const { return locs_.tryGet(name); }
 
-        CloverLoc const loc = vals_[idx];
-        if (loc.reg && *loc.reg == invalidIRName) {
-            return std::nullopt;
-        } else {
-            return std::optional{loc};
-        }
-    }
-
-    void set(IRName name, IRName reg) {
-        assert(name.index < count_);
-        vals_[name.index].reg = std::optional{reg};
-    }
+    void set(IRName name, IRName reg) { locs_.set(name, CloverLoc{std::optional{reg}}); }
 };
 
 struct PureLoadsEnv {
@@ -66,7 +43,9 @@ struct PureLoadsEnv {
     CloverLocs locs;
 
 private:
-    PureLoadsEnv(IRName t_closure, CloverLocs const& t_locs) : closure{t_closure}, locs{t_locs} {}
+    PureLoadsEnv(IRName t_closure, CloverLocs&& t_locs) :
+        closure{t_closure}, locs{std::move(t_locs)}
+    {}
 
 public:
     PureLoadsEnv(Arena* arena, IRName t_closure, BitSet const& t_vars) :
@@ -77,12 +56,16 @@ public:
 };
 
 class SavedPureLoadsEnvs {
-    AVec<std::optional<PureLoadsEnv>> envs_;
+    std::optional<PureLoadsEnv>* envs_;
 
 public:
-    SavedPureLoadsEnvs(Arena* arena, size_t blockCount) : envs_{arena, blockCount, std::nullopt} {}
+    SavedPureLoadsEnvs(Arena* arena, size_t blockCount) :
+        envs_{static_cast<decltype(envs_)>(acalloc(arena, blockCount, sizeof *envs_))}
+    {}
 
-    void save(IRLabel label, PureLoadsEnv env) { envs_[label.blockIndex] = std::optional{env}; }
+    void save(IRLabel label, PureLoadsEnv const& env) {
+        envs_[label.blockIndex] = std::optional{env.clone()};
+    }
 
     std::optional<PureLoadsEnv> const& get(IRLabel label) const { return envs_[label.blockIndex]; }
 };
@@ -146,7 +129,7 @@ LiftingAnalysis joinLambdaLiftees(
         for (size_t i = 0; i < callerCount; ++i) {
             IRLabel const callerLabel = block.callers.vals[i];
             assert(savedEnvs.get(callerLabel));
-            PureLoadsEnv const callerEnv = *savedEnvs.get(callerLabel);
+            PureLoadsEnv const& callerEnv = *savedEnvs.get(callerLabel);
 
             std::optional<CloverLoc> const optLoc = callerEnv.locs.get(liftee);
             if (optLoc && !optLoc->reg) { // In closure & not preloaded
@@ -165,7 +148,7 @@ void liftArgs(
     Compiler& compiler, SavedPureLoadsEnvs& savedEnvs, IRFn& fn, IRLabel label, BitSet liftees
 ) {
     assert(savedEnvs.get(label));
-    PureLoadsEnv env = *savedEnvs.get(label);
+    PureLoadsEnv env = savedEnvs.get(label)->clone();
     assert(label.blockIndex < fn.blockCount);
     IRBlock& block = *fn.blocks[label.blockIndex];
     IRTransfer& transfer = block.transfer;

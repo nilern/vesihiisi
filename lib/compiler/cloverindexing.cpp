@@ -30,13 +30,11 @@ public:
 
 class CloverIndexing {
     std::optional<CloverIdxs>* savedEnvs;
-    size_t blockCount;
 
 public:
     CloverIndexing(Compiler& compiler, IRFn const& fn) :
         savedEnvs{static_cast<std::optional<CloverIdxs>*>(acalloc(
-              &compiler.arena, fn.blockCount, sizeof *savedEnvs))},
-        blockCount{fn.blockCount}
+              &compiler.arena, fn.blockCount, sizeof *savedEnvs))}
     {}
 
     void saveBlockEnv(IRLabel label, CloverIdxs const& env) {
@@ -44,7 +42,6 @@ public:
     }
 
     CloverIdxs const& getBlockEnv(IRLabel label) const {
-        assert(label.blockIndex < blockCount);
         assert(savedEnvs[label.blockIndex].has_value());
         return *savedEnvs[label.blockIndex];
     }

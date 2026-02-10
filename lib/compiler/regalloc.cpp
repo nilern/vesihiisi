@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "../util/util.hpp"
+#include "../util/asmallmap.hpp"
 #include "../rt.hpp"
 #include "../bytecode.hpp"
 
@@ -19,73 +20,57 @@ struct Move {
 // =================================================================================================
 
 class RegEnv {
-    std::optional<Reg>* varRegs_;
-    IRName* regVars_;
-    size_t maxVarCount_; // `.index` of max allocated register + 1
+    // HACK: `std::optional` to avoid adding removal operation to `ASmallMap`:
+    ASmallMap<IRName, std::optional<Reg>> varRegs_;
+    AVec<IRName> regVars_;
 public:
     IRName retName;
-private:
-    size_t varCap_;
-    Arena* arena_;
 
+private:
     RegEnv(
-        std::optional<Reg>* varRegs, IRName* regVars, size_t maxVarCount, IRName t_retName,
-        size_t varCap, Arena* arena
+        ASmallMap<IRName, std::optional<Reg>>&& varRegs, AVec<IRName>&& regVars, IRName t_retName
     ) :
-        varRegs_{varRegs}, regVars_{regVars}, maxVarCount_{maxVarCount}, retName{t_retName},
-        varCap_{varCap}, arena_{arena}
+        varRegs_{std::move(varRegs)}, regVars_{std::move(regVars)}, retName{t_retName}
     {}
 
     void ensureRegEnvMaxCount(size_t count) {
-        if (maxVarCount_ < count) { maxVarCount_ = count; }
+        while (regVars_.count() < count) { regVars_.push(invalidIRName); } // OPTIMIZE
     }
 
     void shrinkRegEnvMaxVarCount() {
-        size_t max = maxVarCount_;
-        for (; max > 0 && isRegFree(Reg{uint8_t(max - 1)}); --max) {}
-        maxVarCount_ = max;
+        // OPTIMIZE:
+        for (std::optional<IRName> optVar;
+             (optVar = regVars_.peek()) && (!optVar || *optVar == invalidIRName);
+        ) {
+            regVars_.pop();
+        }
     }
 
 public:
-    RegEnv(Compiler& compiler, IRName t_retName) :
-        varRegs_{static_cast<decltype(varRegs_)>(
-            amalloc(&compiler.arena, compiler.nameSyms.count() * sizeof *varRegs_))},
-        regVars_{static_cast<decltype(regVars_)>(
-            acalloc(&compiler.arena, REG_COUNT, sizeof *regVars_))},
-        maxVarCount_{0},
-        retName{t_retName},
-        varCap_{compiler.nameSyms.count()},
-        arena_{&compiler.arena}
-    {
-        std::fill(varRegs_, varRegs_ + varCap_, std::nullopt);
+    RegEnv(Arena* arena, IRName t_retName) : varRegs_{arena}, regVars_{arena}, retName{t_retName} {}
+
+    RegEnv clone() const { return RegEnv{varRegs_.clone(), regVars_.clone(), retName}; }
+
+    size_t maxVarCount() const { return regVars_.count(); }
+
+    std::optional<Reg> tryVarReg(IRName var) const {
+        auto const optOptReg = varRegs_.tryGet(var);
+        return optOptReg ? *optOptReg : std::nullopt;
     }
 
-    RegEnv clone() const {
-        decltype(varRegs_) const cloneVarRegs = static_cast<decltype(varRegs_)>(
-            amalloc(arena_, varCap_ * sizeof *cloneVarRegs));
-        std::copy(varRegs_, varRegs_ + varCap_, cloneVarRegs);
-        decltype(regVars_) const cloneRegVars = static_cast<decltype(regVars_)>(
-            amalloc(arena_, REG_COUNT * sizeof *cloneRegVars));
-        std::copy(regVars_, regVars_ + REG_COUNT, cloneRegVars);
-
-        return RegEnv{cloneVarRegs, cloneRegVars, maxVarCount_, retName, varCap_, arena_};
+    IRName tryRegVar(Reg reg) const {
+        return reg.index < regVars_.count() ? regVars_[reg.index] : invalidIRName;
     }
-
-    size_t maxVarCount() const { return maxVarCount_; }
-
-    std::optional<Reg> tryVarReg(IRName var) const { return varRegs_[var.index]; }
-
-    IRName tryRegVar(Reg reg) const { return regVars_[reg.index]; }
 
     bool isRegFree(Reg reg) const { return tryRegVar(reg) == invalidIRName; }
 
     void add(IRName var, Reg reg) {
-        assert(!varRegs_[var.index]);
-        assert(regVars_[reg.index] == invalidIRName);
+        assert(!tryVarReg(var));
+        assert(isRegFree(reg));
 
-        varRegs_[var.index] = std::optional{reg};
-        regVars_[reg.index] = var;
+        varRegs_.set(var, reg);
         ensureRegEnvMaxCount(reg.index + 1);
+        regVars_[reg.index] = var;
     }
 
     Reg allocVarReg(IRName var) {
@@ -94,9 +79,9 @@ public:
 
             // Will be true when `i == maxVarCount` at the latest:
             if (isRegFree(reg)) {
-                varRegs_[var.index] = std::optional{reg};
-                regVars_[i] = var;
+                varRegs_.set(var, reg);
                 ensureRegEnvMaxCount(i + 1);
+                regVars_[i] = var;
                 return reg;
             }
         }
@@ -112,7 +97,7 @@ public:
 
     [[nodiscard]]
     AllocStmtArgRegRes allocStmtArgReg(IRName var) {
-        std::optional<Reg> const optDest = varRegs_[var.index];
+        std::optional<Reg> const optDest = tryVarReg(var);
 
         Reg const reg = allocVarReg(var);
 
@@ -126,20 +111,18 @@ public:
     std::optional<Move> allocTransferArgReg(IRName var, Reg reg, bool delayDupDeallocs) {
         assert(isRegFree(reg));
 
-        std::optional<Reg> const optDest = varRegs_[var.index];
+        std::optional<Reg> const optDest = tryVarReg(var);
         if (!delayDupDeallocs && optDest) {
             regVars_[optDest->index] = invalidIRName;
             // No need to `shrinkRegEnvMaxVarCount` since it will get grown to `reg.index + 1`:
             assert(optDest->index < reg.index);
         }
 
-        varRegs_[var.index] = std::optional{reg};
-        regVars_[reg.index] = var;
+        varRegs_.set(var, reg);
         ensureRegEnvMaxCount(reg.index + 1);
+        regVars_[reg.index] = var;
 
-        return optDest
-                   ? std::optional{Move{.dest = *optDest, .src = reg}}
-                   : std::nullopt;
+        return optDest ? std::optional{Move{.dest = *optDest, .src = reg}} : std::nullopt;
     }
 
     void delayedDeallocTransferArgRegs(Slice<Move const> moves) {
@@ -155,12 +138,12 @@ public:
     }
 
     Reg deallocVarReg(IRName var) {
-        if (!varRegs_[var.index]) {
+        if (!tryVarReg(var)) {
             allocVarReg(var); // OPTIMIZE: Will be immediately deallocated:
         }
 
-        Reg const reg = *varRegs_[var.index];
-        varRegs_[var.index] = std::nullopt;
+        Reg const reg = *tryVarReg(var);
+        varRegs_.set(var, std::nullopt);
         regVars_[reg.index] = invalidIRName;
         shrinkRegEnvMaxVarCount();
 
@@ -181,53 +164,56 @@ public:
 
     [[nodiscard]]
     std::optional<Move> regEnvParamToArg(Reg paramReg, IRName arg) {
-        assert(regVars_[paramReg.index] != invalidIRName);
+        assert(tryRegVar(paramReg) != invalidIRName);
         assert(arg != invalidIRName);
 
-        std::optional<Reg> const optDest = varRegs_[arg.index];
+        std::optional<Reg> const optDest = tryVarReg(arg);
         if (optDest) {
             regVars_[optDest->index] = invalidIRName;
             shrinkRegEnvMaxVarCount();
         }
 
         IRName const param = regVars_[paramReg.index];
-        varRegs_[param.index] = std::nullopt;
-        varRegs_[arg.index] = std::optional{paramReg};
+        varRegs_.set(param, std::nullopt);
+        varRegs_.set(arg, paramReg);
         regVars_[paramReg.index] = arg;
 
-        return optDest
-                   ? std::optional{Move{.dest = *optDest, .src = paramReg}}
-                   : std::nullopt;
+        return optDest ? std::optional{Move{.dest = *optDest, .src = paramReg}} : std::nullopt;
     }
 
     void regEnvMove(IRName var, Reg src, Reg dest) {
-        assert(regVars_[src.index] == var);
-        assert(regVars_[dest.index] == invalidIRName);
+        assert(tryRegVar(src) == var);
+        assert(tryRegVar(dest) == invalidIRName);
 
-        varRegs_[var.index] = std::optional{dest};
+        varRegs_.set(var, dest);
+        ensureRegEnvMaxCount(dest.index + 1);
         regVars_[dest.index] = var;
         regVars_[src.index] = invalidIRName;
         shrinkRegEnvMaxVarCount();
     }
 
     void regEnvSwap(IRName var1, Reg reg1, IRName var2, Reg reg2) {
-        assert(regVars_[reg1.index] == var1);
-        assert(regVars_[reg2.index] == var2);
+        assert(tryRegVar(reg1) == var1);
+        assert(tryRegVar(reg2) == var2);
 
-        varRegs_[var1.index] = std::optional{reg2};
+        varRegs_.set(var1, reg2);
         regVars_[reg2.index] = var1;
-        varRegs_[var2.index] = std::optional{reg1};
+        varRegs_.set(var2, reg1);
         regVars_[reg1.index] = var2;
     }
 };
 
 class SavedRegEnvs {
-    AVec<std::optional<RegEnv>> envs_;
+    std::optional<RegEnv>* envs_;
 
 public:
-    SavedRegEnvs(Arena* arena, size_t blockCount) : envs_{arena, blockCount, std::nullopt} {}
+    SavedRegEnvs(Arena* arena, size_t blockCount) :
+        envs_{static_cast<decltype(envs_)>(acalloc(arena, blockCount, sizeof *envs_))}
+    {}
 
-    void save(IRLabel label, RegEnv env) { envs_[label.blockIndex] = std::optional{env}; }
+    void save(IRLabel label, RegEnv const& env) {
+        envs_[label.blockIndex] = std::optional{env.clone()};
+    }
 
     std::optional<RegEnv> const& get(IRLabel label) const { return envs_[label.blockIndex]; }
 };
@@ -315,7 +301,7 @@ RegEnv regAllocIfSuccession(
     assert(savedEnvs.get(conseqLabel));
     RegEnv const& conseqEnv = *savedEnvs.get(conseqLabel); // TODO: Why not cloned like `conseqEnv`?
     assert(savedEnvs.get(altLabel));
-    RegEnv altEnv = *savedEnvs.get(altLabel);
+    RegEnv altEnv = savedEnvs.get(altLabel)->clone();
 
     RegEnv goal = conseqEnv.clone(); // OPTIMIZE: Is cloning actually necessary?
 
@@ -430,7 +416,7 @@ RegEnv regAllocTransfer(
 
             return invalidIRName; // Unreachable
         }();
-        auto env = RegEnv{compiler, retName};
+        auto env = RegEnv{&compiler.arena, retName};
 
         call.callee = regAllocCallee(env, call.callee);
 
@@ -460,7 +446,7 @@ RegEnv regAllocTransfer(
     case IRTransfer::TAILCALL: {
         Tailcall& tailcall = transfer.tailcall;
 
-        auto env = RegEnv{compiler, tailcall.retFrame};
+        auto env = RegEnv{&compiler.arena, tailcall.retFrame};
 
         tailcall.callee = regAllocCallee(env, tailcall.callee);
 
@@ -535,7 +521,7 @@ RegEnv regAllocTransfer(
     case IRTransfer::RETURN: {
         IRReturn& ret = transfer.ret;
 
-        auto env = RegEnv{compiler, ret.callee};
+        auto env = RegEnv{&compiler.arena, ret.callee};
 
         Reg const calleeReg = Reg{retContReg};
         [[maybe_unused]] std::optional<Move> const optContMove =
@@ -720,7 +706,7 @@ void regAllocStmt(Compiler& compiler, RegEnv& env, Stmts& outputStmts, IRStmt& s
 
 void regAllocParams(Compiler& compiler, RegEnv& env, Stmts& outputStmts, IRBlock& block) {
     if (block.callers.count == 0) { // Escaping block:
-        auto goal = RegEnv{compiler, env.retName};
+        auto goal = RegEnv{&compiler.arena, env.retName};
 
         size_t paramIdx = 0;
 

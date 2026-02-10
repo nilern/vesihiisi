@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <type_traits>
 #include <algorithm>
+#include <optional>
 
 #include "arena.hpp"
 #include "util.hpp"
@@ -75,6 +76,15 @@ public:
         }
 
         *end_++ = v;
+    }
+
+    std::optional<T> peek() const {
+        return count() > 0 ? std::optional{*(end_ - 1)} : std::nullopt;
+    }
+
+    std::optional<T> pop() {
+        if (count() == 0) { return std::nullopt; }
+        return std::optional{*--end_};
     }
 
     using iterator = T*;

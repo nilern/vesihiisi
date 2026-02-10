@@ -235,7 +235,7 @@ HRef<Method> buildMethod(
     } else {
         for (size_t i = 0; i < arity; ++i) {
             IRName const typeName = fn->domain.vals[i];
-            if (!irNameIsValid(typeName)) {
+            if (!typeName.isValid()) {
                 const_cast<ORef*>(maybeMethod->flexData())[i] = state->types.any;
             } // else leave zeroed for specialization to fill in
         }

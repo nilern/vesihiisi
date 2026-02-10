@@ -48,7 +48,7 @@ public:
         if (idx >= count_) { return std::nullopt; }
 
         CloverLoc const loc = vals_[idx];
-        if (loc.reg && irNameEq(*loc.reg, invalidIRName)) {
+        if (loc.reg && *loc.reg == invalidIRName) {
             return std::nullopt;
         } else {
             return std::optional{loc};
@@ -126,7 +126,7 @@ LiftingAnalysis joinLambdaLiftees(
         IRName const callerClosure = savedEnvs.get(callerLabel)->closure;
         if (i == 0) {
             closure = callerClosure; // Init to first one
-        } else if (!irNameEq(callerClosure, closure)) { // Disagreement on `closure`
+        } else if (callerClosure != closure) { // Disagreement on `closure`
             return LiftingAnalysis{
                 .liftees = bitSetClone(&compiler.arena, &block.liveIns),
                 .closure = invalidIRName

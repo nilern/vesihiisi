@@ -116,7 +116,7 @@ void enlivenStmt(Compiler& compiler, BitSet& liveOuts, IRStmt& stmt) {
         // Param types:
         for (size_t i = innerFn.domain.count; i-- > 0;) {
             IRName const type = innerFn.domain.vals[i];
-            if (irNameIsValid(type)) {
+            if (type.isValid()) {
                 requireLive(compiler, liveOuts, type);
             }
         }

@@ -77,11 +77,11 @@ public:
 
     IRName tryRegVar(Reg reg) const { return regVars_[reg.index]; }
 
-    bool isRegFree(Reg reg) const { return irNameEq(tryRegVar(reg), invalidIRName); }
+    bool isRegFree(Reg reg) const { return tryRegVar(reg) == invalidIRName; }
 
     void add(IRName var, Reg reg) {
         assert(!varRegs_[var.index]);
-        assert(irNameEq(regVars_[reg.index], invalidIRName));
+        assert(regVars_[reg.index] == invalidIRName);
 
         varRegs_[var.index] = std::optional{reg};
         regVars_[reg.index] = var;
@@ -181,8 +181,8 @@ public:
 
     [[nodiscard]]
     std::optional<Move> regEnvParamToArg(Reg paramReg, IRName arg) {
-        assert(!irNameEq(regVars_[paramReg.index], invalidIRName));
-        assert(!irNameEq(arg, invalidIRName));
+        assert(regVars_[paramReg.index] != invalidIRName);
+        assert(arg != invalidIRName);
 
         std::optional<Reg> const optDest = varRegs_[arg.index];
         if (optDest) {
@@ -201,8 +201,8 @@ public:
     }
 
     void regEnvMove(IRName var, Reg src, Reg dest) {
-        assert(irNameEq(regVars_[src.index], var));
-        assert(irNameEq(regVars_[dest.index], invalidIRName));
+        assert(regVars_[src.index] == var);
+        assert(regVars_[dest.index] == invalidIRName);
 
         varRegs_[var.index] = std::optional{dest};
         regVars_[dest.index] = var;
@@ -211,8 +211,8 @@ public:
     }
 
     void regEnvSwap(IRName var1, Reg reg1, IRName var2, Reg reg2) {
-        assert(irNameEq(regVars_[reg1.index], var1));
-        assert(irNameEq(regVars_[reg2.index], var2));
+        assert(regVars_[reg1.index] == var1);
+        assert(regVars_[reg2.index] == var2);
 
         varRegs_[var1.index] = std::optional{reg2};
         regVars_[reg2.index] = var1;
@@ -246,7 +246,7 @@ void shuffleRegs(
         for (size_t i = 0; i < maxVarCount; ++i) {
             Reg const reg = {(uint8_t)i};
             IRName const var = current.tryRegVar(reg);
-            if (irNameEq(var, invalidIRName)) { continue; } // Loop artefact: `reg` is free
+            if (var == invalidIRName) { continue; } // Loop artefact: `reg` is free
 
             std::optional<Reg> const optGoalReg = goal.tryVarReg(var);
             assert(optGoalReg);
@@ -270,14 +270,14 @@ void shuffleRegs(
     for (size_t i = 0; i < maxVarCount; ++i) {
         Reg const reg = {(uint8_t)i};
         IRName const var = current.tryRegVar(reg);
-        if (irNameEq(var, invalidIRName)) { continue; } // Loop artefact: `reg` is free
+        if (var == invalidIRName) { continue; } // Loop artefact: `reg` is free
 
         std::optional<Reg> const optGoalReg = goal.tryVarReg(var);
         assert(optGoalReg);
         Reg const goalReg = *optGoalReg;
         if (reg != goalReg) { // Needs swap
             IRName const trader = current.tryRegVar(goalReg);
-            assert(!irNameEq(trader, invalidIRName));
+            assert(trader != invalidIRName);
 
             // Loop-breaking swap:
             current.regEnvSwap(var, reg, trader, goalReg);
@@ -292,7 +292,7 @@ void shuffleRegs(
             Reg const traderGoalReg = *optTraderGoalReg;
             for (Reg traderReg = reg; traderReg != traderGoalReg;) {
                 IRName const taker = goal.tryRegVar(traderReg);
-                assert(!irNameEq(taker, invalidIRName));
+                assert(taker != invalidIRName);
                 std::optional<Reg> const optTakerReg = current.tryVarReg(taker);
                 assert(optTakerReg);
                 Reg const takerReg = *optTakerReg;
@@ -323,7 +323,7 @@ RegEnv regAllocIfSuccession(
         size_t const maxVarCount = altEnv.maxVarCount();
         for (size_t i = 0; i < maxVarCount; ++i) {
             IRName const var = altEnv.tryRegVar(Reg{uint8_t(i)});
-            if (irNameEq(var, invalidIRName)) { continue; } // Loop artefact: `reg` is free
+            if (var == invalidIRName) { continue; } // Loop artefact: `reg` is free
 
             // OPTIMIZE: Try to use the same reg as in `altEnv`:
             goal.getVarReg(var); // Just ensure that `var` is in `goal`; discard return value
@@ -423,7 +423,7 @@ RegEnv regAllocTransfer(
                 if (!maybeIdx.hasVal) { break; }
                 IRName const spillName = IRName{maybeIdx.val};
 
-                if (irNameEq(spillName, succRetName)) {
+                if (spillName == succRetName) {
                     return call.closes.names[i];
                 }
             }
@@ -507,7 +507,7 @@ RegEnv regAllocTransfer(
         RegEnv env = savedEnvs.get(destLabel)->clone();
         for (size_t i = 0; i < arity; ++i) {
             Reg const paramReg = Reg{uint8_t(destBlock.params[i].index)}; // HACK?
-            if (irNameEq(env.tryRegVar(paramReg), env.retName)) {
+            if (env.tryRegVar(paramReg) == env.retName) {
                 env.retName = gotoo.args.names[i];
                 break;
             }
@@ -593,7 +593,7 @@ void regAllocStmt(Compiler& compiler, RegEnv& env, Stmts& outputStmts, IRStmt& s
         clover.name = IRName{env.deallocVarReg(clover.name).index};
         clover.closure = IRName{env.getVarReg(clover.closure).index};
 
-        if (irNameEq(name, env.retName)) {
+        if (name == env.retName) {
             env.retName = clover.origName;
         }
 
@@ -610,7 +610,7 @@ void regAllocStmt(Compiler& compiler, RegEnv& env, Stmts& outputStmts, IRStmt& s
         auto dyerTypes = AVec<IRName>{&compiler.arena};
         for (size_t i = fn.domain.count; i-- > 0;) {
             IRName const typeName = fn.domain.vals[i];
-            if (!irNameIsValid(typeName)) { continue; } // HACK
+            if (!typeName.isValid()) { continue; } // HACK
 
             if (env.tryVarReg(typeName)) {
                 env.deallocVarReg(typeName);
@@ -628,7 +628,7 @@ void regAllocStmt(Compiler& compiler, RegEnv& env, Stmts& outputStmts, IRStmt& s
             size_t const domainCount = fn.domain.count;
             for (size_t i = 0; i < domainCount; ++i) {
                 IRName const typeName = fn.domain.vals[i];
-                if (!irNameIsValid(typeName)) { continue; } // HACK
+                if (!typeName.isValid()) { continue; } // HACK
 
                 RegEnv::AllocStmtArgRegRes const res = env.allocStmtArgReg(typeName);
                 fn.domain.vals[i] = IRName{res.reg.index};

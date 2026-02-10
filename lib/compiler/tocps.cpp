@@ -158,7 +158,7 @@ ToCpsFrameDef useSymbolDef(ToCpsEnv const* env, HRef<Symbol> sym) {
         ToCpsFrameDef const def = toCpsFrameFind(&env->frame, sym);
         switch (def.type) {
         case ToCpsFrameDef::NAME: {
-            if (irNameIsValid(def.name)) { return def; }
+            if (def.name.isValid()) { return def; }
         }; break;
 
         case ToCpsFrameDef::KNOT: return def;
@@ -177,7 +177,7 @@ void setSymbolDef(ToCpsEnv* env, HRef<Symbol> sym, ToCpsFrameDef def, BindingsTy
      // FIXME: Proper error (duplicate defs):
     if (type == BINDINGS_PAR) {
         ToCpsFrameDef const oldDef /*HACK:*/ [[maybe_unused]] = toCpsFrameFind(&env->frame, sym);
-        assert(oldDef.type != ToCpsFrameDef::NAME || !irNameIsValid(oldDef.name));
+        assert(oldDef.type != ToCpsFrameDef::NAME || !oldDef.name.isValid());
     }
 
     toCpsFrameSet(&env->frame, sym, def);
@@ -371,7 +371,7 @@ IRName fnToCPSimpl(
     IRBlock* entryBlock = createIRBlock(pass.compiler, &innerFn, 0);
 
     ToCpsEnv fnEnv = createToCpsEnv(env);
-    IRName const self = irNameIsValid(maybeSelf) ? maybeSelf : freshName(pass.compiler);
+    IRName const self = maybeSelf.isValid() ? maybeSelf : freshName(pass.compiler);
     pushIRParam(pass.compiler, entryBlock, self);
     IRName const ret = freshName(pass.compiler);
     pushIRParam(pass.compiler, entryBlock, ret);
@@ -841,7 +841,7 @@ IRName useToCPS(
     case ToCpsFrameDef::NAME: {
         IRName const name = def.name;
 
-        if (irNameIsValid(name)) {
+        if (name.isValid()) {
             if (k.type == ToCpsCont::RETURN) {
                 createIRReturn(*block, k.ret.cont, name, maybeLoc);
             }

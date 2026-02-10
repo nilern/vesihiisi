@@ -29,10 +29,18 @@ typedef struct Compiler {
 struct IRName {
     size_t index;
 
+    static constexpr size_t invalidIndex = 0;
+
+    bool operator==(IRName that) const { return index == that.index; }
+
+    inline bool isValid() const { return index != invalidIndex; }
+
     void print(RT const* state, FILE* dest, Compiler const* compiler) const;
 
     void printAsReg(FILE* dest) const { fprintf(dest, "r%ld", index); }
 };
+
+constexpr IRName invalidIRName = {IRName::invalidIndex};
 
 struct IRLabel {
     size_t blockIndex;
@@ -233,12 +241,6 @@ typedef struct IRBlock {
 
     IRTransfer transfer;
 } IRBlock;
-
-constexpr IRName invalidIRName = {0};
-
-inline bool irNameEq(IRName name1, IRName name2) { return name1.index == name2.index; }
-
-inline bool irNameIsValid(IRName name) { return name.index != invalidIRName.index; }
 
 IRName renameSymbol(Compiler* compiler, HRef<Symbol> sym);
 

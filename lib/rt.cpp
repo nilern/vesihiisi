@@ -13,7 +13,6 @@
 #include "flyweights.hpp"
 #include "namespace.hpp"
 #include "primops.hpp"
-#include "compiler/compiler.hpp"
 #include "compiler/bytecodegen.hpp"
 
 namespace {
@@ -692,18 +691,18 @@ void collect(RT* state) {
     } while (!completeCollection(state));
 }
 
-void collectTracingIR(RT* state, struct IRFn* fn, struct MethodBuilder* builder) {
+void collectTracingIR(RT* state, struct IRFn* fn, MethodBuilder* builder) {
     do {
         while (!(
             defaultPrepCollection(state)
             && markIRFn(state, fn)
-            && markMethodBuilder(state, builder)
+            && builder->mark(*state)
         )) {}
     } while (!completeCollection(state));
 
 #ifndef NDEBUG
     assertIRFnInTospace(state, fn);
-    assertMethodBuilderInTospace(state, builder);
+    builder->assertInTospace(*state);
 #endif
 }
 

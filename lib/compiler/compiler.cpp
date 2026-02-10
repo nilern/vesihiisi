@@ -54,7 +54,7 @@ CompilationRes compile(RT* state, ORef expr, HRef<Loc> loc, bool debug) {
         puts("\n");
     }
 
-    HRef<Method> const method = emitToplevelMethod(state, &compiler, &irFn);
+    HRef<Method> const method = emitToplevelMethod(*state, compiler, irFn);
     if (debug) {
         puts(";; # Bytecode:");
         disassemble(state, stdout, method);

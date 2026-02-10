@@ -228,8 +228,8 @@ HRef<FatalError> createDivByZeroError(RT* state, HRef<Closure> callee, Fixnum x,
 void collect(RT* state);
 
 struct IRFn;
-struct MethodBuilder;
+class MethodBuilder;
 
-void collectTracingIR(RT* state, struct IRFn* fn, struct MethodBuilder* builder);
+void collectTracingIR(RT* state, struct IRFn* fn, MethodBuilder* builder);
 
 } // namespace

@@ -113,18 +113,18 @@ struct ToCpsCont {
 // =================================================================================================
 
 struct CPSConv {
+    RT const* state;
+    Compiler* compiler;
+private:
+    AVec<Vshs_SyntaxError> errs;
+
+public:
     CPSConv(RT const& t_state, Compiler& t_compiler) :
         state{&t_state}, compiler{&t_compiler}, errs{&compiler->arena} {}
 
     void error(Vshs_SyntaxError err) { errs.push(err); }
 
     Slice<Vshs_SyntaxError const> errors() const { return errs.slice(); }
-
-public:
-    RT const* state;
-    Compiler* compiler;
-private:
-    AVec<Vshs_SyntaxError> errs;
 };
 
 IRName constToCPS(CPSConv& pass, IRBlock& block, ORef expr, ORef maybeLoc, ToCpsCont k) {

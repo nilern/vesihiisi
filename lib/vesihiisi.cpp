@@ -239,7 +239,7 @@ extern "C" bool Vshs_bootstrap(struct Vshs_RT* state, char const* bootstrapFilen
     fchars[fsize] = 0;
     fclose(file);
 
-    Str filenameStr = (Str){(uint8_t*)bootstrapFilename, strlen(bootstrapFilename) - 1};
+    Str filenameStr = (Str){(uint8_t*)bootstrapFilename, strlen(bootstrapFilename)};
 
     Str const src = {(uint8_t*)fchars, fsize};
     Parser* const parser = createParser(state, src, filenameStr);

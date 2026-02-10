@@ -17,6 +17,7 @@ static_assert(sizeof(void*) == sizeof(uint64_t)); // Only 64-bit supported (for 
 // Could support 32-bit now that we NaN-tag. If we get native threads the non-atomicity of 64-bit
 // loads and stores would complicate synchronization primitives on 32-bit though.
 
+// TODO: `operator==`
 inline bool eq(ORef x, ORef y) { return x.bits == y.bits; }
 
 enum class TaggedType : uint64_t {
@@ -52,6 +53,8 @@ struct HRef : public ORef {
     T* operator->() const { return std::bit_cast<T*>(bits & payloadMask); }
 
     T& operator*() const { return *operator->(); }
+
+    bool operator==(HRef<T> that) const { return bits == that.bits; }
 
 private:
     constexpr explicit HRef(uint64_t t_bits) : ORef{t_bits} {}

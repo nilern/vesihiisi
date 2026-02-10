@@ -3,201 +3,71 @@
 #include <string.h>
 
 #include "../rt.hpp"
-#include "../util/avec.hpp"
+#include "../util/asmallmap.hpp"
 
 namespace {
 
 // Env
 // =================================================================================================
 
-// Frame
-// -------------------------------------------------------------------------------------------------
-
-typedef struct ToCpsFrameDef {
-    union {
-        IRName name;
-        IRName knotName;
+class ToCpsEnv {
+public:
+    struct Def {
+        union {
+            IRName name;
+            IRName knotName;
+        };
+        enum {
+            NAME,
+            KNOT
+        } type;
     };
-    enum {
-        NAME,
-        KNOT
-    } type;
-} ToCpsFrameDef;
 
-typedef struct ToCpsFrame {
-    ORef* keys;
-    ToCpsFrameDef* vals;
-    size_t count;
-    size_t cap;
-} ToCpsFrame;
+private:
+    ASmallMap<HRef<Symbol>, Def> bindings_;
+    ToCpsEnv const* parent_;
 
-inline void freeToCpsFrame(ToCpsFrame* frame) { free(frame->keys); }
+public:
+    ToCpsEnv(Arena* arena, ToCpsEnv const* parent) : bindings_{arena}, parent_{parent} {}
 
-ToCpsFrame createToCpsFrame(void) {
-    size_t const cap = 2;
-    void* const kvs = malloc(cap * (sizeof *ToCpsFrame{}.keys + sizeof *ToCpsFrame{}.vals));
-    ORef* const keys = (ORef*)kvs;
-    memset(keys, 0, cap * sizeof *keys);
-    ToCpsFrameDef* const vals = (ToCpsFrameDef*)(keys + cap);
-
-    return ToCpsFrame{
-        .keys = keys,
-        .vals = vals,
-        .count = 0,
-        .cap = cap
-    };
-}
-
-void rehashToCpsFrame(ToCpsFrame* frame) {
-    size_t const oldCap = frame->cap;
-    ORef* const oldKeys = frame->keys;
-    ToCpsFrameDef* const oldVals = frame->vals;
-
-    size_t const newCap = oldCap << 1;
-    void* const newKvs =
-        malloc(newCap * (sizeof *ToCpsFrame{}.keys + sizeof *ToCpsFrame{}.vals));
-    ORef* const newKeys = (ORef*)newKvs;
-    memset(newKeys, 0, newCap * sizeof *newKeys);
-    ToCpsFrameDef* const newVals = (ToCpsFrameDef*)(newKeys + newCap);
-
-    for (size_t i = 0; i < oldCap; ++i) {
-        ORef const k = oldKeys[i];
-
-        if (!eq(k, Default)) {
-            size_t const h = (uintptr_t)HRef<Symbol>::fromUnchecked(k)->hash.val();
-
-            size_t const maxIndex = newCap - 1;
-            for (size_t collisions = 0, j = h & maxIndex;;
-                ++collisions, j = (j + collisions) & maxIndex
-            ) {
-                ORef* const maybeK = newKeys + j;
-
-                if (eq(*maybeK, Default)) {
-                    *maybeK = k;
-                    newVals[j] = oldVals[i];
-                    break;
-                }
+    std::optional<Def> useSymbolDef(HRef<Symbol> sym) const {
+        for (ToCpsEnv const* env = this; env; env = env->parent_) {
+            auto const optDef = env->bindings_.tryGet(sym);
+            if (optDef) {
+                return optDef;
             }
         }
+
+        return std::nullopt;
     }
 
-    frame->keys = newKeys;
-    frame->vals = newVals;
-    frame->cap = newCap;
+    enum BindingsType { BINDINGS_PAR, BINDINGS_SEQ };
 
-    free(oldKeys);
-}
-
-BucketIdx toCpsFrameFindIdx(ToCpsFrame const* frame, HRef<Symbol> sym) {
-    size_t const h = (uintptr_t)sym->hash.val();
-
-    size_t const maxIdx = frame->cap - 1;
-    for (size_t collisions = 0, i = h & maxIdx;; ++collisions, i = (i + collisions) & maxIdx) {
-        ORef const k = frame->keys[i];
-
-        if (eq(k, sym)) {
-            return BucketIdx{.idx = i, .occupied = true};
-        } else if (eq(k, Default)) {
-            return BucketIdx{.idx = i, .occupied = false};
-        }
-    }
-}
-
-ToCpsFrameDef toCpsFrameFind(ToCpsFrame const* frame, HRef<Symbol> sym) {
-    BucketIdx const bucketIdx = toCpsFrameFindIdx(frame, sym);
-    if (!bucketIdx.occupied) {
-        return ToCpsFrameDef{.name = invalidIRName, .type = ToCpsFrameDef::NAME};
-    }
-
-    return frame->vals[bucketIdx.idx];
-}
-
-void toCpsFrameSet(ToCpsFrame* frame, HRef<Symbol> sym, ToCpsFrameDef def) {
-    BucketIdx bucketIdx = toCpsFrameFindIdx(frame, sym);
-    if (bucketIdx.occupied) {
-        frame->vals[bucketIdx.idx] = def;
-    } else {
-        size_t idx = bucketIdx.idx;
-
-        size_t const newCount = frame->count + 1;
-        if (newCount > (frame->cap >> 1)) {
-            rehashToCpsFrame(frame);
-            bucketIdx = toCpsFrameFindIdx(frame, sym);
-            assert(!bucketIdx.occupied);
-            idx = bucketIdx.idx;
+    void setSymbolDef(HRef<Symbol> sym, Def def, BindingsType type) {
+        // FIXME: Proper error (duplicate defs):
+        if (type == BINDINGS_PAR) {
+            assert(!bindings_.tryGet(sym));
         }
 
-        frame->keys[idx] = sym;
-        frame->vals[idx] = def;
-        frame->count = newCount;
+        bindings_.set(sym, def);
     }
-}
-
-// Env as a Stack of Frames
-// -------------------------------------------------------------------------------------------------
-
-typedef struct ToCpsEnv {
-    ToCpsFrame frame;
-    struct ToCpsEnv const* parent;
-} ToCpsEnv;
-
-inline void freeToCpsEnv(ToCpsEnv* env) { freeToCpsFrame(&env->frame); }
-
-ToCpsEnv createToCpsEnv(ToCpsEnv const* parent) {
-    return ToCpsEnv{
-        .frame = createToCpsFrame(),
-        .parent = parent
-    };
-}
-
-// Defs and Uses
-// -------------------------------------------------------------------------------------------------
-
-ToCpsFrameDef useSymbolDef(ToCpsEnv const* env, HRef<Symbol> sym) {
-    for (; env; env = env->parent) {
-        ToCpsFrameDef const def = toCpsFrameFind(&env->frame, sym);
-        switch (def.type) {
-        case ToCpsFrameDef::NAME: {
-            if (def.name.isValid()) { return def; }
-        }; break;
-
-        case ToCpsFrameDef::KNOT: return def;
-        }
-    }
-
-    return ToCpsFrameDef{.name = invalidIRName, .type = ToCpsFrameDef::NAME};
-}
-
-typedef enum BindingsType {
-    BINDINGS_PAR,
-    BINDINGS_SEQ
-} BindingsType;
-
-void setSymbolDef(ToCpsEnv* env, HRef<Symbol> sym, ToCpsFrameDef def, BindingsType type) {
-     // FIXME: Proper error (duplicate defs):
-    if (type == BINDINGS_PAR) {
-        ToCpsFrameDef const oldDef /*HACK:*/ [[maybe_unused]] = toCpsFrameFind(&env->frame, sym);
-        assert(oldDef.type != ToCpsFrameDef::NAME || !oldDef.name.isValid());
-    }
-
-    toCpsFrameSet(&env->frame, sym, def);
-}
+};
 
 // Static Continuations
 // =================================================================================================
 
-typedef struct ToCpsContReturn {
-    IRName cont;
-} ToCpsContReturn;
+struct ToCpsCont {
+    struct Return {
+        IRName cont;
+    };
 
-typedef struct ToCpsCont {
     struct Def {
         IRName name;
         HRef<Symbol> sym;
     };
 
     union {
-        ToCpsContReturn ret;
+        Return ret;
         Def def;
     };
     enum {
@@ -209,42 +79,42 @@ typedef struct ToCpsCont {
         JOIN,
         RETURN
     } type;
-} ToCpsCont;
 
-IRName toCpsContDestName(Compiler* compiler, ToCpsCont k) {
-    switch (k.type) {
-    case ToCpsCont::BIND: // fallthrough
-    case ToCpsCont::DEF: case ToCpsCont::SET: return k.def.name;
+    IRName destName(Compiler& compiler) const {
+        switch (type) {
+        case ToCpsCont::BIND: // fallthrough
+        case ToCpsCont::DEF: case ToCpsCont::SET: return def.name;
 
-    case ToCpsCont::EFF: // fallthrough
-    case ToCpsCont::VAL: // fallthrough
-    case ToCpsCont::JOIN: // fallthrough
-    case ToCpsCont::RETURN: return freshName(compiler);
+        case ToCpsCont::EFF: // fallthrough
+        case ToCpsCont::VAL: // fallthrough
+        case ToCpsCont::JOIN: // fallthrough
+        case ToCpsCont::RETURN: return freshName(&compiler);
+        }
+
+        return invalidIRName; // Unreachable
     }
 
-    return invalidIRName; // Unreachable
-}
+    ORef destSymbol() const {
+        switch (type) {
+        case ToCpsCont::BIND: // fallthrough
+        case ToCpsCont::DEF: case ToCpsCont::SET: return def.sym;
 
-ORef toCpsContDestSymbol(ToCpsCont k) {
-    switch (k.type) {
-    case ToCpsCont::BIND: // fallthrough
-    case ToCpsCont::DEF: case ToCpsCont::SET: return k.def.sym;
+        case ToCpsCont::EFF: // fallthrough
+        case ToCpsCont::VAL: // fallthrough
+        case ToCpsCont::JOIN: // fallthrough
+        case ToCpsCont::RETURN: return Default;
+        }
 
-    case ToCpsCont::EFF: // fallthrough
-    case ToCpsCont::VAL: // fallthrough
-    case ToCpsCont::JOIN: // fallthrough
-    case ToCpsCont::RETURN: return Default;
+        return Default; // Unreachable
     }
-
-    return Default; // Unreachable
-}
+};
 
 // Conversion from S-expressions to CPS IR
 // =================================================================================================
 
 struct CPSConv {
-    CPSConv(RT const* t_state, Compiler* t_compiler) :
-        state{t_state}, compiler{t_compiler}, errs{&compiler->arena} {}
+    CPSConv(RT const& t_state, Compiler& t_compiler) :
+        state{&t_state}, compiler{&t_compiler}, errs{&compiler->arena} {}
 
     void error(Vshs_SyntaxError err) { errs.push(err); }
 
@@ -257,33 +127,33 @@ private:
     AVec<Vshs_SyntaxError> errs;
 };
 
-IRName constToCPS(CPSConv& pass, IRBlock* block, ORef expr, ORef maybeLoc, ToCpsCont k) {
-    IRName const name = toCpsContDestName(pass.compiler, k);
-    pushIRStmt(pass.compiler, &block->stmts, constDefToStmt(ConstDef{name, expr}, maybeLoc));
+IRName constToCPS(CPSConv& pass, IRBlock& block, ORef expr, ORef maybeLoc, ToCpsCont k) {
+    IRName const name = k.destName(*pass.compiler);
+    pushIRStmt(pass.compiler, &block.stmts, constDefToStmt(ConstDef{name, expr}, maybeLoc));
 
     if (k.type == ToCpsCont::RETURN) {
-        createIRReturn(block, k.ret.cont, name, maybeLoc);
+        createIRReturn(&block, k.ret.cont, name, maybeLoc);
     }
 
     return name;
 }
 
-IRName globalToCPS(CPSConv& pass, IRBlock* block, HRef<Symbol> sym, ORef maybeLoc, ToCpsCont k) {
-    IRName const name = toCpsContDestName(pass.compiler, k);
-    pushIRStmt(pass.compiler, &block->stmts, globalToStmt(IRGlobal{name, sym}, maybeLoc));
+IRName globalToCPS(CPSConv& pass, IRBlock& block, HRef<Symbol> sym, ORef maybeLoc, ToCpsCont k) {
+    IRName const name = k.destName(*pass.compiler);
+    pushIRStmt(pass.compiler, &block.stmts, globalToStmt(IRGlobal{name, sym}, maybeLoc));
 
     if (k.type == ToCpsCont::RETURN) {
-        createIRReturn(block, k.ret.cont, name, maybeLoc);
+        createIRReturn(&block, k.ret.cont, name, maybeLoc);
     }
 
     return name;
 }
 
-IRName exprToIR(CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef expr,
+IRName exprToIR(CPSConv& pass, IRFn& fn, ToCpsEnv const& env, IRBlock*& block, ORef expr,
                 ORef maybeLoc, ToCpsCont k);
 
 IRName bodyToCPS(
-    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef body, ToCpsCont k
+    CPSConv& pass, IRFn& fn, ToCpsEnv const& env, IRBlock*& block, ORef body, ToCpsCont k
 ) {
     if (!isa<Pair>(*pass.state, body)) {
         assert(false); // TODO: Proper empty/improper body error
@@ -311,16 +181,16 @@ IRName bodyToCPS(
 
 [[nodiscard]]
 bool paramToCPS(
-    CPSConv& pass, IRFn* outerFn, ToCpsEnv const* outerEnv, IRBlock** outerBlock, IRFn* fn,
-    ToCpsEnv* fnEnv, IRBlock* entryBlock, size_t idx, ORef param
-) {
+    CPSConv& pass, IRFn& outerFn, ToCpsEnv const& outerEnv, IRBlock*& outerBlock, IRFn& fn,
+    ToCpsEnv& fnEnv, IRBlock& entryBlock, size_t idx, ORef param
+    ) {
     if (isa<Symbol>(*pass.state, param)) {
         HRef<Symbol> const paramSym = HRef<Symbol>::fromUnchecked(param);
 
         IRName const paramName = renameSymbol(pass.compiler, paramSym);
-        pushIRParam(pass.compiler, entryBlock, paramName);
-        setSymbolDef(fnEnv, paramSym, ToCpsFrameDef{.name = paramName, .type = ToCpsFrameDef::NAME},
-                     BINDINGS_PAR);
+        pushIRParam(pass.compiler, &entryBlock, paramName);
+        fnEnv.setSymbolDef(paramSym, ToCpsEnv::Def{.name = paramName, .type = ToCpsEnv::Def::NAME},
+                           ToCpsEnv::BINDINGS_PAR);
 
         return true;
     } else if (isa<Pair>(*pass.state, param)) {
@@ -350,10 +220,10 @@ bool paramToCPS(
 
         // TODO: DRY with symbol branch above:
         IRName const paramName = renameSymbol(pass.compiler, sym);
-        pushIRParam(pass.compiler, entryBlock, paramName);
-        setSymbolDef(fnEnv, sym, ToCpsFrameDef{.name = paramName, .type = ToCpsFrameDef::NAME},
-                     BINDINGS_PAR);
-        setParamType(pass.compiler, &fn->domain, idx, typeName);
+        pushIRParam(pass.compiler, &entryBlock, paramName);
+        fnEnv.setSymbolDef(sym, ToCpsEnv::Def{.name = paramName, .type = ToCpsEnv::Def::NAME},
+                     ToCpsEnv::BINDINGS_PAR);
+        setParamType(pass.compiler, &fn.domain, idx, typeName);
 
         return true;
     } else {
@@ -362,15 +232,15 @@ bool paramToCPS(
 }
 
 IRName fnToCPSimpl(
-    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, IRName maybeSelf, ORef params,
+    CPSConv& pass, IRFn& fn, ToCpsEnv const& env, IRBlock*& block, IRName maybeSelf, ORef params,
     ORef body, ORef maybeLoc, ToCpsCont k
 ) {
-    ORef const maybeName = toCpsContDestSymbol(k);
+    ORef const maybeName = k.destSymbol();
     IRFn innerFn = createIRFn(pass.compiler, maybeName);
 
     IRBlock* entryBlock = createIRBlock(pass.compiler, &innerFn, 0);
 
-    ToCpsEnv fnEnv = createToCpsEnv(env);
+    auto fnEnv = ToCpsEnv{&pass.compiler->arena, &env};
     IRName const self = maybeSelf.isValid() ? maybeSelf : freshName(pass.compiler);
     pushIRParam(pass.compiler, entryBlock, self);
     IRName const ret = freshName(pass.compiler);
@@ -381,9 +251,7 @@ IRName fnToCPSimpl(
     while (!isEmptyList(pass.state, params)) {
         // TODO: Is this just bad syntax design?:
         // Has to be first because `(x y . (: zs <t>))` = `(x y : zs <t>)`:
-        if (paramToCPS(pass, fn, env, block,
-                       &innerFn, &fnEnv, entryBlock, arity, params)
-            ) {
+        if (paramToCPS(pass, fn, env, block, innerFn, fnEnv, *entryBlock, arity, params)) {
             innerFn.hasVarArg = true;
 
             ++arity;
@@ -393,9 +261,9 @@ IRName fnToCPSimpl(
         if (isa<Pair>(*pass.state, params)) {
             auto const paramsPair = HRef<Pair>::fromUnchecked(params);
 
-            if (!paramToCPS(pass, fn, env, block,
-                            &innerFn, &fnEnv, entryBlock, arity, paramsPair->car().get())
-                ) {
+            if (!paramToCPS(pass, fn, env, block, innerFn, fnEnv, *entryBlock, arity,
+                            paramsPair->car().get())
+            ) {
                 pass.error({paramsPair->maybeLoc().get(), INVALID_PARAM});
             }
             params = paramsPair->cdr().get();
@@ -411,24 +279,23 @@ IRName fnToCPSimpl(
 
     ToCpsCont const retK = {{.ret = {.cont = ret}}, ToCpsCont::RETURN};
     // Body is in tail position so discard the returned `IRName`:
-    bodyToCPS(pass, &innerFn, &fnEnv, &entryBlock, body, retK);
-    freeToCpsEnv(&fnEnv);
+    bodyToCPS(pass, innerFn, fnEnv, entryBlock, body, retK);
 
-    IRName const name = toCpsContDestName(pass.compiler, k);
+    IRName const name = k.destName(*pass.compiler);
     Args* const closes = (Args*)amalloc(&pass.compiler->arena, sizeof *closes);
     *closes = createArgs(pass.compiler);
-    pushIRStmt(pass.compiler, &(*block)->stmts,
+    pushIRStmt(pass.compiler, &block->stmts,
                IRStmt{maybeLoc, {.methodDef = {name, innerFn, closes}}, IRStmt::METHOD_DEF});
 
     if (k.type == ToCpsCont::RETURN) {
-        createIRReturn(*block, k.ret.cont, name, maybeLoc);
+        createIRReturn(block, k.ret.cont, name, maybeLoc);
     }
 
     return name;
 }
 
 IRName fnToCPS(
-    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef args, ORef maybeLoc,
+    CPSConv& pass, IRFn& fn, ToCpsEnv const& env, IRBlock*& block, ORef args, ORef maybeLoc,
     ToCpsCont k
 ) {
     if (!isa<Pair>(*pass.state, args)) {
@@ -442,7 +309,7 @@ IRName fnToCPS(
 }
 
 IRName ifToCPS(
-    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef args, ORef maybeLoc,
+    CPSConv& pass, IRFn& fn, ToCpsEnv const& env, IRBlock*& block, ORef args, ORef maybeLoc,
     ToCpsCont k
 ) {
     // OPTIMIZE: Avoid creating `goto`s to `goto`s:
@@ -477,26 +344,26 @@ IRName ifToCPS(
     ToCpsCont const splitK = ToCpsCont{{}, ToCpsCont::VAL};
     IRName const condName = exprToIR(pass, fn, env, block, cond, condLoc, splitK);
         // Will patch targets shortly:
-    IRIf* ifTransfer = createIRIf(*block, condName, IRLabel{}, IRLabel{}, maybeLoc);
-    IRLabel const ifLabel = (*block)->label;
+    IRIf* ifTransfer = createIRIf(block, condName, IRLabel{}, IRLabel{}, maybeLoc);
+    IRLabel const ifLabel = block->label;
     ToCpsCont const joinK = k.type != ToCpsCont::RETURN
         ? ToCpsCont{{}, ToCpsCont::JOIN}
         : k;
 
-    IRBlock* conseqBlock = createIRBlock(pass.compiler, fn, 1);
+    IRBlock* conseqBlock = createIRBlock(pass.compiler, &fn, 1);
     pushCaller(conseqBlock, ifLabel);
     ifTransfer->conseq = conseqBlock->label;
-    IRName const conseqName = exprToIR(pass, fn, env, &conseqBlock, conseq, conseqLoc, joinK);
+    IRName const conseqName = exprToIR(pass, fn, env, conseqBlock, conseq, conseqLoc, joinK);
 
-    IRBlock* altBlock = createIRBlock(pass.compiler, fn, 1);
+    IRBlock* altBlock = createIRBlock(pass.compiler, &fn, 1);
     pushCaller(altBlock, ifLabel);
     ifTransfer->alt = altBlock->label;
-    IRName const altName = exprToIR(pass, fn, env, &altBlock, alt, altLoc, joinK);
+    IRName const altName = exprToIR(pass, fn, env, altBlock, alt, altLoc, joinK);
 
     if (k.type != ToCpsCont::RETURN) {
         // FIXME: If we avoid `goto`s to `goto`s, 2 might not suffice:
-        IRBlock* const joinBlock = createIRBlock(pass.compiler, fn, 2);
-        IRName const phi = toCpsContDestName(pass.compiler, k);
+        IRBlock* const joinBlock = createIRBlock(pass.compiler, &fn, 2);
+        IRName const phi = k.destName(*pass.compiler);
         pushIRParam(pass.compiler, joinBlock, phi);
 
         createIRGoto(pass.compiler, conseqBlock, joinBlock->label, conseqName, conseqLoc);
@@ -505,14 +372,14 @@ IRName ifToCPS(
         createIRGoto(pass.compiler, altBlock, joinBlock->label, altName, altLoc);
         pushCaller(joinBlock, altBlock->label);
 
-        *block = joinBlock;
+        block = joinBlock;
         return phi;
     } else {
         return condName; // Arbitrary value, will not be used by callee
     }
 }
 
-IRName quoteToCPS(CPSConv& pass, IRBlock** block, ORef args, ToCpsCont k) {
+IRName quoteToCPS(CPSConv& pass, IRBlock*& block, ORef args, ToCpsCont k) {
     if (!isa<Pair>(*pass.state, args)) {
         assert(false); // TODO
     }
@@ -526,7 +393,7 @@ IRName quoteToCPS(CPSConv& pass, IRBlock** block, ORef args, ToCpsCont k) {
 }
 
 IRName defToCPS(
-    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef args, ORef maybeLoc,
+    CPSConv& pass, IRFn& fn, ToCpsEnv const& env, IRBlock*& block, ORef args, ORef maybeLoc,
     ToCpsCont k
 ) {
     if (!isa<Pair>(*pass.state, args)) {
@@ -555,12 +422,11 @@ IRName defToCPS(
     ToCpsCont const defK =
         ToCpsCont{.def = {.name = nameHint, .sym = name}, .type = ToCpsCont::DEF};
     IRName const valName = exprToIR(pass, fn, env, block, val, valLoc, defK);
-    pushIRStmt(pass.compiler, &(*block)->stmts,
-               defineToStmt(Define{name, valName}, maybeLoc));
+    pushIRStmt(pass.compiler, &block->stmts, defineToStmt(Define{name, valName}, maybeLoc));
     // FIXME: Return e.g. nil/undefined/unspecified instead of new val:
     IRName const resName = valName;
     if (k.type == ToCpsCont::RETURN) {
-        createIRReturn(*block, k.ret.cont, resName, maybeLoc);
+        createIRReturn(block, k.ret.cont, resName, maybeLoc);
     }
 
     return resName;
@@ -568,7 +434,7 @@ IRName defToCPS(
 
 // FIXME: Complain if target is locally bound:
 IRName setToCPS(
-    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef args, ORef maybeLoc,
+    CPSConv& pass, IRFn& fn, ToCpsEnv const& env, IRBlock*& block, ORef args, ORef maybeLoc,
     ToCpsCont k
 ) {
     if (!isa<Pair>(*pass.state, args)) {
@@ -597,21 +463,20 @@ IRName setToCPS(
     ToCpsCont const setK =
         ToCpsCont{.def = {.name = nameHint, .sym = name}, .type = ToCpsCont::SET};
     IRName const valName = exprToIR(pass, fn, env, block, val, valLoc, setK);
-    pushIRStmt(pass.compiler, &(*block)->stmts,
-               globalSetToStmt(GlobalSet{name, valName}, maybeLoc));
+    pushIRStmt(pass.compiler, &block->stmts, globalSetToStmt(GlobalSet{name, valName}, maybeLoc));
     // FIXME: Return e.g. nil/undefined/unspecified instead of new val:
     IRName const resName = valName;
     if (k.type == ToCpsCont::RETURN) {
-        createIRReturn(*block, k.ret.cont, resName, maybeLoc);
+        createIRReturn(block, k.ret.cont, resName, maybeLoc);
     }
 
     return resName;
 }
 
 IRName letToCPS(
-    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef args, ToCpsCont k
+    CPSConv& pass, IRFn& fn, ToCpsEnv const& env, IRBlock*& block, ORef args, ToCpsCont k
 ) {
-    ToCpsEnv letEnv = createToCpsEnv(env);
+    auto letEnv = ToCpsEnv{&pass.compiler->arena, &env};
 
     if (!isa<Pair>(*pass.state, args)) {
         assert(false); // TODO: Proper invalid args error
@@ -650,14 +515,13 @@ IRName letToCPS(
             IRName const binderName = renameSymbol(pass.compiler, binder);
             ToCpsCont const valK =
                 ToCpsCont{.def = {.name = binderName, .sym = binder}, .type = ToCpsCont::BIND};
-            IRName const finalName =
-                exprToIR(pass, fn, &letEnv, block, val, valLoc, valK);
+            IRName const finalName = exprToIR(pass, fn, letEnv, block, val, valLoc, valK);
             // If `finalName != binderName` we have a local copy e.g.
             // `(let ((x 5) (y x)) ...)` and `useToCPS` emitted nothing. Putting
             // `finalName` to env implements the rest of copy propagation:
-            setSymbolDef(&letEnv, binder,
-                         ToCpsFrameDef{.name = finalName, .type = ToCpsFrameDef::NAME},
-                         BINDINGS_SEQ);
+            letEnv.setSymbolDef(binder,
+                                ToCpsEnv::Def{.name = finalName, .type = ToCpsEnv::Def::NAME},
+                                ToCpsEnv::BINDINGS_SEQ);
 
             bindings = bindingsPair->cdr().get();
         } else if (isEmptyList(pass.state, bindings)) {
@@ -667,12 +531,10 @@ IRName letToCPS(
         }
     }
 
-    IRName const bodyName = bodyToCPS(pass, fn, &letEnv, block, argsPair->cdr().get(), k);
-    freeToCpsEnv(&letEnv);
-    return bodyName;
+    return bodyToCPS(pass, fn, letEnv, block, argsPair->cdr().get(), k);
 }
 
-void knotCreation(CPSConv& pass, IRBlock* block, ToCpsEnv* letfnEnv, ORef binding, ORef maybeLoc) {
+void knotCreation(CPSConv& pass, IRBlock& block, ToCpsEnv& letfnEnv, ORef binding, ORef maybeLoc) {
     if (!isa<Pair>(*pass.state, binding)) {
         pass.error({maybeLoc, INVALID_BINDING});
     }
@@ -691,20 +553,20 @@ void knotCreation(CPSConv& pass, IRBlock* block, ToCpsEnv* letfnEnv, ORef bindin
     HRef<Symbol> const fSym = HRef<Symbol>::fromUnchecked(pat); // `f`
 
     IRName const knotName = renameSymbol(pass.compiler, fSym);
-    pushIRStmt(pass.compiler, &block->stmts,
+    pushIRStmt(pass.compiler, &block.stmts,
                IRStmt{maybeLoc, {.knot = {.name = knotName}}, IRStmt::KNOT});
-    setSymbolDef(letfnEnv, fSym, ToCpsFrameDef{.knotName = knotName, .type = ToCpsFrameDef::KNOT},
-                 BINDINGS_PAR);
+    letfnEnv.setSymbolDef(fSym, ToCpsEnv::Def{.knotName = knotName, .type = ToCpsEnv::Def::KNOT},
+                          ToCpsEnv::BINDINGS_PAR);
 }
 
-ToCpsEnv knotCreations(CPSConv& pass, IRBlock* block, ToCpsEnv const* env, ORef bindings) {
-    ToCpsEnv innerEnv = createToCpsEnv(env);
+ToCpsEnv knotCreations(CPSConv& pass, IRBlock& block, ToCpsEnv const& env, ORef bindings) {
+    auto innerEnv = ToCpsEnv{&pass.compiler->arena, &env};
 
     for (;/*ever*/;) {
         if (isa<Pair>(*pass.state, bindings)) {
             auto const bindingsPair = HRef<Pair>::fromUnchecked(bindings);
 
-            knotCreation(pass, block, &innerEnv, bindingsPair->car().get(),
+            knotCreation(pass, block, innerEnv, bindingsPair->car().get(),
                          bindingsPair->maybeLoc().get());
 
             bindings = bindingsPair->cdr().get();
@@ -716,7 +578,7 @@ ToCpsEnv knotCreations(CPSConv& pass, IRBlock* block, ToCpsEnv const* env, ORef 
     }
 }
 
-void knotInit(CPSConv& pass, IRFn* fn, ToCpsEnv* env, IRBlock** block, ORef binding) {
+void knotInit(CPSConv& pass, IRFn& fn, ToCpsEnv& env, IRBlock*& block, ORef binding) {
     if (!isa<Pair>(*pass.state, binding)) {
     }
     auto const bindingPair = HRef<Pair>::fromUnchecked(binding); // `((f x) ...)`
@@ -733,27 +595,28 @@ void knotInit(CPSConv& pass, IRFn* fn, ToCpsEnv* env, IRBlock** block, ORef bind
     }
     HRef<Symbol> const fSym = HRef<Symbol>::fromUnchecked(pat); // `f`
 
-    ToCpsFrameDef const knotDef = useSymbolDef(env, fSym);
-    assert(knotDef.type == ToCpsFrameDef::KNOT);
-    IRName const knotName = knotDef.knotName;
+    auto const optKnotDef = env.useSymbolDef(fSym);
+    assert(optKnotDef && optKnotDef->type == ToCpsEnv::Def::KNOT);
+    IRName const knotName = optKnotDef->knotName;
 
     IRName const self = renameSymbol(pass.compiler, fSym);
-    setSymbolDef(env, fSym, ToCpsFrameDef{.name = self, .type = ToCpsFrameDef::NAME}, BINDINGS_SEQ);
+    env.setSymbolDef(fSym, ToCpsEnv::Def{.name = self, .type = ToCpsEnv::Def::NAME},
+                     ToCpsEnv::BINDINGS_SEQ);
     IRName const fName = renameSymbol(pass.compiler, fSym);
     ToCpsCont const bindK =
         ToCpsCont{.def = {.name = fName, .sym = fSym}, .type = ToCpsCont::BIND};
     // Will just return `fName`, can discard that:
     fnToCPSimpl(pass, fn, env, block, self, binderPair->cdr().get(), bindingPair->cdr().get(),
                 bindingPair->maybeLoc().get(), bindK);
-    setSymbolDef(env, fSym,
-                 ToCpsFrameDef{.name = fName, .type = ToCpsFrameDef::NAME}, BINDINGS_SEQ);
+    env.setSymbolDef(fSym, ToCpsEnv::Def{.name = fName, .type = ToCpsEnv::Def::NAME},
+                     ToCpsEnv::BINDINGS_SEQ);
 
-    pushIRStmt(pass.compiler, &(*block)->stmts,
+    pushIRStmt(pass.compiler, &block->stmts,
                IRStmt{bindingPair->maybeLoc().get(), {.knotInit = {.knot = knotName, .v = fName}},
                       IRStmt::KNOT_INIT});
 }
 
-void knotInits(CPSConv& pass, IRFn* fn, ToCpsEnv* env, IRBlock** block, ORef bindings) {
+void knotInits(CPSConv& pass, IRFn& fn, ToCpsEnv& env, IRBlock*& block, ORef bindings) {
     for (;/*ever*/;) {
         if (isa<Pair>(*pass.state, bindings)) {
             auto const bindingsPair = HRef<Pair>::fromUnchecked(bindings);
@@ -770,7 +633,7 @@ void knotInits(CPSConv& pass, IRFn* fn, ToCpsEnv* env, IRBlock** block, ORef bin
 }
 
 IRName letfnToCPS(
-    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef args, ToCpsCont k
+    CPSConv& pass, IRFn& fn, ToCpsEnv const& env, IRBlock*& block, ORef args, ToCpsCont k
 ) {
     if (!isa<Pair>(*pass.state, args)) {
         assert(false); // TODO: Proper invalid args error
@@ -781,15 +644,13 @@ IRName letfnToCPS(
 
     ToCpsEnv letfnEnv = knotCreations(pass, *block, env, bindings);
 
-    knotInits(pass, fn, &letfnEnv, block, bindings);
+    knotInits(pass, fn, letfnEnv, block, bindings);
 
-    IRName const bodyName = bodyToCPS(pass, fn, &letfnEnv, block, body, k);
-    freeToCpsEnv(&letfnEnv);
-    return bodyName;
+    return bodyToCPS(pass, fn, letfnEnv, block, body, k);;
 }
 
 IRName callToCPS(
-    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef callee, ORef calleeLoc,
+    CPSConv& pass, IRFn& fn, ToCpsEnv const& env, IRBlock*& block, ORef callee, ORef calleeLoc,
     ORef args, ORef maybeLoc, ToCpsCont k
 ) {
     IRName const calleeName =
@@ -813,59 +674,61 @@ IRName callToCPS(
         }
     }
 
-    IRName const retValName = toCpsContDestName(pass.compiler, k);
+    IRName const retValName = k.destName(*pass.compiler);
 
     if (k.type != ToCpsCont::RETURN) {
-        IRBlock* const retBlock = createIRBlock(pass.compiler, fn, 0);
+        IRBlock* const retBlock = createIRBlock(pass.compiler, &fn, 0);
         IRName const frame = freshName(pass.compiler);
         pushIRParam(pass.compiler, retBlock, frame);
         pushIRParam(pass.compiler, retBlock, retValName);
 
-        createCall(*block, calleeName, retBlock->label, createArgs(pass.compiler), cpsArgs,
+        createCall(block, calleeName, retBlock->label, createArgs(pass.compiler), cpsArgs,
                    maybeLoc);
 
-        *block = retBlock;
+        block = retBlock;
     } else {
-        createTailcall(*block, calleeName, k.ret.cont, cpsArgs, maybeLoc);
+        createTailcall(block, calleeName, k.ret.cont, cpsArgs, maybeLoc);
     }
 
     return retValName;
 }
 
 IRName useToCPS(
-    CPSConv& pass, ToCpsEnv const* env, IRBlock** block, HRef<Symbol> sym, ORef maybeLoc,
+    CPSConv& pass, ToCpsEnv const& env, IRBlock*& block, HRef<Symbol> sym, ORef maybeLoc,
     ToCpsCont k
 ) {
-    ToCpsFrameDef const def = useSymbolDef(env, sym);
-    switch (def.type) {
-    case ToCpsFrameDef::NAME: {
-        IRName const name = def.name;
+    auto const optDef = env.useSymbolDef(sym);
+    if (optDef) {
+        auto const def = *optDef;
 
-        if (name.isValid()) {
+        switch (def.type) {
+        case ToCpsEnv::Def::NAME: {
+            IRName const name = def.name;
+
             if (k.type == ToCpsCont::RETURN) {
-                createIRReturn(*block, k.ret.cont, name, maybeLoc);
+                createIRReturn(block, k.ret.cont, name, maybeLoc);
             }
 
             return name;
-        } else {
-            return globalToCPS(pass, *block, sym, maybeLoc, k);
+        }; break;
+
+        case ToCpsEnv::Def::KNOT: {
+            IRName const knotName = def.knotName;
+
+            IRName const name = renameIRName(pass.compiler, knotName);
+            pushIRStmt(pass.compiler, &block->stmts,
+                       IRStmt{maybeLoc, {.knotGet = {.name = name, .knot = knotName}},
+                              IRStmt::KNOT_GET});
+
+            if (k.type == ToCpsCont::RETURN) {
+                createIRReturn(block, k.ret.cont, name, maybeLoc);
+            }
+
+            return name;
+        }; break;
         }
-    }; break;
-
-    case ToCpsFrameDef::KNOT: {
-        IRName const knotName = def.knotName;
-
-        IRName const name = renameIRName(pass.compiler, knotName);
-        pushIRStmt(pass.compiler, &(*block)->stmts,
-                   IRStmt{maybeLoc, {.knotGet = {.name = name, .knot = knotName}},
-                          IRStmt::KNOT_GET});
-
-        if (k.type == ToCpsCont::RETURN) {
-            createIRReturn(*block, k.ret.cont, name, maybeLoc);
-        }
-
-        return name;
-    }; break;
+    } else {
+        return globalToCPS(pass, *block, sym, maybeLoc, k);
     }
 
     assert(false); // Unreachable
@@ -873,7 +736,7 @@ IRName useToCPS(
 }
 
 IRName exprToIR(
-    CPSConv& pass, IRFn* fn, ToCpsEnv const* env, IRBlock** block, ORef expr, ORef maybeLoc,
+    CPSConv& pass, IRFn& fn, ToCpsEnv const& env, IRBlock*& block, ORef expr, ORef maybeLoc,
     ToCpsCont k
 ) {
     if (isHeaped(expr)) {
@@ -919,7 +782,7 @@ IRName exprToIR(
 // Pass API
 // =================================================================================================
 
-ToIRRes topLevelExprToIR(RT const* state, Compiler* compiler, ORef expr, HRef<Loc> loc) {
+ToIRRes topLevelExprToIR(RT const& state, Compiler& compiler, ORef expr, HRef<Loc> loc) {
     CPSConv pass{state, compiler};
 
     IRFn fn = createIRFn(pass.compiler, Default);
@@ -927,16 +790,14 @@ ToIRRes topLevelExprToIR(RT const* state, Compiler* compiler, ORef expr, HRef<Lo
     {
         IRBlock* entryBlock = createIRBlock(pass.compiler, &fn, 0);
 
-        ToCpsEnv env = createToCpsEnv(nullptr);
+        ToCpsEnv env = ToCpsEnv{&compiler.arena, nullptr};
         IRName const self = freshName(pass.compiler);
         pushIRParam(pass.compiler, entryBlock, self);
         IRName const ret = freshName(pass.compiler);
         pushIRParam(pass.compiler, entryBlock, ret);
 
         ToCpsCont const retK = {{.ret = {.cont = ret}}, ToCpsCont::RETURN};
-        exprToIR(pass, &fn, &env, &entryBlock, expr, loc, retK);
-
-        freeToCpsEnv(&env);
+        exprToIR(pass, fn, env, entryBlock, expr, loc, retK);
     }
 
     Slice<Vshs_SyntaxError const> const errSlice = pass.errors();

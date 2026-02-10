@@ -6,6 +6,11 @@ Yet another Lisp.
 
 ## Philosophy
 
+> Lauloi päivät pääksytysten, yhytysten yöt saneli<br/>
+> muinaisia muisteloita, noita syntyjä syviä,<br/>
+> joit' ei laula kaikki lapset, ymmärrä yhet urohot<br/>
+> tällä inhalla iällä, katovalla kannikalla. 
+
 * Make the core as elegant as possible.
 * If we must choose, prioritize speed over space. We anticipate slightly modern
   system requirements of a 64-bit processor and megabytes of RAM. If you must

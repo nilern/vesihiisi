@@ -1,6 +1,7 @@
 vesihiisi
 vesihiisi-dev
 libvesihiisi*
+*.o
 test/*.out
 
 # Qt Creator stuff:

@@ -44,6 +44,7 @@ char const* const typeNames[] = {
     "<knot>",
     "<ns>",
     "<end>",
+    "<pointer>",
     "<input-file>",
     "<fatal-error>",
     "<unbound-error>",
@@ -408,6 +409,8 @@ RT* RT::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* a
     if (!inputFileType) { return nullptr; }
     Type* const endType = tryCreateEmptyType(heap, typeType);
     if (!endType) { return nullptr; }
+    Type* const pointerType = tryCreateFixedType<Pointer, true>(heap, typeType);
+    if (!pointerType) { return nullptr; }
     Type* const fatalErrorType = tryCreateFatalErrorType(heap, typeType);
     if (!fatalErrorType) { return nullptr; }
     Type* const unboundErrorType = tryCreateFixedType<UnboundError, false>(heap, typeType);
@@ -479,6 +482,7 @@ RT* RT::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* a
             .knot = HRef(knotType),
             .ns = HRef(nsType),
             .end = HRef{endType},
+            .pointer = HRef{pointerType},
             .inputFile = HRef{inputFileType},
             .fatalError = HRef(fatalErrorType),
             .unboundError = HRef(unboundErrorType),
@@ -596,6 +600,26 @@ RT* RT::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* a
     PrimopExit::install(*dest);
 
     return dest;
+}
+
+Object* RT::alloc(HRef<Type> type) {
+    Object* obj = heap.tryAlloc(&*type);
+    if (mustCollect(obj)) {
+        auto const typeG = pushRoot(&type);
+        collect(this);
+        obj = heap.allocOrDie(&*type);
+    }
+
+    return obj;
+}
+
+uint64_t typeTag(RT& rt, HRef<Type> type) {
+    assert(!eq(type, Flonum::reify(rt)));
+
+    HRef<Type> const* begin = rt.typesArray + ptrdiff_t(TaggedType::FIXNUM);
+    HRef<Type> const* end = rt.typesArray + ptrdiff_t(TaggedType::FLONUM);
+    auto const it = std::find(begin, end, type);
+    return it != end ? uint64_t(std::distance(begin, it)) : uint64_t(TaggedType::HEAPED);
 }
 
 HRef<Type> typeOf(RT const* state, ORef v) {

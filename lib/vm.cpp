@@ -11,6 +11,9 @@
 #include "namespace.hpp"
 #include "flyweights.hpp"
 
+extern "C" uint64_t callForeign(
+    void* f, bool fRet, uint8_t const* unboxings, ORef const* args, size_t argc);
+
 namespace {
 
 #if !defined(VSHS_COMPUTED_GOTO)
@@ -21,18 +24,18 @@ namespace {
 #endif
 #endif
 
-VMRes run(RT* state, HRef<Closure> self) {
+VMRes run(RT* rt, HRef<Closure> self) {
     // TODO: Debug index & type checks & bytecode verifier
 
     {
         ORef const anyMethod = self->method;
         auto const method = HRef<Method>::fromUnchecked(anyMethod);
         assert(isHeaped(method->code));
-        state->setMethod(method);
-        state->pc = 0;
-        state->regs[calleeReg] = self;
-        state->regs[retContReg] = state->singletons.exit; // Return continuation
-        state->entryRegc = 2;
+        rt->setMethod(method);
+        rt->pc = 0;
+        rt->regs[calleeReg] = self;
+        rt->regs[retContReg] = rt->singletons.exit; // Return continuation
+        rt->entryRegc = 2;
     }
 
 #if VSHS_COMPUTED_GOTO
@@ -55,12 +58,13 @@ VMRes run(RT* state, HRef<Closure> self) {
         &&L_OP_CLOVER,
         // TODO: &&L_OP_OP_CONT_CLOVER / &&L_OP_OP_RESTORE
         &&L_OP_CALL,
-        &&L_OP_TAILCALL
+        &&L_OP_TAILCALL,
+        &&L_OP_FFICALL
     };
 
 #define VM_DISPATCH(opcode) goto* opcode_handlers[opcode];
 #define VM_CASE(opcode) L_##opcode:
-#define VM_CONTINUE VM_DISPATCH((Opcode)state->code[state->pc++])
+#define VM_CONTINUE VM_DISPATCH((Opcode)rt->code[rt->pc++])
 #else
 #define VM_DISPATCH(opcode) switch (opcode)
 #define VM_CASE(opcode) case opcode:
@@ -71,47 +75,47 @@ VMRes run(RT* state, HRef<Closure> self) {
 #if !VSHS_COMPUTED_GOTO
     eval:
 #endif
-        VM_DISPATCH((Opcode)state->code[state->pc++]) {
+        VM_DISPATCH((Opcode)rt->code[rt->pc++]) {
         VM_CASE(OP_MOVE) {
-            uint8_t const destReg = state->code[state->pc++];
-            uint8_t const srcReg = state->code[state->pc++];
+            uint8_t const destReg = rt->code[rt->pc++];
+            uint8_t const srcReg = rt->code[rt->pc++];
 
-            state->regs[destReg] = state->regs[srcReg];
+            rt->regs[destReg] = rt->regs[srcReg];
         }; VM_CONTINUE;
 
         VM_CASE(OP_SWAP) {
-            uint8_t const reg1 = state->code[state->pc++];
-            uint8_t const reg2 = state->code[state->pc++];
+            uint8_t const reg1 = rt->code[rt->pc++];
+            uint8_t const reg2 = rt->code[rt->pc++];
 
-            ORef const tmp = state->regs[reg1];
-            state->regs[reg1] = state->regs[reg2];
-            state->regs[reg2] = tmp;
+            ORef const tmp = rt->regs[reg1];
+            rt->regs[reg1] = rt->regs[reg2];
+            rt->regs[reg2] = tmp;
         }; VM_CONTINUE;
 
         VM_CASE(OP_DEFINE) {
-            uint8_t const constIdx = state->code[state->pc++];
-            uint8_t const srcReg = state->code[state->pc++];
+            uint8_t const constIdx = rt->code[rt->pc++];
+            uint8_t const srcReg = rt->code[rt->pc++];
 
-            ORef c = state->consts[constIdx].get();
-            if (isa<Symbol>(*state, c)) { // Link:
-                c = getVar(state, state->ns, HRef<Symbol>::fromUnchecked(c));
-                auto const cG = state->pushRoot(&c);
+            ORef c = rt->consts[constIdx].get();
+            if (isa<Symbol>(*rt, c)) { // Link:
+                c = getVar(rt, rt->ns, HRef<Symbol>::fromUnchecked(c));
+                auto const cG = rt->pushRoot(&c);
 
-                state->consts[constIdx].set(*state, c);
+                rt->consts[constIdx].set(*rt, c);
             }
             HRef<Var> const var = HRef<Var>::fromUnchecked(c);
 
-            var->val().set(*state, state->regs[srcReg]);
+            var->val().set(*rt, rt->regs[srcReg]);
         }; VM_CONTINUE;
 
         VM_CASE(OP_GLOBAL_SET) {
-            uint8_t const constIdx = state->code[state->pc++];
-            uint8_t const srcReg = state->code[state->pc++];
+            uint8_t const constIdx = rt->code[rt->pc++];
+            uint8_t const srcReg = rt->code[rt->pc++];
 
-            ORef c = state->consts[constIdx].get();
-            if (isa<Symbol>(*state, c)) { // Link:
+            ORef c = rt->consts[constIdx].get();
+            if (isa<Symbol>(*rt, c)) { // Link:
                 auto const name = HRef<Symbol>::fromUnchecked(c);
-                FindVarRes const findRes = findVar(state->ns, name);
+                FindVarRes const findRes = findVar(rt->ns, name);
                 if (findRes.type != FindVarRes::NS_FOUND_VAR) {
                     // FIXME: Signal that this is a "fatal" (i.e. noncontinuable) error as
                     // constructing a working continuation at an arbitrary instruction like this
@@ -120,30 +124,30 @@ VMRes run(RT* state, HRef<Closure> self) {
                     // continuation of the current function; to support stack traces we probably
                     // have to ensure that it does. But that continuation is definitely not a
                     // correct current continuation.
-                    state->regs[calleeReg] = getErrorHandler(state);
-                    state->regs[firstArgReg] = createUnboundError(state, name);
-                    state->entryRegc = firstArgReg + 1;
+                    rt->regs[calleeReg] = getErrorHandler(rt);
+                    rt->regs[firstArgReg] = createUnboundError(rt, name);
+                    rt->entryRegc = firstArgReg + 1;
                     inlineCacheIdx = std::nullopt;
                     goto apply;
                 }
                 c = findRes.var;
-                auto const cG = state->pushRoot(&c);
+                auto const cG = rt->pushRoot(&c);
 
-                state->consts[constIdx].set(*state, c);
+                rt->consts[constIdx].set(*rt, c);
             }
             auto const var = HRef<Var>::fromUnchecked(c);
 
-            var->val().set(*state, state->regs[srcReg]);
+            var->val().set(*rt, rt->regs[srcReg]);
         }; VM_CONTINUE;
 
         VM_CASE(OP_GLOBAL) {
-            uint8_t const destReg = state->code[state->pc++];
-            uint8_t const constIdx = state->code[state->pc++];
+            uint8_t const destReg = rt->code[rt->pc++];
+            uint8_t const constIdx = rt->code[rt->pc++];
 
-            ORef c = state->consts[constIdx].get();
-            if (isa<Symbol>(*state, c)) { // Link:
+            ORef c = rt->consts[constIdx].get();
+            if (isa<Symbol>(*rt, c)) { // Link:
                 HRef<Symbol> const name = HRef<Symbol>::fromUnchecked(c);
-                FindVarRes const findRes = findVar(state->ns, name);
+                FindVarRes const findRes = findVar(rt->ns, name);
                 if (findRes.type != FindVarRes::NS_FOUND_VAR) {
                     // FIXME: Signal that this is a "fatal" (i.e. noncontinuable) error as
                     // constructing a working continuation at an arbitrary instruction like this
@@ -152,55 +156,55 @@ VMRes run(RT* state, HRef<Closure> self) {
                     // continuation of the current function; to support stack traces we probably
                     // have to ensure that it does. But that continuation is definitely not a
                     // correct current continuation.
-                    state->regs[calleeReg] = getErrorHandler(state);
-                    state->regs[firstArgReg] = createUnboundError(state, name);
-                    state->entryRegc = firstArgReg + 1;
+                    rt->regs[calleeReg] = getErrorHandler(rt);
+                    rt->regs[firstArgReg] = createUnboundError(rt, name);
+                    rt->entryRegc = firstArgReg + 1;
                     inlineCacheIdx = std::nullopt;
                     goto apply;
                 }
                 c = findRes.var;
-                auto const cG = state->pushRoot(&c);
+                auto const cG = rt->pushRoot(&c);
 
-                state->consts[constIdx].set(*state, c);
+                rt->consts[constIdx].set(*rt, c);
             }
             auto const var = HRef<Var>::fromUnchecked(c);
 
             ORef const v = var->val().get();
-            if (eq(v, state->singletons.unbound)) {
+            if (eq(v, rt->singletons.unbound)) {
                 assert(false); // FIXME: use of unbound var
             }
-            state->regs[destReg] = v;
+            rt->regs[destReg] = v;
         }; VM_CONTINUE;
 
         VM_CASE(OP_CONST) {
-            uint8_t const destReg = state->code[state->pc++];
-            uint8_t const constIdx = state->code[state->pc++];
+            uint8_t const destReg = rt->code[rt->pc++];
+            uint8_t const constIdx = rt->code[rt->pc++];
 
-            state->regs[destReg] = state->consts[constIdx].get();
+            rt->regs[destReg] = rt->consts[constIdx].get();
         }; VM_CONTINUE;
 
         VM_CASE(OP_SPECIALIZE) {
-            uint8_t const destReg = state->code[state->pc++];
-            uint8_t const constIdx = state->code[state->pc++];
-            uint8_t const typeSetByteCount = state->code[state->pc++];
+            uint8_t const destReg = rt->code[rt->pc++];
+            uint8_t const constIdx = rt->code[rt->pc++];
+            uint8_t const typeSetByteCount = rt->code[rt->pc++];
             size_t typeCount = 0;
             // OPTIMIZE:
             for (size_t i = 0; i < typeSetByteCount; ++i) {
-                typeCount += stdc_count_ones(state->code[state->pc++]);
+                typeCount += stdc_count_ones(rt->code[rt->pc++]);
             }
 
             // OPTIMIZE:
-            HRef<ArrayMut> const types = createArrayMut(state, Fixnum((intptr_t)typeCount));
+            HRef<ArrayMut> const types = createArrayMut(rt, Fixnum((intptr_t)typeCount));
             {
-                size_t const end = state->pc;
+                size_t const end = rt->pc;
                 size_t const start = end - typeSetByteCount;
                 for (size_t byteIdx = 0, typeIdx = 0; byteIdx < typeSetByteCount; ++byteIdx) {
-                    uint8_t const byte = state->code[start + byteIdx];
+                    uint8_t const byte = rt->code[start + byteIdx];
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
                         if ((byte >> (UINT8_WIDTH - 1 - bitIdx)) & 1) {
                             size_t const regIdx = UINT8_WIDTH * byteIdx + bitIdx;
-                            ORef const maybeType = state->regs[regIdx];
-                            if (!isa<Type>(*state, maybeType)) {
+                            ORef const maybeType = rt->regs[regIdx];
+                            if (!isa<Type>(*rt, maybeType)) {
                                 return VMRes{}; // TODO: Signal type error properly
                             }
                             const_cast<ORef*>(types->items().data())[typeIdx++] = maybeType;
@@ -208,175 +212,228 @@ VMRes run(RT* state, HRef<Closure> self) {
                     }
                 }
             }
-            assert(isa<Method>(*state, state->consts[constIdx].get()));
-            HRef<Method> const generic = HRef<Method>::fromUnchecked(state->consts[constIdx].get());
-            HRef<Method> const method = specialize(state, generic, types);
+            assert(isa<Method>(*rt, rt->consts[constIdx].get()));
+            HRef<Method> const generic = HRef<Method>::fromUnchecked(rt->consts[constIdx].get());
+            HRef<Method> const method = specialize(rt, generic, types);
 
-            state->regs[destReg] = method;
+            rt->regs[destReg] = method;
         }; VM_CONTINUE;
 
         VM_CASE(OP_KNOT) {
-            uint8_t const destReg = state->code[state->pc++];
+            uint8_t const destReg = rt->code[rt->pc++];
 
-            state->regs[destReg] = allocKnot(state);
+            rt->regs[destReg] = allocKnot(rt);
         }; VM_CONTINUE;
 
         VM_CASE(OP_KNOT_INIT) {
-            uint8_t const knotReg = state->code[state->pc++];
-            uint8_t const srcReg = state->code[state->pc++];
+            uint8_t const knotReg = rt->code[rt->pc++];
+            uint8_t const srcReg = rt->code[rt->pc++];
 
-            assert(isa(state, state->types.knot, state->regs[knotReg]));
-            auto const knot = HRef<Knot>::fromUnchecked(state->regs[knotReg]);
-            knot->val().set(*state,  state->regs[srcReg]);
+            assert(isa(rt, rt->types.knot, rt->regs[knotReg]));
+            auto const knot = HRef<Knot>::fromUnchecked(rt->regs[knotReg]);
+            knot->val().set(*rt,  rt->regs[srcReg]);
         }; VM_CONTINUE;
 
         VM_CASE(OP_KNOT_GET) {
-            uint8_t const destReg = state->code[state->pc++];
-            uint8_t const knotReg = state->code[state->pc++];
+            uint8_t const destReg = rt->code[rt->pc++];
+            uint8_t const knotReg = rt->code[rt->pc++];
 
-            assert(isa(state, state->types.knot, state->regs[knotReg]));
-            auto const knot = HRef<Knot>::fromUnchecked(state->regs[knotReg]);
-            state->regs[destReg] = knot->val().get();
+            assert(isa(rt, rt->types.knot, rt->regs[knotReg]));
+            auto const knot = HRef<Knot>::fromUnchecked(rt->regs[knotReg]);
+            rt->regs[destReg] = knot->val().get();
         }; VM_CONTINUE;
 
         VM_CASE(OP_BR) {
-            uint16_t displacement = state->code[state->pc++];
-            displacement = (uint16_t)(displacement << UINT8_WIDTH) | state->code[state->pc++];
+            uint16_t displacement = rt->code[rt->pc++];
+            displacement = (uint16_t)(displacement << UINT8_WIDTH) | rt->code[rt->pc++];
 
-            state->pc += displacement;
+            rt->pc += displacement;
         }; VM_CONTINUE;
 
         VM_CASE(OP_BRF) {
-            uint8_t const condReg = state->code[state->pc++];
-            uint16_t displacement = state->code[state->pc++];
-            displacement = (uint16_t)(displacement << UINT8_WIDTH) | state->code[state->pc++];
+            uint8_t const condReg = rt->code[rt->pc++];
+            uint16_t displacement = rt->code[rt->pc++];
+            displacement = (uint16_t)(displacement << UINT8_WIDTH) | rt->code[rt->pc++];
 
-            if (eq(state->regs[condReg], False)) {
-                state->pc += displacement;
+            if (eq(rt->regs[condReg], False)) {
+                rt->pc += displacement;
             }
         }; VM_CONTINUE;
 
         VM_CASE(OP_RET) goto kontinue;
 
         VM_CASE(OP_CLOSURE) {
-            uint8_t const destReg = state->code[state->pc++];
-            uint8_t const methodReg = state->code[state->pc++];
-            uint8_t const cloverSetByteCount = state->code[state->pc++];
+            uint8_t const destReg = rt->code[rt->pc++];
+            uint8_t const methodReg = rt->code[rt->pc++];
+            uint8_t const cloverSetByteCount = rt->code[rt->pc++];
             size_t cloverCount = 0;
             // OPTIMIZE:
             for (size_t i = 0; i < cloverSetByteCount; ++i) {
-                cloverCount += stdc_count_ones(state->code[state->pc++]);
+                cloverCount += stdc_count_ones(rt->code[rt->pc++]);
             }
 
-            HRef<Method> const method = HRef<Method>::fromUnchecked(state->regs[methodReg]);
-            HRef<Closure> const closure = allocClosure(state, method, Fixnum((intptr_t)cloverCount));
+            HRef<Method> const method = HRef<Method>::fromUnchecked(rt->regs[methodReg]);
+            HRef<Closure> const closure = allocClosure(rt, method, Fixnum((intptr_t)cloverCount));
             // TODO: DRY wrt. OP_CALL:
             // OPTIMIZE:
             {
-                size_t const end = state->pc;
+                size_t const end = rt->pc;
                 size_t const start = end - cloverSetByteCount;
                 for (size_t byteIdx = 0, cloverIdx = 0; byteIdx < cloverSetByteCount; ++byteIdx) {
-                    uint8_t const byte = state->code[start + byteIdx];
+                    uint8_t const byte = rt->code[start + byteIdx];
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
                         if ((byte >> (UINT8_WIDTH - 1 - bitIdx)) & 1) {
                             auto const cloverPtr = // `const_cast` for init:
                                 const_cast<ORef*>(closure->clovers().data()) + cloverIdx++;
                             size_t const regIdx = UINT8_WIDTH * byteIdx + bitIdx;
-                            *cloverPtr = state->regs[regIdx];
+                            *cloverPtr = rt->regs[regIdx];
                         }
                     }
                 }
             }
 
-            state->regs[destReg] = closure;
+            rt->regs[destReg] = closure;
         }; VM_CONTINUE;
 
         VM_CASE(OP_CLOVER) {
-            uint8_t const destReg = state->code[state->pc++];
-            uint8_t const closureReg = state->code[state->pc++];
-            uint8_t const cloverIdx = state->code[state->pc++];
+            uint8_t const destReg = rt->code[rt->pc++];
+            uint8_t const closureReg = rt->code[rt->pc++];
+            uint8_t const cloverIdx = rt->code[rt->pc++];
 
             // OPTIMIZE: Separate OP_CONT_CLOVER:
-            ORef const anyClosure = state->regs[closureReg];
-            if (!isa<Closure>(*state, anyClosure)) {
+            ORef const anyClosure = rt->regs[closureReg];
+            if (!isa<Closure>(*rt, anyClosure)) {
                 auto const cont = HRef<Continuation>::fromUnchecked(anyClosure);
-                state->regs[destReg] = cont->saves()[cloverIdx];
+                rt->regs[destReg] = cont->saves()[cloverIdx];
             } else {
                 auto const closure = HRef<Closure>::fromUnchecked(anyClosure);
-                state->regs[destReg] = closure->clovers()[cloverIdx];
+                rt->regs[destReg] = closure->clovers()[cloverIdx];
             }
         }; VM_CONTINUE;
 
         VM_CASE(OP_CALL) {
-            inlineCacheIdx = std::optional{state->code[state->pc++]};
-            uint8_t const regCount  = state->code[state->pc++];
-            uint8_t const cloverSetByteCount = state->code[state->pc++];
+            inlineCacheIdx = std::optional{rt->code[rt->pc++]};
+            uint8_t const regCount  = rt->code[rt->pc++];
+            uint8_t const cloverSetByteCount = rt->code[rt->pc++];
             size_t cloverCount = 0;
             // OPTIMIZE:
             for (size_t i = 0; i < cloverSetByteCount; ++i) {
-                cloverCount += stdc_count_ones(state->code[state->pc++]);
+                cloverCount += stdc_count_ones(rt->code[rt->pc++]);
             }
 
-            HRef<Method> const callerMethod = HRef<Method>::fromUnchecked(state->method);
+            HRef<Method> const callerMethod = HRef<Method>::fromUnchecked(rt->method);
             HRef<Continuation> const cont = allocContinuation(
-                state, callerMethod, Fixnum((intptr_t)state->pc), Fixnum((intptr_t)cloverCount)
+                rt, callerMethod, Fixnum((intptr_t)rt->pc), Fixnum((intptr_t)cloverCount)
             );
             // TODO: DRY wrt. OP_CLOSURE:
             // OPTIMIZE:
             {
-                size_t const end = state->pc;
+                size_t const end = rt->pc;
                 size_t const start = end - cloverSetByteCount;
                 for (size_t byteIdx = 0, cloverIdx = 0; byteIdx < cloverSetByteCount; ++byteIdx) {
-                    uint8_t const byte = state->code[start + byteIdx];
+                    uint8_t const byte = rt->code[start + byteIdx];
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
                         if ((byte >> (UINT8_WIDTH - 1 - bitIdx)) & 1) {
                             auto const cloverPtr = // `const_cast` for init:
                                 const_cast<ORef*>(cont->saves().data()) + cloverIdx++;
                             size_t const regIdx = UINT8_WIDTH * byteIdx + bitIdx;
-                            *cloverPtr = state->regs[regIdx];
+                            *cloverPtr = rt->regs[regIdx];
                         }
                     }
                 }
             }
 
-            state->regs[retContReg] = cont;
+            rt->regs[retContReg] = cont;
 
-            state->entryRegc = regCount;
+            rt->entryRegc = regCount;
             goto apply;
         }; VM_CONTINUE;
 
         VM_CASE(OP_TAILCALL) {
-            inlineCacheIdx = std::optional{state->code[state->pc++]};
-            uint8_t const regCount = state->code[state->pc++];
+            inlineCacheIdx = std::optional{rt->code[rt->pc++]};
+            uint8_t const regCount = rt->code[rt->pc++];
 
-            state->entryRegc = regCount;
+            rt->entryRegc = regCount;
             goto apply;
+        }; VM_CONTINUE;
+
+        VM_CASE(OP_FFICALL) {
+            uint8_t const destReg = rt->code[rt->pc++];
+            uint8_t const codomainReg = rt->code[rt->pc++];
+            uint8_t const argc = rt->code[rt->pc++];
+            uint8_t const unboxingsByteCount = rt->code[rt->pc++];
+            assert(1 + argc <= unboxingsByteCount * UINT8_WIDTH);
+            uint8_t const* unboxings = &rt->code[rt->pc];
+            rt->pc += unboxingsByteCount;
+
+            ORef const* codomainPtr = &rt->regs[codomainReg];
+            ORef const anyCodomain = *codomainPtr;
+            if (!isa<Type>(*rt, anyCodomain)) { // TODO: DRY type checks like this
+                rt->regs[calleeReg] = getErrorHandler(rt);
+                rt->regs[firstArgReg] = createTypeError(rt, Type::reify(*rt), anyCodomain);
+                rt->entryRegc = firstArgReg + 1;
+                inlineCacheIdx = std::nullopt;
+                goto apply;
+            }
+            auto const codomain = HRef<Type>::fromUnchecked(anyCodomain);
+            bool const fRet = eq(codomain, rt->types.fixnum);
+            if (codomain->isFlex.val()) { PANIC("Flex FFI return type"); } // TODO: Proper error
+            if (codomain->minSize.val() != sizeof(uint64_t)) {
+                PANIC("FFI return type size %ld != word size %lu\n",
+                      codomain->minSize.val(), sizeof(uint64_t));
+            }
+            ORef const* fPtr = codomainPtr + 1;
+            ORef const anyF = *fPtr;
+            if (!isa<Pointer>(*rt, anyF)) { // TODO: DRY type checks like this
+                rt->regs[calleeReg] = getErrorHandler(rt);
+                rt->regs[firstArgReg] = createTypeError(rt, Pointer::reify(*rt), anyF);
+                rt->entryRegc = firstArgReg + 1;
+                inlineCacheIdx = std::nullopt;
+                goto apply;
+            }
+            auto const f = HRef<Pointer>::fromUnchecked(anyF);
+            ORef const* args = fPtr + 1;
+
+            uint64_t const rawRes = callForeign(f->val, fRet, unboxings, args, argc);
+
+            auto const res = [&]() -> ORef {
+                if (fRet) { return Flonum{std::bit_cast<double>(rawRes)}; }
+
+                auto const boxRet = bool(unboxings[0] & 0b1);
+                if(!boxRet) { return tag(*rt, codomain, rawRes); }
+
+                Object* const obj = rt->alloc(codomain);
+                *reinterpret_cast<uint64_t*>(obj) = rawRes;
+                return HRef{obj};
+            }();
+
+            rt->regs[destReg] = res;
         }; VM_CONTINUE;
         }
 
     apply: for (;/*ever*/;) {
-        ORef const originalCallee = state->regs[calleeReg];
+        ORef const originalCallee = rt->regs[calleeReg];
         // Do not need return value here as a call is set up even in case of error:
-        calleeClosure(state, originalCallee, inlineCacheIdx);
+        calleeClosure(rt, originalCallee, inlineCacheIdx);
 
         auto method = [&](){
-            assert(isa<Closure>(*state, state->regs[calleeReg]));
-            auto closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
-            assert(isa<Method>(*state, closure->method));
+            assert(isa<Closure>(*rt, rt->regs[calleeReg]));
+            auto closure = HRef<Closure>::fromUnchecked(rt->regs[calleeReg]);
+            assert(isa<Method>(*rt, closure->method));
             return HRef<Method>::fromUnchecked(closure->method);
         }();
         if (isHeaped(method->code)) { // Bytecode method:
             // Check domain:
-            switch (checkDomain(state)) {
+            switch (checkDomain(rt)) {
             case DomainCheckRes::OK: break;
 
             case DomainCheckRes::MISSPECULATION: {
                 // `originalCallee` is valid since speculation does not allocate or do write
                 // barriers:
-                state->regs[calleeReg] = originalCallee;
+                rt->regs[calleeReg] = originalCallee;
                 // These writes do invalidate `originalCallee`:
-                state->consts[*inlineCacheIdx].set(*state, Default);
-                state->consts[*inlineCacheIdx + 1].set(*state, Default);
+                rt->consts[*inlineCacheIdx].set(*rt, Default);
+                rt->consts[*inlineCacheIdx + 1].set(*rt, Default);
                 inlineCacheIdx = std::nullopt;
             }; continue;
 
@@ -388,25 +445,25 @@ VMRes run(RT* state, HRef<Closure> self) {
             if (method->hasVarArg.val()) { // Reify varargs:
                 size_t const arity = method->domain().size();
                 size_t const minArity = arity - 1;
-                uint8_t const callArgc = state->entryRegc - firstArgReg;
+                uint8_t const callArgc = rt->entryRegc - firstArgReg;
                 size_t const varargCount = callArgc - minArity;
 
                 HRef<ArrayMut> const varargsRef =
-                    createArrayMut(state, Fixnum((intptr_t)varargCount));
+                    createArrayMut(rt, Fixnum((intptr_t)varargCount));
                 memcpy((void*)varargsRef->flexData(),
-                       state->regs + firstArgReg + minArity, varargCount * sizeof(ORef));
+                       rt->regs + firstArgReg + minArity, varargCount * sizeof(ORef));
 
-                state->regs[firstArgReg + minArity] = varargsRef;
+                rt->regs[firstArgReg + minArity] = varargsRef;
             }
 
             // Jump to beginning:
-            state->setMethod(method);
-            state->pc = 0;
+            rt->setMethod(method);
+            rt->pc = 0;
 
             VM_CONTINUE;
         } else {
             applyPrimop:
-            switch (method->nativeCode(state)) {
+            switch (method->nativeCode(rt)) {
             case PrimopRes::CONTINUE: // Returned:
                 goto kontinue;
 
@@ -417,16 +474,16 @@ VMRes run(RT* state, HRef<Closure> self) {
             // TODO: DRY with loop head:
             case PrimopRes::TAILAPPLY: {
                 method = [&](){
-                    assert(isa<Closure>(*state, state->regs[calleeReg]));
-                    auto closure = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
-                    assert(isa<Method>(*state, closure->method));
+                    assert(isa<Closure>(*rt, rt->regs[calleeReg]));
+                    auto closure = HRef<Closure>::fromUnchecked(rt->regs[calleeReg]);
+                    assert(isa<Method>(*rt, closure->method));
                     return HRef<Method>::fromUnchecked(closure->method);
                 }();
                 if (isHeaped(method->code)) {
-                    state->setMethod(method);
-                    state->pc = 0;
+                    rt->setMethod(method);
+                    rt->pc = 0;
 
-                    state->domainChecking = RT::DomainChecking::CHECK;
+                    rt->domainChecking = RT::DomainChecking::CHECK;
 
                     VM_CONTINUE;
                 } else {
@@ -437,10 +494,10 @@ VMRes run(RT* state, HRef<Closure> self) {
             case PrimopRes::MISSPECULATION: {
                 // `originalCallee` is valid since speculation does not allocate or do write
                 // barriers:
-                state->regs[calleeReg] = originalCallee;
+                rt->regs[calleeReg] = originalCallee;
                 // These writes do invalidate `originalCallee`:
-                state->consts[*inlineCacheIdx].set(*state, Default);
-                state->consts[*inlineCacheIdx + 1].set(*state, Default);
+                rt->consts[*inlineCacheIdx].set(*rt, Default);
+                rt->consts[*inlineCacheIdx + 1].set(*rt, Default);
                 inlineCacheIdx = std::nullopt;
             }; break;
 
@@ -454,15 +511,15 @@ VMRes run(RT* state, HRef<Closure> self) {
     }
 
     kontinue: {
-        assert(isa<Continuation>(*state, state->regs[retContReg]));
-        auto const ret = HRef<Continuation>::fromUnchecked(state->regs[retContReg]);
+        assert(isa<Continuation>(*rt, rt->regs[retContReg]));
+        auto const ret = HRef<Continuation>::fromUnchecked(rt->regs[retContReg]);
         ORef const anyMethod = ret->method;
         if (isHeaped(anyMethod)) { // Return to bytecode method:
-            assert(isa<Method>(*state, anyMethod));
-            state->setMethod(HRef<Method>::fromUnchecked(anyMethod));
-            state->pc = (size_t)ret->pc.val();
+            assert(isa<Method>(*rt, anyMethod));
+            rt->setMethod(HRef<Method>::fromUnchecked(anyMethod));
+            rt->pc = (size_t)ret->pc.val();
         } else { // Exit:
-            return VMRes{.val = state->regs[retReg], .success = true};
+            return VMRes{.val = rt->regs[retReg], .success = true};
         }
 
         VM_CONTINUE;

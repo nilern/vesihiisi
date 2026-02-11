@@ -10,7 +10,7 @@ namespace {
 
 #define REG_COUNT 256
 
-#define BOOTSTRAP_TYPE_COUNT 32
+#define BOOTSTRAP_TYPE_COUNT 33
 #define BOOTSTRAP_SINGLETON_COUNT 6
 
 struct NamedTypes {
@@ -41,6 +41,7 @@ struct NamedTypes {
     HRef<Type> knot;
     HRef<Type> ns;
     HRef<Type> end;
+    HRef<Type> pointer;
     HRef<Type> inputFile;
     HRef<Type> fatalError;
     HRef<Type> unboundError;
@@ -126,6 +127,8 @@ struct RT {
         code = HRef<ByteArray>::fromUnchecked(v->code)->flexData();
         consts = HRef<ArrayMut>::fromUnchecked(v->consts)->itemsMut().data();
     }
+
+    Object* alloc(HRef<Type> type);
 
 private:
     RT(Heap heap, NamedTypes types, NamedSingletons singletons, HRef<Namespace> ns,

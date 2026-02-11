@@ -65,6 +65,8 @@ HRef<Type> Namespace::reify(RT const& state) { return state.types.ns; }
 
 HRef<Type> End::reify(RT const& state) { return state.types.end; }
 
+HRef<Type> Pointer::reify(RT const& state) { return state.types.pointer; }
+
 HRef<Type> InputFile::reify(RT const& state) { return state.types.inputFile; }
 
 HRef<Type> FatalError::reify(RT const& state) { return state.types.fatalError; }

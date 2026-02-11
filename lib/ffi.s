@@ -6,7 +6,7 @@
 	.globl	callForeign
 	.type	callForeign, @function
 # uint64_t callForeign(
-#	void (*f)(..), bool fRet, uint8_t const* unboxings, ORef const* args, size_t argc)
+#	void (*f)(), bool fRet, uint8_t const* unboxings, ORef const* args, size_t argc)
 callForeign:
 	.cfi_startproc
 	endbr64
@@ -31,7 +31,7 @@ callForeign:
 
 .macro marshal reg, i, unboxed
 	and \reg, r13
-	test BYTE PTR \i[rbp], 1 << \i
+        test BYTE PTR ((\i + 1) / 8)[rbp], 1 << ((\i + 1) % 8)
 	je \unboxed					# Does not need unboxing load?
 	mov \reg, QWORD PTR [\reg]
 \unboxed:
@@ -56,7 +56,7 @@ callForeign:
 .arg0f:
 	marshalFlo xmm0, rdi
 
-arg1: # `args[1]`
+.arg1: # `args[1]`
 	cmp r8, 1
 	je .doCallForeign
 	mov rsi, QWORD PTR 1[r10]
@@ -94,3 +94,5 @@ arg1: # `args[1]`
 	pop rbp
 	ret
 	.cfi_endproc
+
+	.section .note.GNU-stack,"",@progbits

@@ -38,8 +38,9 @@ typedef enum Opcode : uint8_t {
     OP_CLOVER,      // rx = clover rx i
     // TODO: OP_CONT_CLOVER / OP_RESTORE
     OP_CALL,        // call c? n #bi*
-    OP_TAILCALL     // tailcall c? n TODO: Encode as call with 0 closes (nontail call always saves
+    OP_TAILCALL,    // tailcall c? n TODO: Encode as call with 0 closes (nontail call always saves
                     // at least ret cont)?
+    OP_FFICALL      // rx : ry = fficall n #bi*
 } Opcode;
 
 // Calling convention:

@@ -80,7 +80,7 @@ public:
 
     void skipDisplacement();
 
-    void skipRegBits();
+    void skipInstrBitmap();
 
     void skipOperands(uint8_t codeByte);
 
@@ -88,7 +88,7 @@ public:
 
     void disassembleDisplacement(FILE* dest);
 
-    void disassembleRegBits(FILE* dest);
+    void disassembleInstrBitmap(FILE* dest);
 
     void disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t codeByte);
 };
@@ -172,7 +172,7 @@ void Disassembler::skipDisplacement() {
     next();
 }
 
-void Disassembler::skipRegBits() {
+void Disassembler::skipInstrBitmap() {
     uint8_t const byteCount = next().val.codeByte;
     for (size_t j = 0; j < byteCount; ++j) { next(); }
 }
@@ -212,7 +212,7 @@ void Disassembler::skipOperands(uint8_t codeByte) {
     case OP_SPECIALIZE: {
         next();
         next();
-        skipRegBits();
+        skipInstrBitmap();
     }; break;
 
     case OP_KNOT: {
@@ -243,7 +243,7 @@ void Disassembler::skipOperands(uint8_t codeByte) {
     case OP_CLOSURE: {
         next();
         next();
-        skipRegBits();
+        skipInstrBitmap();
     }; break;
 
     case OP_CLOVER: {
@@ -255,12 +255,19 @@ void Disassembler::skipOperands(uint8_t codeByte) {
     case OP_CALL: {
         next();
         next();
-        skipRegBits();
+        skipInstrBitmap();
     }; break;
 
     case OP_TAILCALL: {
         next();
         next();
+    }; break;
+
+    case OP_FFICALL: {
+        next();
+        next();
+        next();
+        skipInstrBitmap();
     }; break;
     }
 }
@@ -274,7 +281,7 @@ void Disassembler::disassembleDisplacement(FILE* dest) {
     fprintf(dest, "%u", displacement);
 }
 
-void Disassembler::disassembleRegBits(FILE* dest) {
+void Disassembler::disassembleInstrBitmap(FILE* dest) {
     uint8_t const byteCount = next().val.codeByte;
     if (byteCount > 0) { fprintf(dest, "#b"); }
     for (size_t j = 0; j < byteCount; ++j) {
@@ -362,7 +369,7 @@ void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t co
         fprintf(dest, "%u ", constIdx);
         ORef const c = consts[constIdx]; // FIXME: Bounds check
 
-        disassembleRegBits(dest);
+        disassembleInstrBitmap(dest);
 
         fputc('\n', dest);
 
@@ -410,7 +417,7 @@ void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t co
         fprintf(dest, " = closure ");
         disassembleReg(dest, next().val.codeByte);
         putc(' ', dest);
-        disassembleRegBits(dest);
+        disassembleInstrBitmap(dest);
     }; break;
 
     case OP_CLOVER: {
@@ -424,13 +431,21 @@ void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t co
         auto const ci = next().val.codeByte;
         auto const regc = next().val.codeByte;
         fprintf(dest, "call %u? %u ", ci, regc);
-        disassembleRegBits(dest);
+        disassembleInstrBitmap(dest);
     }; break;
 
     case OP_TAILCALL: {
         auto const ci = next().val.codeByte;
         auto const regc = next().val.codeByte;
         fprintf(dest, "tailcall %u? %u ", ci, regc);
+    }; break;
+
+    case OP_FFICALL: {
+        disassembleReg(dest, next().val.codeByte);
+        fputs(" : ", dest);
+        disassembleReg(dest, next().val.codeByte);
+        fprintf(dest, " = fficall %u ", next().val.codeByte);
+        disassembleInstrBitmap(dest);
     }; break;
     }
 }

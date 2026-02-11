@@ -39,9 +39,9 @@ test: test/test_heap.out test/test_arena.out test/test_bitset.out test/test_spar
 vesihiisi: main.c libvesihiisi.a
 	cc $(PROD_C_FLAGS) $< -L. $(PROD_LINK_LIBS) -o $@
 
-libvesihiisi.a: libvesihiisi.o
+libvesihiisi.a: libvesihiisi.o ffi.o
 	cd deps/utf8proc; make
-	ar -crs $@ $< deps/utf8proc/utf8proc.o
+	ar -crs $@ $^ deps/utf8proc/utf8proc.o
 
 libvesihiisi.o: $(LIB_SRCS)
 	c++ -c $(PROD_CPP_FLAGS) -o $@ lib/vesihiisi.cpp
@@ -49,12 +49,15 @@ libvesihiisi.o: $(LIB_SRCS)
 vesihiisi-dev: main.c libvesihiisi-dev.a
 	cc $(DEV_C_FLAGS) $< -L. $(DEV_LINK_LIBS) -o $@
 
-libvesihiisi-dev.a: libvesihiisi-dev.o
+libvesihiisi-dev.a: libvesihiisi-dev.o ffi.o
 	cd deps/utf8proc; make
-	ar -crs $@ $< deps/utf8proc/utf8proc.o
+	ar -crs $@ $^ deps/utf8proc/utf8proc.o
 
 libvesihiisi-dev.o: $(LIB_SRCS)
 	c++ -c $(DEV_CPP_FLAGS) -o $@ lib/vesihiisi.cpp
+
+ffi.o: lib/ffi.s
+	as -o $@ $<
 
 test/%.out: test/%.cpp $(LIB_SRCS)
 	c++ $(TEST_CPP_FLAGS) -o $@ $<
@@ -65,3 +68,4 @@ clean:
 	rm -f vesihiisi-dev
 	rm -f libvesihiisi*
 	rm -f test/*.out
+	rm -f *.o

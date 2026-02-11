@@ -214,6 +214,17 @@ private:
     constexpr explicit Bool(uint64_t t_bits) : Scalar{t_bits} {}
 };
 
+/// Get type tag for `type`.
+/// @pre `type != Flonum::reify(rt)`
+uint64_t typeTag(RT& rt, HRef<Type> type);
+
+/// Tag `bits` with tag of `type`.
+/// @pre `type != Flonum::reify(rt)`
+inline ORef tag(RT& rt, HRef<Type> type, uint64_t bits) {
+    uint64_t const tag = typeTag(rt, type);
+    return ORef{tag | bits};
+}
+
 inline bool isHeaped(ORef v) {
     return v.bits != nonFlonumTag // Not an actual NaN
         && (v.bits & tagMask) == heapedTag;
@@ -626,6 +637,12 @@ public:
 /// FIXME: Should have zero size but a byte is forced upon us :(
 struct End : public FixedObject<End> {
     [[maybe_unused]]
+    static HRef<Type> reify(struct RT const& state);
+};
+
+struct Pointer : public FixedObject<Pointer> {
+    void* val;
+
     static HRef<Type> reify(struct RT const& state);
 };
 

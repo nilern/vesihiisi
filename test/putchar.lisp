@@ -1,4 +1,4 @@
-(define libc (open-foreign-library "libc.so.6"))
+(define libc (open-foreign-library #f))
 
 (define putchar
   (let ((putchar (get-foreign libc "putchar")))

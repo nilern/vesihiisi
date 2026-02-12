@@ -600,6 +600,7 @@ RT* RT::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* a
     PrimopExit::install(*dest);
     PrimopOpenForeignLibrary::install(*dest);
     PrimopCloseForeignLibrary::install(*dest);
+    PrimopGetForeign::install(*dest);
 
     return dest;
 }

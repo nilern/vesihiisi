@@ -1197,4 +1197,25 @@ PrimopRes PrimopCloseForeignLibrary::uncheckedInvoke(RT* rt) {
     return PrimopRes::CONTINUE; // Incidentally returns the (now possibly invalid) dylib handle
 }
 
+// TODO: Non-POSIX support:
+PrimopRes PrimopGetForeign::uncheckedInvoke(RT* rt) {
+    auto const dylib = HRef<Pointer>::fromUnchecked(rt->regs[firstArgReg]);
+    auto const name = HRef<String>::fromUnchecked(rt->regs[firstArgReg + 1]);
+
+    // OPTIMIZE: Avoid copy:
+    Str const nameStr = name->str();
+    auto const cName = new char[nameStr.len + 1];
+    std::copy(nameStr.data, nameStr.data + nameStr.len, cName);
+    cName[nameStr.len] = '\0';
+
+    dlerror(); // Clear error
+    void* const ptr = dlsym(dylib->val, cName);
+    delete [] cName;
+    char const* const err = dlerror();
+    if (err) { PANIC("TODO: %s", err); }
+
+    rt->regs[retReg] = Pointer::create(*rt, ptr);
+    return PrimopRes::CONTINUE;
+}
+
 } // namespace

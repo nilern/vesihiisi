@@ -411,4 +411,10 @@ struct PrimopCloseForeignLibrary : public FixedArityPrimop<PrimopCloseForeignLib
     static PrimopRes uncheckedInvoke(RT* state);
 };
 
+// TODO: A proper dylib type instead of `Pointer`
+struct PrimopGetForeign : public FixedArityPrimop<PrimopGetForeign, Pointer, String> {
+    static constexpr uint8_t name[] = "get-foreign";
+    static PrimopRes uncheckedInvoke(RT* state);
+};
+
 } // namespace

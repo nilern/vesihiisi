@@ -49,23 +49,26 @@ struct Res {
     };
     bool success;
 
-    explicit Res(T t_val) : val{t_val}, success{true} {}
-    explicit Res(Err t_err) : err{t_err}, success{false} {}
+    explicit Res(T&& t_val) : val{std::move(t_val)}, success{true} {}
+    explicit Res(T const& t_val) : val{t_val}, success{true} {
+        static_assert(std::is_trivially_copyable<T>{}());
+    }
+
+    explicit Res(Err&& t_err) : err{std::move(t_err)}, success{false} {}
+    explicit Res(Err const& t_err) : err{t_err}, success{false} {
+        static_assert(std::is_trivially_copyable<Err>{}());
+    }
 };
 
 #define TRY(ResultType, expr) \
-    ({auto const TRY_IMPL_result = (expr); \
-      if (!TRY_IMPL_result.success) { return ResultType{TRY_IMPL_result.err}; } \
-      TRY_IMPL_result.val;})
+    ({auto TRY_IMPL_result = (expr); \
+      if (!TRY_IMPL_result.success) { return ResultType{std::move(TRY_IMPL_result.err)}; } \
+      std::move(TRY_IMPL_result.val);})
 
 #define TRY_NULLOPT_TO_FALSE(expr) \
     ({auto const TRY_NULLOPT_TO_FALSE_IMPL_result = (expr); \
       if (!TRY_NULLOPT_TO_FALSE_IMPL_result) { return false; } \
       std::move(*TRY_NULLOPT_TO_FALSE_IMPL_result);})
-
-typedef void (*SwapFn)(void* x, void* y);
-
-void reverse(void* arr, size_t count, size_t size, SwapFn swap);
 
 template<typename T>
 struct Slice {

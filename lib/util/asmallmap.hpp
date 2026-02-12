@@ -5,8 +5,9 @@
 #include "avec.hpp"
 
 template<typename K, typename V> requires
-    (std::is_trivially_copyable<K>{}()) && std::equality_comparable<K>
-    && (std::is_trivially_copyable<V>{}())
+    (std::is_trivially_destructible<K>{}()) && (std::is_trivially_copyable<K>{}())
+            && std::equality_comparable<K>
+    && (std::is_trivially_destructible<V>{}()) && (std::is_trivially_copyable<V>{}())
 class ASmallMap {
     struct Entry {
         K key;

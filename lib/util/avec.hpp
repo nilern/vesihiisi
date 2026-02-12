@@ -10,7 +10,9 @@
 
 namespace {
 
-template<typename T> requires std::is_trivially_copyable_v<T>
+template<typename T> requires
+    (std::is_trivially_destructible<T>{}())
+    && (std::is_trivially_move_constructible<T>{}()) && (std::is_trivially_move_assignable<T>{}())
 class AVec {
     T* start_;
     T* end_;
@@ -39,6 +41,8 @@ public:
     }
 
     AVec<T> clone() const {
+        static_assert(std::is_trivially_copyable<T>{}());
+
         size_t const cloneCap = cap();
         auto const data = static_cast<decltype(start_)>(amalloc(arena_, cloneCap * sizeof *start_));
         std::copy(start_, end_, data);
@@ -70,7 +74,17 @@ public:
         return start_[i];
     }
 
-    void push(T v) {
+    void push(T&& v) {
+        if (end_ == capEnd_) {
+            grow();
+        }
+
+        *end_++ = std::move(v);
+    }
+
+    void push(T const& v) {
+        static_assert(std::is_trivially_copyable<T>{}());
+
         if (end_ == capEnd_) {
             grow();
         }
@@ -78,13 +92,13 @@ public:
         *end_++ = v;
     }
 
-    std::optional<T> peek() const {
-        return count() > 0 ? std::optional{*(end_ - 1)} : std::nullopt;
+    std::optional<T const*> peek() const {
+        return count() > 0 ? std::optional{end_ - 1} : std::nullopt;
     }
 
     std::optional<T> pop() {
         if (count() == 0) { return std::nullopt; }
-        return std::optional{*--end_};
+        return std::optional{std::move(*--end_)};
     }
 
     using iterator = T*;
@@ -102,8 +116,9 @@ private:
         size_t const currCap = cap();
         size_t const newCap = currCap + currCap / 2;
 
-        start_ = static_cast<decltype(start_)>(
-            arealloc(arena_, start_, currCap * sizeof *start_, newCap * sizeof *start_));
+        auto newData = static_cast<decltype(start_)>(amalloc(arena_, newCap * sizeof *start_));
+        std::move(start_, end_, newData);
+        start_ = newData;
         end_ = start_ + currCount;
         capEnd_ = start_ + newCap;
     }

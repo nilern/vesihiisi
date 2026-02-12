@@ -73,7 +73,7 @@ public:
 
     void emitRegBits(std::span<IRName const> names, bool specializeHack);
 
-    void emitClose(Args const& args) { emitRegBits(std::span{args.names, args.count}, false); }
+    void emitClose(std::span<IRName const> args) { emitRegBits(args, false); }
 
     uint8_t freshConstIndex(MethodBuilder::Const c);
 

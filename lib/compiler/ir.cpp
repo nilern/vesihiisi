@@ -5,9 +5,6 @@
 
 namespace {
 
-// OPTIMIZE: As simple and fast as possible but actually a terrible hash:
-inline size_t irNameHash(IRName name) { return name.index; }
-
 IRName renameSymbolImpl(Compiler* compiler, ORef maybeSym) {
     size_t const idx = compiler->nameSyms.count();
     compiler->nameSyms.push(maybeSym);
@@ -30,9 +27,8 @@ IRName renameIRName(Compiler* compiler, IRName name) {
 bool markIRBlock(RT* state, struct IRBlock* block);
 
 bool markIRFn(RT* state, IRFn* fn) {
-    size_t const blockCount = fn->blockCount;
-    for (size_t i = 0; i < blockCount; ++i) {
-        if (!markIRBlock(state, fn->blocks[i])) { return false; }
+    for (IRBlock* block : fn->blocks) {
+        if (!markIRBlock(state, block)) { return false; }
     }
 
     fn->maybeName = TRY_NULLOPT_TO_FALSE(state->heap.mark(fn->maybeName));
@@ -43,33 +39,13 @@ bool markIRFn(RT* state, IRFn* fn) {
 void assertIRBlockInTospace(RT const* state, struct IRBlock const* block);
 
 void assertIRFnInTospace(RT const* state, IRFn const* fn) {
-    size_t const blockCount = fn->blockCount;
-    for (size_t i = 0; i < blockCount; ++i) {
-        assertIRBlockInTospace(state, fn->blocks[i]);
+    for (IRBlock* block : fn->blocks) {
+        assertIRBlockInTospace(state, block);
     }
 
     if (isHeaped(fn->maybeName)) {
         assert(state->heap.evacuated(&*HRef<Object>::fromUnchecked(fn->maybeName)));
     }
-}
-
-Args createArgs(Compiler* compiler) {
-    size_t const cap = 2;
-    IRName* names = (IRName*)amalloc(&compiler->arena, cap * sizeof *names);
-
-    return Args{.names = names, .count = 0, .cap = cap};
-}
-
-void pushArg(Compiler* compiler, Args* args, IRName arg) {
-    if (args->count == args->cap) {
-        size_t const newCap = args->cap + args->cap / 2;
-        args->names =
-            (IRName*)arealloc(&compiler->arena, args->names, args->cap * sizeof *args->names,
-                                newCap * sizeof *args->names);
-        args->cap = newCap;
-    }
-
-    args->names[args->count++] = arg;
 }
 
 [[nodiscard]]
@@ -156,64 +132,29 @@ void assertIRTransferInTospace([[maybe_unused]] RT const& state, IRTransfer cons
     }
 }
 
-Callers createCallers(Compiler* compiler, size_t cap) {
-    if (cap < 2) { cap = 2; }
-    IRLabel* const vals = (IRLabel*)amalloc(&compiler->arena, cap * sizeof *vals);
-    return Callers{.vals = vals, .count = 0, .cap = cap};
-}
-
-Stmts newStmtsWithCap(Compiler* compiler, size_t cap) {
-    if (cap < 2) { cap = 2; }
-    IRStmt* const vals = (IRStmt*)amalloc(&compiler->arena, cap * sizeof *vals);
-    return Stmts{.vals = vals, .count = 0, .cap = cap};
-}
-
-inline Stmts newStmts(Compiler* compiler) { return newStmtsWithCap(compiler, 2); }
-
 bool markIRBlock(RT* state, IRBlock* block) {
-    size_t stmtCount = block->stmts.count;
-    for (size_t i = 0; i < stmtCount; ++i) {
-        if (!markIRStmt(state, &block->stmts.vals[i])) { return false; }
+    for (IRStmt& stmt : block->stmts) {
+        if (!markIRStmt(state, &stmt)) { return false; }
     }
 
     return markIRTransfer(*state, block->transfer);
 }
 
 void assertIRBlockInTospace(RT const* state, IRBlock const* block) {
-    size_t stmtCount = block->stmts.count;
-    for (size_t i = 0; i < stmtCount; ++i) {
-        assertIRStmtInTospace(state, &block->stmts.vals[i]);
+    for (IRStmt const& stmt : block->stmts) {
+        assertIRStmtInTospace(state, &stmt);
     }
 
     assertIRTransferInTospace(*state, block->transfer);
 }
 
-void pushIRStmt(Compiler* compiler, Stmts* stmts, IRStmt stmt) {
-    if (stmts->count == stmts->cap) {
-        size_t const newCap = stmts->cap + (stmts->cap >> 1);
-        stmts->vals =
-            (IRStmt*)arealloc(&compiler->arena, stmts->vals, stmts->cap * sizeof *stmts->vals,
-                                newCap * sizeof *stmts->vals);
-        stmts->cap = newCap;
-    }
-
-    stmts->vals[stmts->count++] = stmt;
-}
-
-IRFn createIRFn(Compiler* compiler, ORef maybeName) {
-    size_t const blockCap = 2;
-    IRBlock** const blocks = (IRBlock**)amalloc(&compiler->arena, blockCap * sizeof *blocks);
-
-    return IRFn{
-        .blocks = blocks,
-        .blockCount = 0,
-        .blockCap = blockCap,
-
-        .maybeName = maybeName,
-        .domain = IRDomain{.vals = nullptr, .count = 0, .cap = 0},
-        .hasVarArg = false
-    };
-}
+IRFn::IRFn(Arena* t_arena, ORef t_maybeName) :
+    blocks{t_arena},
+    maybeName{t_maybeName},
+    domain{.vals = nullptr, .count = 0, .cap = 0},
+    hasVarArg{false},
+    arena{t_arena}
+{}
 
 void setParamType(Compiler* compiler, IRDomain* domain, size_t idx, IRName typeName) {
     if (!domain->vals) {
@@ -239,7 +180,6 @@ void setParamType(Compiler* compiler, IRDomain* domain, size_t idx, IRName typeN
     domain->count = idx + 1;
 }
 
-
 void completeIRDomain(Compiler *compiler, IRDomain *domain, size_t arity) {
     if (domain->vals) {
         if (arity > domain->cap) {
@@ -257,105 +197,74 @@ void completeIRDomain(Compiler *compiler, IRDomain *domain, size_t arity) {
     }
 }
 
-IRBlock* createIRBlock(Compiler* compiler, IRFn* fn, size_t callerCap) {
-    Callers const callers = createCallers(compiler, callerCap);
-
-    BitSet const liveIns = createBitSet(&compiler->arena, 0);
-
-    size_t const paramCap = 2;
-    IRName* const params = (IRName*)amalloc(&compiler->arena, paramCap * sizeof *params);
-
-    IRBlock* const block = (IRBlock*)amalloc(&compiler->arena, sizeof *block);
-    *block = IRBlock{
-        .label = IRLabel{fn->blockCount},
-
-        .callers = callers,
-
-        .liveIns = liveIns,
-
-        .params = params,
-        .paramCount = 0,
-        .paramCap = paramCap,
-
-        .stmts = newStmts(compiler),
-
-        .transfer = {}
-    };
-
-    if (fn->blockCount == fn->blockCap) {
-        size_t const newCap = fn->blockCap + (fn->blockCap >> 1);
-        fn->blocks =
-            (IRBlock**)arealloc(&compiler->arena, fn->blocks, fn->blockCap * sizeof *fn->blocks,
-                                  newCap * sizeof *fn->blocks);
-        fn->blockCap = newCap;
-    }
-    fn->blocks[fn->blockCount++] = block;
-
+IRBlock* IRFn::createBlock(size_t callerCap) {
+    IRBlock* const block = static_cast<IRBlock*>(amalloc(arena, sizeof *block));
+    new (block) IRBlock{arena, IRLabel{blocks.count()}, callerCap};
+    blocks.push(block);
     return block;
 }
 
-void pushIRParam(Compiler* compiler, IRBlock* block, IRName param) {
-    if (block->paramCount == block->paramCap) {
-        size_t const newCap = block->paramCap + (block->paramCap >> 1);
-        block->params =
-            (IRName*)arealloc(&compiler->arena, block->params,
-                                block->paramCap * sizeof *block->params,
-                                newCap * sizeof *block->params);
-        block->paramCap = newCap;
+BitSet const* IRFn::freeVars() const { return &blocks[0]->liveIns; }
+
+IRBlock::IRBlock(Arena* arena, IRLabel t_label, size_t callerCap) :
+    label{t_label},
+    callers{arena, callerCap},
+    liveIns{createBitSet(arena, 0)},
+    params{arena},
+    stmts{arena},
+    transfer{ // Placeholder:
+        .maybeLoc = Default,
+        .ret = IRReturn{invalidIRName, invalidIRName},
+        .type = IRTransfer::RETURN
     }
+{}
 
-    block->params[block->paramCount++] = param;
-}
-
-void createCall(
-    IRBlock* block, IRName callee, IRLabel retLabel, Args closes, Args args, ORef maybeLoc
-    ) {
-    block->transfer = IRTransfer{
+void IRBlock::createCall(
+    IRName callee, IRLabel retLabel, AVec<IRName>&& closes, AVec<IRName>&& args, ORef maybeLoc
+) {
+    transfer = IRTransfer{
         .maybeLoc = maybeLoc,
-        .call = Call{.callee = callee, .retLabel = retLabel, .closes = closes, .args = args},
+        .call = Call{.callee = callee, .retLabel = retLabel, .closes = std::move(closes),
+                     .args = std::move(args)},
         .type = IRTransfer::CALL
     };
 }
 
-void createTailcall(IRBlock* block, IRName callee, IRName retFrame, Args args, ORef maybeLoc) {
-    block->transfer = IRTransfer{
+void IRBlock::createTailcall(IRName callee, IRName retFrame, AVec<IRName>&& args, ORef maybeLoc) {
+    transfer = IRTransfer{
         .maybeLoc = maybeLoc,
-        .tailcall = Tailcall{.callee = callee, .retFrame = retFrame, .args = args},
+        .tailcall = Tailcall{.callee = callee, .retFrame = retFrame, .args = std::move(args)},
         .type = IRTransfer::TAILCALL
     };
 }
 
-IRIf* createIRIf(
-    IRBlock* block, IRName cond, IRLabel conseqLabel, IRLabel altLabel, ORef maybeLoc
-    ) {
-    block->transfer = IRTransfer{
+IRIf* IRBlock::createIf(IRName cond, IRLabel conseqLabel, IRLabel altLabel, ORef maybeLoc) {
+    transfer = IRTransfer{
         .maybeLoc = maybeLoc,
         .iff = IRIf{.cond = cond, .conseq = conseqLabel, .alt = altLabel},
         .type = IRTransfer::IF
     };
 
-    return &block->transfer.iff;
+    return &transfer.iff;
 }
 
-void createIRGoto(
-    Compiler* compiler, IRBlock* block, IRLabel destLabel, IRName arg, ORef maybeLoc
-    ) {
-    Args args = createArgs(compiler);
-    pushArg(compiler, &args, arg);
+void IRBlock::createGoto(Arena* arena, IRLabel destLabel, IRName arg, ORef maybeLoc) {
+    auto args = AVec<IRName>{arena};
+    args.push(arg);
 
-    block->transfer = IRTransfer{
+    transfer = IRTransfer{
         .maybeLoc = maybeLoc,
-        .gotoo = IRGoto{.dest = destLabel, .args = args},
+        .gotoo = IRGoto{.dest = destLabel, .args = std::move(args)},
         .type = IRTransfer::GOTO
     };
 }
 
-void createIRReturn(IRBlock* block, IRName callee, IRName arg, ORef maybeLoc) {
-    block->transfer = IRTransfer{
-                                 .maybeLoc = maybeLoc,
-                                 .ret = IRReturn{.callee = callee, .arg = arg},
-                                 .type = IRTransfer::RETURN,
-                                 };
+void IRBlock::createReturn(IRName callee, IRName arg, ORef maybeLoc) {
+    transfer = IRTransfer{
+        .maybeLoc = maybeLoc,
+        .ret = IRReturn{.callee = callee, .arg = arg},
+        .type = IRTransfer::RETURN,
+    };
 }
 
 typedef void (PrintIRNameFn)(RT const* state, FILE* dest, Compiler const* compiler, IRName name);
@@ -373,7 +282,7 @@ void printIRName(RT const* state, FILE* dest, Compiler const* compiler, IRName n
     name.print(state, dest, compiler);
 }
 
-inline void printIRReg(
+void printIRReg(
     RT const* /*state*/, FILE* dest, Compiler const* /*compiler*/, IRName name
 ) {
     name.printAsReg(dest);
@@ -381,12 +290,12 @@ inline void printIRReg(
 
 void printArgs(
     RT const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
-    Args const* args
-    ) {
-    size_t const count = args->count;
+    AVec<IRName> const* args
+) {
+    size_t const count = args->count();
     for (size_t i = 0; i < count; ++i) {
         if (i > 0) { fputc(' ', dest); }
-        printName(state, dest, compiler, args->names[i]);
+        printName(state, dest, compiler, (*args)[i]);
     }
 }
 
@@ -464,7 +373,7 @@ void printStmt(
         printName(state, dest, compiler, closure->name);
         fprintf(dest, " (closure ");
         printName(state, dest, compiler, closure->method);
-        if (closure->closes->count > 0) { putc(' ', dest); }
+        if (closure->closes->count() > 0) { putc(' ', dest); }
         printArgs(state, dest, compiler, printName, closure->closes);
         fprintf(dest, "))");
     }; break;
@@ -526,7 +435,7 @@ void printTransfer(
         printName(state, dest, compiler, transfer->call.callee);
         fprintf(dest, " (");
         transfer->call.retLabel.print(dest);
-        if (transfer->call.closes.count > 0) { fputc(' ', dest); }
+        if (transfer->call.closes.count() > 0) { fputc(' ', dest); }
         printArgs(state, dest, compiler, printName, &transfer->call.closes);
         fprintf(dest, ") ");
         printArgs(state, dest, compiler, printName, &transfer->call.args);
@@ -594,7 +503,7 @@ void printBlock(
     }
 
     fprintf(dest, ") (");
-    size_t const paramCount = block->paramCount;
+    size_t const paramCount = block->params.count();
     for (size_t i = 0; i < paramCount; ++i) {
         if (i > 0) { fputc(' ', dest); }
         if (i == paramCount - 1 && block == fn->blocks[0] && fn->hasVarArg) {
@@ -604,13 +513,13 @@ void printBlock(
     }
     fputc(')', dest);
 
-    size_t const callerCount = block->callers.count;
+    size_t const callerCount = block->callers.count();
     if (callerCount > 0) {
         fprintf(dest, " callers (");
 
         for (size_t i = 0; i < callerCount; ++i) {
             if (i > 0) { fputc(' ', dest); }
-            block->callers.vals[i].print(dest);
+            block->callers[i].print(dest);
         }
 
         fputc(')', dest);
@@ -618,9 +527,9 @@ void printBlock(
 
     fputc('\n', dest);
 
-    size_t const stmtCount = block->stmts.count;
+    size_t const stmtCount = block->stmts.count();
     for (size_t i = 0; i < stmtCount; ++i) {
-        printStmt(state, dest, compiler, printName, nesting, &block->stmts.vals[i]);
+        printStmt(state, dest, compiler, printName, nesting, &block->stmts[i]);
         fputc('\n', dest);
     }
 
@@ -651,7 +560,7 @@ void printNestedIRFn(
     }
     fprintf(dest, ")\n");
 
-    size_t const blockCount = fn->blockCount;
+    size_t const blockCount = fn->blocks.count();
     for (size_t i = 0; i < blockCount; ++i) {
         if (i > 0) { fprintf(dest, "\n\n"); }
         printBlock(state, dest, compiler, printName, fn, nesting + 1, fn->blocks[i]);

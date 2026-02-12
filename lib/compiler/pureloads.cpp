@@ -74,7 +74,7 @@ public:
 // =================================================================================================
 
 IRName deepLexicalUse(
-    Compiler& compiler, PureLoadsEnv& env, Stmts& newStmts, IRName use, ORef maybeSrcLoc
+    Compiler& compiler, PureLoadsEnv& env, AVec<IRStmt>& newStmts, IRName use, ORef maybeSrcLoc
 ) {
     std::optional<CloverLoc> const optLoc = env.locs.get(use);;
     if (!optLoc) { return use; }
@@ -83,11 +83,7 @@ IRName deepLexicalUse(
     if (loc.reg) { return *loc.reg; } // Already loaded
 
     IRName const newReg = renameIRName(&compiler, use);
-    pushIRStmt(&compiler, &newStmts, IRStmt{
-        .maybeLoc = maybeSrcLoc,
-        .clover = {newReg, env.closure, use, 0},
-        .type = IRStmt::CLOVER
-    });
+    newStmts.push(IRStmt{Clover{newReg, env.closure, use, 0}, maybeSrcLoc});
     env.locs.set(use, newReg);
     return newReg;
 }
@@ -100,11 +96,11 @@ struct LiftingAnalysis {
 LiftingAnalysis joinLambdaLiftees(
     Compiler& compiler, SavedPureLoadsEnvs& savedEnvs, IRBlock const& block
 ) {
-    size_t const callerCount = block.callers.count;
+    size_t const callerCount = block.callers.count();
 
     IRName closure = invalidIRName;
     for (size_t i = 0; i < callerCount; ++i) {
-        IRLabel const callerLabel = block.callers.vals[i];
+        IRLabel const callerLabel = block.callers[i];
         assert(savedEnvs.get(callerLabel));
         IRName const callerClosure = savedEnvs.get(callerLabel)->closure;
         if (i == 0) {
@@ -127,7 +123,7 @@ LiftingAnalysis joinLambdaLiftees(
 
         bool liftable = true;
         for (size_t i = 0; i < callerCount; ++i) {
-            IRLabel const callerLabel = block.callers.vals[i];
+            IRLabel const callerLabel = block.callers[i];
             assert(savedEnvs.get(callerLabel));
             PureLoadsEnv const& callerEnv = *savedEnvs.get(callerLabel);
 
@@ -149,11 +145,11 @@ void liftArgs(
 ) {
     assert(savedEnvs.get(label));
     PureLoadsEnv env = savedEnvs.get(label)->clone();
-    assert(label.blockIndex < fn.blockCount);
+    assert(label.blockIndex < fn.blocks.count());
     IRBlock& block = *fn.blocks[label.blockIndex];
     IRTransfer& transfer = block.transfer;
     assert(transfer.type == IRTransfer::GOTO);
-    Args& args = transfer.gotoo.args;
+    AVec<IRName>& args = transfer.gotoo.args;
 
     for (BitSetIter it = newBitSetIter(&liftees);;) {
         Maybe<size_t> const maybeIdx = bitSetIterNext(&it);
@@ -161,8 +157,7 @@ void liftArgs(
         IRName const liftee = {maybeIdx.val};
 
         // OPTIMIZE: Does not need to `setCloverReg`, which `deepLexicalUse` will do:
-        pushArg(&compiler, &args,
-                deepLexicalUse(compiler, env, block.stmts, liftee, transfer.maybeLoc));
+        args.push(deepLexicalUse(compiler, env, block.stmts, liftee, transfer.maybeLoc));
     }
 }
 
@@ -173,7 +168,7 @@ void liftParams(Compiler& compiler, PureLoadsEnv& env, IRBlock& block, BitSet li
         IRName const liftee = {maybeIdx.val};
 
         IRName const phi = renameIRName(&compiler, liftee);
-        pushIRParam(&compiler, &block, phi);
+        block.params.push(phi);
         env.locs.set(liftee, phi);
     }
 }
@@ -181,25 +176,25 @@ void liftParams(Compiler& compiler, PureLoadsEnv& env, IRBlock& block, BitSet li
 PureLoadsEnv blockPureLoadsEnv(
     Compiler& compiler, SavedPureLoadsEnvs& savedEnvs, IRFn& fn, IRBlock& block
 ) {
-    switch (block.callers.count) {
+    switch (block.callers.count()) {
     case 0: { // Escaping block; new env from block live-ins:
-        assert(block.paramCount > 0);
+        assert(block.params.count() > 0);
         IRName const closure = block.params[0];
         return PureLoadsEnv{&compiler.arena, closure, block.liveIns};
     }
 
     case 1: { // Non-join; env from end of predecessor (live-ins = live-outs of predecessor):
-        assert(savedEnvs.get(block.callers.vals[0]));
-        return savedEnvs.get(block.callers.vals[0])->clone();
+        assert(savedEnvs.get(block.callers[0]));
+        return savedEnvs.get(block.callers[0])->clone();
     }
 
     default: { // Join: lambda-lift some or all of block live-ins:
         LiftingAnalysis const lifting = joinLambdaLiftees(compiler, savedEnvs, block);
 
         { // Lambda-lift caller args:
-            size_t const callerCount = block.callers.count;
+            size_t const callerCount = block.callers.count();
             for (size_t i = 0; i < callerCount; ++i) {
-                liftArgs(compiler, savedEnvs, fn, block.callers.vals[i], lifting.liftees);
+                liftArgs(compiler, savedEnvs, fn, block.callers[i], lifting.liftees);
             }
         }
 
@@ -212,8 +207,8 @@ PureLoadsEnv blockPureLoadsEnv(
 }
 
 void linearizeCloses(
-    Compiler& compiler, PureLoadsEnv& env, Stmts& newStmts, Args& dest, ORef maybeLoc,
-    BitSet const& closes
+    Compiler& compiler, PureLoadsEnv& env, AVec<IRStmt>& newStmts, AVec<IRName>& dest,
+    ORef maybeLoc, BitSet const& closes
 ) {
     for (BitSetIter it = newBitSetIter(&closes);;) {
         Maybe<size_t> const maybeIdx = bitSetIterNext(&it);
@@ -221,12 +216,12 @@ void linearizeCloses(
 
         IRName const closee =
             deepLexicalUse(compiler, env, newStmts, IRName{maybeIdx.val}, maybeLoc);
-        pushArg(&compiler, &dest, closee);
+        dest.push(closee);
     }
 }
 
 IRStmt stmtWithPureLoads(
-    Compiler& compiler, PureLoadsEnv& env, Stmts& newStmts, IRStmt stmt
+    Compiler& compiler, PureLoadsEnv& env, AVec<IRStmt>& newStmts, IRStmt stmt
 ) {
     switch (stmt.type) {
     case IRStmt::GLOBAL_DEF: {
@@ -246,6 +241,7 @@ IRStmt stmtWithPureLoads(
     case IRStmt::CLOVER: assert(false); break; // Should not exist yet
 
     case IRStmt::METHOD_DEF: {
+        ORef const maybeLoc = stmt.maybeLoc;
         MethodDef& methodDef = stmt.methodDef;
         IRFn& fn = methodDef.fn;
 
@@ -253,7 +249,7 @@ IRStmt stmtWithPureLoads(
         size_t const domainCount = fn.domain.count;
         for (size_t i = 0; i < domainCount; ++i) {
             fn.domain.vals[i] =
-                deepLexicalUse(compiler, env, newStmts, fn.domain.vals[i], stmt.maybeLoc);
+                deepLexicalUse(compiler, env, newStmts, fn.domain.vals[i], maybeLoc);
         }
 
         // Method:
@@ -261,13 +257,13 @@ IRStmt stmtWithPureLoads(
         IRName const closureName = methodDef.name;
         IRName const methodName = renameIRName(&compiler, closureName);
         methodDef.name = methodName;
-        pushIRStmt(&compiler, &newStmts, stmt);
+        newStmts.push(std::move(stmt));
 
         // Closure:
         IRClosure closure =
             IRClosure{.name = closureName, .method = methodName, .closes = methodDef.closes};
-        linearizeCloses(compiler, env, newStmts, *closure.closes, stmt.maybeLoc, *fnFreeVars(&fn));
-        stmt = IRStmt{stmt.maybeLoc, {.closure = closure}, IRStmt::CLOSURE};
+        linearizeCloses(compiler, env, newStmts, *closure.closes, maybeLoc, *fn.freeVars());
+        stmt = IRStmt{closure, maybeLoc};
     }; break;
 
     case IRStmt::CLOSURE: case IRStmt::MOVE: case IRStmt::SWAP:
@@ -292,7 +288,7 @@ IRStmt stmtWithPureLoads(
 
 void transferWithPureLoads(
     Compiler& compiler, SavedPureLoadsEnvs& savedEnvs, PureLoadsEnv& env,
-    IRFn const& fn, IRBlock const& block, Stmts& newStmts, IRTransfer& transfer
+    IRFn const& fn, IRBlock const& block, AVec<IRStmt>& newStmts, IRTransfer& transfer
 ) {
     switch (transfer.type) {
     case IRTransfer::CALL: {
@@ -301,10 +297,9 @@ void transferWithPureLoads(
 
         call.callee = deepLexicalUse(compiler, env, newStmts, call.callee, maybeLoc);
 
-        size_t const arity = call.args.count;
+        size_t const arity = call.args.count();
         for (size_t i = 0; i < arity; ++i) {
-            call.args.names[i] =
-                deepLexicalUse(compiler, env, newStmts, call.args.names[i], maybeLoc);
+            call.args[i] = deepLexicalUse(compiler, env, newStmts, call.args[i], maybeLoc);
         }
 
         IRBlock const& retBlock = *fn.blocks[call.retLabel.blockIndex];
@@ -318,10 +313,9 @@ void transferWithPureLoads(
         tailcall.callee = deepLexicalUse(compiler, env, newStmts, tailcall.callee, maybeLoc);
         tailcall.retFrame = deepLexicalUse(compiler, env, newStmts, tailcall.retFrame, maybeLoc);
 
-        size_t const arity = tailcall.args.count;
+        size_t const arity = tailcall.args.count();
         for (size_t i = 0; i < arity; ++i) {
-            tailcall.args.names[i] =
-                deepLexicalUse(compiler, env, newStmts, tailcall.args.names[i], maybeLoc);
+            tailcall.args[i] = deepLexicalUse(compiler, env, newStmts, tailcall.args[i], maybeLoc);
         }
     }; break;
 
@@ -336,10 +330,9 @@ void transferWithPureLoads(
         IRGoto& gotoo = transfer.gotoo;
         ORef const maybeLoc = transfer.maybeLoc;
 
-        size_t const arity = gotoo.args.count;
+        size_t const arity = gotoo.args.count();
         for (size_t i = 0; i < arity; ++i) {
-            gotoo.args.names[i] =
-                deepLexicalUse(compiler, env, newStmts, gotoo.args.names[i], maybeLoc);
+            gotoo.args[i] = deepLexicalUse(compiler, env, newStmts, gotoo.args[i], maybeLoc);
         }
 
         savedEnvs.save(block.label, env);
@@ -360,23 +353,22 @@ void blockWithPureLoads(
 ) {
     PureLoadsEnv env = blockPureLoadsEnv(compiler, savedEnvs, fn, block);
 
-    Stmts newStmts = newStmtsWithCap(&compiler, block.stmts.count);
+    auto newStmts = AVec<IRStmt>{&compiler.arena, block.stmts.count()};
 
-    size_t const stmtCount = block.stmts.count;
+    size_t const stmtCount = block.stmts.count();
     for (size_t i = 0; i < stmtCount; ++i) {
-        pushIRStmt(&compiler, &newStmts,
-                   stmtWithPureLoads(compiler, env, newStmts, block.stmts.vals[i]));
+        newStmts.push(stmtWithPureLoads(compiler, env, newStmts, std::move(block.stmts[i])));
     }
 
     transferWithPureLoads(compiler, savedEnvs, env, fn, block, newStmts, block.transfer);
 
-    block.stmts = newStmts;
+    block.stmts = std::move(newStmts);
 }
 
 void fnWithPureLoads(Compiler& compiler, IRFn& fn) {
-    auto savedEnvs = SavedPureLoadsEnvs{&compiler.arena, fn.blockCount};
+    auto savedEnvs = SavedPureLoadsEnvs{&compiler.arena, fn.blocks.count()};
 
-    size_t const blockCount = fn.blockCount;
+    size_t const blockCount = fn.blocks.count();
     for (size_t i = 0; i < blockCount; ++i) {
         blockWithPureLoads(compiler, savedEnvs, fn, *fn.blocks[i]);
     }

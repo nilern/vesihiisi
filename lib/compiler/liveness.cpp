@@ -16,21 +16,21 @@ void transferLiveOutsInto(
 ) {
     switch (transfer.type) {
     case IRTransfer::CALL: {
-        IRBlock const* retBlock = irLabelBlock(&fn, transfer.call.retLabel);
+        IRBlock const* retBlock = fn.labelBlock(transfer.call.retLabel);
         bitSetUnionInto(&compiler.arena, &lives, &retBlock->liveIns);
     }; break;
 
     case IRTransfer::TAILCALL: break;
 
     case IRTransfer::IF: {
-        IRBlock const* alt = irLabelBlock(&fn, transfer.iff.alt);
+        IRBlock const* alt = fn.labelBlock(transfer.iff.alt);
         bitSetUnionInto(&compiler.arena, &lives, &alt->liveIns);
-        IRBlock const* conseq = irLabelBlock(&fn, transfer.iff.conseq);
+        IRBlock const* conseq = fn.labelBlock(transfer.iff.conseq);
         bitSetUnionInto(&compiler.arena, &lives, &conseq->liveIns);
     }; break;
 
     case IRTransfer::GOTO: {
-        IRBlock const* dest = irLabelBlock(&fn, transfer.gotoo.dest);
+        IRBlock const* dest = fn.labelBlock(transfer.gotoo.dest);
         bitSetUnionInto(&compiler.arena, &lives, &dest->liveIns);
     }; break;
 
@@ -43,16 +43,16 @@ void enlivenTransfer(Compiler& compiler, BitSet& liveOuts, IRTransfer const& tra
     switch (transfer.type) {
     case IRTransfer::CALL: {
         Call const& call = transfer.call;
-        for (size_t i = call.args.count; i-- > 0;) {
-            requireLive(compiler, liveOuts, call.args.names[i]);
+        for (size_t i = call.args.count(); i-- > 0;) {
+            requireLive(compiler, liveOuts, call.args[i]);
         }
         requireLive(compiler, liveOuts, call.callee);
     }; break;
 
     case IRTransfer::TAILCALL: {
         Tailcall const& tailcall = transfer.tailcall;
-        for (size_t i = tailcall.args.count; i-- > 0;) {
-            requireLive(compiler, liveOuts, tailcall.args.names[i]);
+        for (size_t i = tailcall.args.count(); i-- > 0;) {
+            requireLive(compiler, liveOuts, tailcall.args[i]);
         }
         requireLive(compiler, liveOuts, tailcall.retFrame);
         requireLive(compiler, liveOuts, tailcall.callee);
@@ -65,8 +65,8 @@ void enlivenTransfer(Compiler& compiler, BitSet& liveOuts, IRTransfer const& tra
 
     case IRTransfer::GOTO: {
         IRGoto const& gotoo = transfer.gotoo;
-        for (size_t i = gotoo.args.count; i-- > 0;) {
-            requireLive(compiler, liveOuts, gotoo.args.names[i]);
+        for (size_t i = gotoo.args.count(); i-- > 0;) {
+            requireLive(compiler, liveOuts, gotoo.args[i]);
         }
     }; break;
 
@@ -111,7 +111,7 @@ void enlivenStmt(Compiler& compiler, BitSet& liveOuts, IRStmt& stmt) {
         // Clovers:
         IRFn& innerFn = methodDef.fn;
         enlivenFn(compiler, innerFn);
-        bitSetUnionInto(&compiler.arena, &liveOuts, fnFreeVars(&innerFn));
+        bitSetUnionInto(&compiler.arena, &liveOuts, innerFn.freeVars());
 
         // Param types:
         for (size_t i = innerFn.domain.count; i-- > 0;) {
@@ -150,17 +150,17 @@ void enlivenBlock(Compiler& compiler, IRFn const& fn, IRBlock& block) {
 
     enlivenTransfer(compiler, *lives, block.transfer);
 
-    for (size_t i = block.stmts.count; i-- > 0;) {
-        enlivenStmt(compiler, *lives, block.stmts.vals[i]);
+    for (size_t i = block.stmts.count(); i-- > 0;) {
+        enlivenStmt(compiler, *lives, block.stmts[i]);
     }
 
-    for (size_t i = block.paramCount; i-- > 0;) {
+    for (size_t i = block.params.count(); i-- > 0;) {
         rangeStart(*lives, block.params[i]);
     }
 }
 
 void enlivenFn(Compiler& compiler, IRFn& fn) {
-    for (size_t i = fn.blockCount; i-- > 0;) {
+    for (size_t i = fn.blocks.count(); i-- > 0;) {
         enlivenBlock(compiler, fn, *fn.blocks[i]);
     }
 }

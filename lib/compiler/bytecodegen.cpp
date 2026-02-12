@@ -157,7 +157,7 @@ HRef<Method> MethodBuilder::buildMethod(RT& state, IRFn& toplevelFn, IRFn const&
         }
     }
 
-    size_t const arity = fn.blocks[0]->paramCount - 2;
+    size_t const arity = fn.blocks[0]->params.count() - 2;
     Fixnum const fxArity = Fixnum((intptr_t)arity);
     Bool const hasVarArg = Bool(fn.hasVarArg);
     std::span<uint8_t const> const codeSlice = code->flexItems();
@@ -190,7 +190,7 @@ HRef<Method> MethodBuilder::buildMethod(RT& state, IRFn& toplevelFn, IRFn const&
 
 MethodBuilder::MethodBuilder(RT const& state, Arena* arena, MethodBuilder* parent, IRFn const& fn) :
     code_{arena},
-    labelIdxs_{arena, fn.blockCount},
+    labelIdxs_{arena, fn.blocks.count()},
     consts_{arena},
     prevMaybeLocRevIdx_{0},
     prevDeltaCodeByteRevIdx_{0},
@@ -199,10 +199,10 @@ MethodBuilder::MethodBuilder(RT const& state, Arena* arena, MethodBuilder* paren
     revFilenameRuns_{arena},
     parent_{parent}
 {
-    assert(fn.blockCount >= 1);
-    IRBlock const& lastBlock = *fn.blocks[fn.blockCount -  1];
-    ORef const lastMaybeLoc = lastBlock.stmts.count > 0
-        ? lastBlock.stmts.vals[lastBlock.stmts.count - 1].maybeLoc
+    assert(fn.blocks.count() >= 1);
+    IRBlock const& lastBlock = *fn.blocks[fn.blocks.count() -  1];
+    ORef const lastMaybeLoc = lastBlock.stmts.count() > 0
+        ? lastBlock.stmts[lastBlock.stmts.count() - 1].maybeLoc
         : lastBlock.transfer.maybeLoc;
     MethodBuilderLoc const lastLoc = MethodBuilderLoc::fromORef(state, lastMaybeLoc);
 
@@ -329,7 +329,7 @@ HRef<Method> emitMethod(
     RT& state, Compiler& compiler, IRFn& toplevelFn, MethodBuilder* parentBuilder, IRFn const& fn);
 
 void emitStmt(
-    RT& state, Compiler& compiler, IRFn& toplevelFn, MethodBuilder& builder, IRStmt& stmt
+    RT& state, Compiler& compiler, IRFn& toplevelFn, MethodBuilder& builder, IRStmt const& stmt
 ) {
     switch (stmt.type) {
     case IRStmt::GLOBAL_DEF: {
@@ -440,7 +440,7 @@ void emitTransfer(RT const& state, MethodBuilder& builder, IRTransfer const& tra
 
         builder.emitClose(call.closes);
 
-        size_t const regCount = 2 + call.args.count;
+        size_t const regCount = 2 + call.args.count();
         assert(regCount < UINT8_MAX); // TODO: Handle absurd argument count (probably too late here)
         builder.pushCodeByte((uint8_t)regCount);
 
@@ -453,7 +453,7 @@ void emitTransfer(RT const& state, MethodBuilder& builder, IRTransfer const& tra
     case IRTransfer::TAILCALL: {
         Tailcall const& tailcall = transfer.tailcall;
 
-        size_t const regCount = 2 + tailcall.args.count;
+        size_t const regCount = 2 + tailcall.args.count();
         assert(regCount < UINT8_MAX); // TODO: Handle absurd argument count (probably too late here)
         builder.pushCodeByte((uint8_t)regCount);
 
@@ -499,8 +499,8 @@ void emitBlock(
 ) {
     emitTransfer(state, builder, block.transfer);
 
-    for (size_t i = block.stmts.count; i-- > 0;) {
-        emitStmt(state, compiler, toplevelFn, builder, block.stmts.vals[i]);
+    for (size_t i = block.stmts.count(); i-- > 0;) {
+        emitStmt(state, compiler, toplevelFn, builder, block.stmts[i]);
     }
 
     builder.setLabelIndex(block.label, builder.codeCount() - 1);
@@ -512,7 +512,7 @@ HRef<Method> emitMethod(
     auto builder = MethodBuilder{state, &compiler.arena, parentBuilder, fn};
 
     // Thanks to previous passes, CFG DAG blocks are conveniently in reverse post-order:
-    for (size_t i = fn.blockCount; i-- > 0;) {
+    for (size_t i = fn.blocks.count(); i-- > 0;) {
         emitBlock(state, compiler, toplevelFn, builder, *fn.blocks[i]);
     }
 

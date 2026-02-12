@@ -2,22 +2,11 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <filesystem> // OPTIMIZE: Avoid this, requires linking to a bunch of `std::` stuff.
+#include <filesystem>
 
 #include "../../deps/utf8proc/utf8proc.h"
 
 namespace {
-
-void reverse(void* arr, size_t count, size_t size, SwapFn swap) {
-    if (count < 2) { return; }
-
-    for (char *begin = (char*)arr, *end = begin + (count - 1) * size;
-         begin < end;
-         begin += size, end -= size
-    ) {
-        swap(begin, end);
-    }
-}
 
 bool strEq(Str s1, Str s2) {
     return s1.len == s2.len

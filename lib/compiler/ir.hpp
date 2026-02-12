@@ -7,7 +7,7 @@
 
 namespace {
 
-typedef struct Compiler {
+struct Compiler {
     Arena arena;
     AVec<ORef> nameSyms;
 
@@ -24,7 +24,7 @@ typedef struct Compiler {
     Compiler& operator=(Compiler const&) = delete;
     Compiler(Compiler&&) = delete;
     Compiler& operator=(Compiler&&) = delete;
-} Compiler;
+};
 
 struct IRName {
     size_t index;
@@ -33,7 +33,7 @@ struct IRName {
 
     bool operator==(IRName that) const { return index == that.index; }
 
-    inline bool isValid() const { return index != invalidIndex; }
+    bool isValid() const { return index != invalidIndex; }
 
     void print(RT const* state, FILE* dest, Compiler const* compiler) const;
 
@@ -48,67 +48,71 @@ struct IRLabel {
     void print(FILE* dest) const { fprintf(dest, ":%ld", blockIndex); }
 };
 
-typedef struct IRDomain {
+struct IRBlock;
+
+struct IRDomain {
     IRName* vals;
     size_t count;
     size_t cap;
-} IRDomain;
 
-struct IRBlock;
+    void setParamType(Compiler* compiler, size_t idx, IRName typeName);
 
-typedef struct IRFn {
-    struct IRBlock** blocks; // OPTIMIZE: `IRBlock* blocks`
-    size_t blockCount;
-    size_t blockCap;
+    void complete(Compiler* compiler, size_t arity);
+};
 
+struct IRFn {
+    AVec<IRBlock*> blocks; // OPTIMIZE: `AVec<IRBlock> blocks`
     ORef maybeName;
     IRDomain domain;
     bool hasVarArg;
-} IRFn;
+    Arena* arena;
 
-typedef struct Args {
-    IRName* names;
-    size_t count;
-    size_t cap;
-} Args;
+    IRFn(Arena* t_arena, ORef maybeName);
+
+    IRBlock* createBlock(size_t callerCap);
+
+    IRBlock const* labelBlock(IRLabel label) const { return blocks[label.blockIndex]; }
+
+    BitSet const* freeVars() const;
+};
 
 struct Define {
     HRef<Symbol> name;
     IRName val;
 };
 
-typedef struct GlobalSet {
+struct GlobalSet {
     HRef<Symbol> name;
     IRName val;
-} GlobalSet;
+};
 
-typedef struct IRGlobal {
+struct IRGlobal {
     IRName tmpName;
     HRef<Symbol> name;
-} IRGlobal;
+};
 
-typedef struct ConstDef {
+struct ConstDef {
     IRName name;
     ORef v;
-} ConstDef;
+};
 
-typedef struct Clover {
+struct Clover {
     IRName name;
     IRName closure;
     IRName origName;
     uint8_t idx;
-} Clover;
+};
 
 struct MethodDef {
     IRName name;
     IRFn fn;
-    Args* closes; // Shared with `IRClosure`
+    AVec<IRName>* closes; // Shared with `IRClosure`
 };
 
 struct IRClosure {
     IRName name;
     IRName method;
-    Args* closes; // Shared with `MethodDef`
+    AVec<IRName>* closes; // Shared with `MethodDef`
 };
 
 struct MoveStmt {
@@ -121,21 +125,21 @@ struct SwapStmt {
     IRName reg2;
 };
 
-typedef struct KnotStmt {
+struct KnotStmt {
     IRName name;
-} KnotStmt;
+};
 
-typedef struct KnotInitStmt {
+struct KnotInitStmt {
     IRName knot;
     IRName v;
-} KnotInitStmt;
+};
 
-typedef struct KnotGetStmt {
+struct KnotGetStmt {
     IRName name;
     IRName knot;
-} KnotGetStmt;
+};
 
-typedef struct IRStmt {
+struct IRStmt {
     ORef maybeLoc;
     union {
         Define define;
@@ -165,38 +169,86 @@ typedef struct IRStmt {
         KNOT_INIT,
         KNOT_GET
     } type;
-} IRStmt;
 
-typedef struct Call {
+    IRStmt(Define t_define, ORef t_maybeLoc) :
+        maybeLoc{t_maybeLoc}, define{t_define}, type{IRStmt::GLOBAL_DEF}
+    {}
+
+    IRStmt(GlobalSet t_globalSet, ORef t_maybeLoc) :
+        maybeLoc{t_maybeLoc}, globalSet{t_globalSet}, type{IRStmt::GLOBAL_SET}
+    {}
+
+    IRStmt(IRGlobal t_global, ORef t_maybeLoc) :
+        maybeLoc{t_maybeLoc}, global{t_global}, type{IRStmt::GLOBAL}
+    {}
+
+    IRStmt(ConstDef t_constDef, ORef t_maybeLoc) :
+        maybeLoc{t_maybeLoc}, constDef{t_constDef}, type{IRStmt::CONST_DEF}
+    {}
+
+    IRStmt(Clover t_clover, ORef t_maybeLoc) :
+        maybeLoc{t_maybeLoc}, clover{t_clover}, type{IRStmt::CLOVER}
+    {}
+
+    IRStmt(MethodDef&& t_methodDef, ORef t_maybeLoc) :
+        maybeLoc{t_maybeLoc}, methodDef{std::move(t_methodDef)}, type{IRStmt::METHOD_DEF}
+    {}
+
+    IRStmt(IRClosure t_closure, ORef t_maybeLoc) :
+        maybeLoc{t_maybeLoc}, closure{t_closure}, type{IRStmt::CLOSURE}
+    {}
+
+    IRStmt(MoveStmt t_mov, ORef t_maybeLoc) :
+        maybeLoc{t_maybeLoc}, mov{t_mov}, type{IRStmt::MOVE}
+    {}
+
+    IRStmt(SwapStmt t_swap, ORef t_maybeLoc) :
+        maybeLoc{t_maybeLoc}, swap{t_swap}, type{IRStmt::SWAP}
+    {}
+
+    IRStmt(KnotStmt t_knot, ORef t_maybeLoc) :
+        maybeLoc{t_maybeLoc}, knot{t_knot}, type{IRStmt::KNOT}
+    {}
+
+    IRStmt(KnotInitStmt t_knotInit, ORef t_maybeLoc) :
+        maybeLoc{t_maybeLoc}, knotInit{t_knotInit}, type{IRStmt::KNOT_INIT}
+    {}
+
+    IRStmt(KnotGetStmt t_knotGet, ORef t_maybeLoc) :
+        maybeLoc{t_maybeLoc}, knotGet{t_knotGet}, type{IRStmt::KNOT_GET}
+    {}
+};
+
+struct Call {
     IRName callee;
     IRLabel retLabel;
-    Args closes;
-    Args args;
-} Call;
+    AVec<IRName> closes;
+    AVec<IRName> args;
+};
 
-typedef struct Tailcall {
+struct Tailcall {
     IRName callee;
     IRName retFrame;
-    Args args;
-} Tailcall;
+    AVec<IRName> args;
+};
 
-typedef struct IRIf {
+struct IRIf {
     IRName cond;
     IRLabel conseq;
     IRLabel alt;
-} IRIf;
+};
 
-typedef struct IRGoto {
+struct IRGoto {
     IRLabel dest;
-    Args args;
-} IRGoto;
+    AVec<IRName> args;
+};
 
-typedef struct IRReturn {
+struct IRReturn {
     IRName callee;
     IRName arg;
-} IRReturn;
+};
 
-typedef struct IRTransfer {
+struct IRTransfer {
     ORef maybeLoc;
     union {
         Call call;
@@ -212,35 +264,29 @@ typedef struct IRTransfer {
         GOTO,
         RETURN
     } type;
-} IRTransfer;
+};
 
-typedef struct Callers {
-    IRLabel* vals;
-    size_t count;
-    size_t cap;
-} Callers;
-
-typedef struct Stmts {
-    IRStmt* vals;
-    size_t count;
-    size_t cap;
-} Stmts;
-
-typedef struct IRBlock {
+struct IRBlock {
     IRLabel label;
-
-    Callers callers;
-
+    AVec<IRLabel> callers;
     BitSet liveIns;
-
-    IRName* params;
-    size_t paramCount;
-    size_t paramCap;
-
-    Stmts stmts;
-
+    AVec<IRName> params;
+    AVec<IRStmt> stmts;
     IRTransfer transfer;
-} IRBlock;
+
+    IRBlock(Arena* arena, IRLabel t_label, size_t callerCap);
+
+    void createCall(IRName callee, IRLabel retLabel, AVec<IRName>&& closes, AVec<IRName>&& args,
+                    ORef maybeLoc);
+
+    void createTailcall(IRName callee, IRName retFrame, AVec<IRName>&& args, ORef maybeLoc);
+
+    IRIf* createIf(IRName cond, IRLabel conseqLabel, IRLabel altLabel, ORef maybeLoc);
+
+    void createGoto(Arena* arena, IRLabel destLabel, IRName arg, ORef maybeLoc);
+
+    void createReturn(IRName callee, IRName arg, ORef maybeLoc);
+};
 
 IRName renameSymbol(Compiler* compiler, HRef<Symbol> sym);
 
@@ -248,79 +294,9 @@ IRName freshName(Compiler* compiler);
 
 IRName renameIRName(Compiler* compiler, IRName name);
 
-IRFn createIRFn(Compiler* compiler, ORef maybeName);
-
 void setParamType(Compiler* compiler, IRDomain* domain, size_t idx, IRName typeName);
 
-void completeIRDomain(Compiler* compiler, IRDomain* domain, size_t arity);
-
-inline BitSet const* fnFreeVars(IRFn const* fn) { return &fn->blocks[0]->liveIns; }
-
-inline IRBlock const* irLabelBlock(IRFn const* fn, IRLabel label) {
-    assert(label.blockIndex < fn->blockCount);
-
-    return fn->blocks[label.blockIndex];
-}
-
-IRBlock* createIRBlock(Compiler* compiler, IRFn* fn, size_t callerCap);
-
-inline void pushCaller(IRBlock* block, IRLabel caller) {
-    block->callers.vals[block->callers.count++] = caller;
-}
-
-void pushIRParam(Compiler* compiler, IRBlock* block, IRName param);
-
-Stmts newStmtsWithCap(Compiler* compiler, size_t cap);
-
-void pushIRStmt(Compiler* compiler, Stmts* stmts, IRStmt stmt);
-
-inline IRStmt defineToStmt(Define Define, ORef maybeLoc) {
-    return IRStmt{maybeLoc, {.define = Define}, IRStmt::GLOBAL_DEF};
-}
-
-inline IRStmt globalSetToStmt(GlobalSet globalSet, ORef maybeLoc) {
-    return IRStmt{maybeLoc, {.globalSet = globalSet}, IRStmt::GLOBAL_SET};
-}
-
-inline IRStmt globalToStmt(IRGlobal global, ORef maybeLoc) {
-    return IRStmt{maybeLoc, {.global = global}, IRStmt::GLOBAL};
-}
-
-inline IRStmt constDefToStmt(ConstDef cdef, ORef maybeLoc) {
-    return IRStmt{maybeLoc, {.constDef = cdef}, IRStmt::CONST_DEF};
-}
-
-inline IRStmt moveToStmt(MoveStmt mov, ORef maybeLoc) {
-    return IRStmt{maybeLoc, {.mov = mov}, IRStmt::MOVE};
-}
-
-inline IRStmt swapToStmt(SwapStmt swap, ORef maybeLoc) {
-    return IRStmt{maybeLoc, {.swap = swap}, IRStmt::SWAP};
-}
-
-inline void swapStmts(void* x, void* y) {
-    IRStmt* const xStmt = (IRStmt*)x;
-    IRStmt* const yStmt = (IRStmt*)y;
-
-    IRStmt const tmp = *xStmt;
-    *xStmt = *yStmt;
-    *yStmt = tmp;
-}
-
-Args createArgs(Compiler* compiler);
-
-void pushArg(Compiler* compiler, Args* args, IRName arg);
-
-void createCall(IRBlock* block, IRName callee, IRLabel retLabel, Args closes, Args args,
-                ORef maybeLoc);
-
-void createTailcall(IRBlock* block, IRName callee, IRName retFrame, Args args, ORef maybeLoc);
-
-IRIf* createIRIf(IRBlock* block, IRName cond, IRLabel conseqLabel, IRLabel altLabel, ORef maybeLoc);
-
-void createIRGoto(Compiler* compiler, IRBlock* block, IRLabel destLabel, IRName arg, ORef maybeLoc);
-
-void createIRReturn(IRBlock* block, IRName callee, IRName arg, ORef maybeLoc);
+void completeIRDomain(Compiler *compiler, IRDomain *domain, size_t arity);
 
 [[nodiscard]]
 bool markIRFn(RT* state, struct IRFn* fn);
@@ -331,7 +307,7 @@ typedef void (PrintIRNameFn)(RT const* state, FILE* dest, Compiler const* compil
 
 void printArgs(
     RT const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,
-    Args const* args);
+    AVec<IRName> const* args);
 
 void printNestedIRFn(
     RT const* state, FILE* dest, Compiler const* compiler, PrintIRNameFn printName,

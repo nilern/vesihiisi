@@ -15,11 +15,11 @@ namespace {
 CompilationRes compile(RT* state, ORef expr, HRef<Loc> loc, bool debug) {
     auto compiler = Compiler{};
 
-    ToIRRes const toIRRes = topLevelExprToIR(*state, compiler, expr, loc);
+    ToIRRes toIRRes = topLevelExprToIR(*state, compiler, expr, loc);
     if (!toIRRes.success) {
         return CompilationRes{toIRRes.err};
     }
-    IRFn irFn = toIRRes.val;
+    IRFn& irFn = toIRRes.val;
     if (debug) {
         puts(";; # IR:");
         printIRFn(state, stdout, &compiler, printIRName, &irFn);

@@ -34,7 +34,7 @@ class CloverIndexing {
 public:
     CloverIndexing(Compiler& compiler, IRFn const& fn) :
         savedEnvs{static_cast<std::optional<CloverIdxs>*>(acalloc(
-              &compiler.arena, fn.blockCount, sizeof *savedEnvs))}
+              &compiler.arena, fn.blocks.count(), sizeof *savedEnvs))}
     {}
 
     void saveBlockEnv(IRLabel label, CloverIdxs const& env) {
@@ -47,24 +47,26 @@ public:
     }
 };
 
-CloverIdxs closeCloverIdxs(Compiler& compiler, BitSet const& clovers, Args const& close) {
+CloverIdxs closeCloverIdxs(
+    Compiler& compiler, BitSet const& clovers, std::span<IRName const> close
+) {
     auto env = CloverIdxs{&compiler.arena};
 
     {
-        size_t const cloverCount = close.count;
+        size_t const cloverCount = close.size();
         BitSetIter it = newBitSetIter(&clovers);
         for (size_t i = 0;; ++i) {
             Maybe<size_t> const maybeIdx = bitSetIterNext(&it);
             if (!maybeIdx.hasVal) { break; }
             IRName const clover = {maybeIdx.val};
 
-            assert(i < close.count);
-            Reg const reg = Reg{(uint8_t)close.names[i].index};
+            assert(i < close.size());
+            Reg const reg = Reg{(uint8_t)close[i].index};
 
             // How many clovers in `close` whose register is lower than `reg`?:
             size_t idx = 0;
             for (size_t j = 0; j < cloverCount; ++j) {
-                if (close.names[j].index < reg.index) {
+                if (close[j].index < reg.index) {
                     ++idx;
                 }
             }
@@ -92,7 +94,7 @@ void indexStmtClovers(Compiler& compiler, CloverIdxs const& env, IRStmt& stmt) {
         MethodDef& methodDef = stmt.methodDef;
         IRFn& fn = methodDef.fn;
 
-        CloverIdxs innerEnv = closeCloverIdxs(compiler, *fnFreeVars(&fn), *methodDef.closes);
+        CloverIdxs innerEnv = closeCloverIdxs(compiler, *fn.freeVars(), *methodDef.closes);
         indexFnClovers(compiler, innerEnv, fn);
     }; break;
 
@@ -137,9 +139,9 @@ void indexBlockClovers(
 ) {
     CloverIdxs const& env = block.label.blockIndex != 0 ? pass.getBlockEnv(block.label) : fnEnv;
 
-    size_t const stmtCount = block.stmts.count;
+    size_t const stmtCount = block.stmts.count();
     for (size_t i = 0; i < stmtCount; ++i) {
-        indexStmtClovers(compiler, env, block.stmts.vals[i]);
+        indexStmtClovers(compiler, env, block.stmts[i]);
     }
 
     indexTransferClovers(compiler, pass, fn, env, block.transfer);
@@ -148,7 +150,7 @@ void indexBlockClovers(
 void indexFnClovers(Compiler& compiler, CloverIdxs const& fnEnv, IRFn& fn) {
     auto pass = CloverIndexing{compiler, fn};
 
-    size_t const blockCount = fn.blockCount;
+    size_t const blockCount = fn.blocks.count();
     for (size_t i = 0; i < blockCount; ++i) {
         indexBlockClovers(compiler, pass, fn, fnEnv, *fn.blocks[i]);
     }

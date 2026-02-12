@@ -376,7 +376,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
                 goto apply;
             }
             auto const codomain = HRef<Type>::fromUnchecked(anyCodomain);
-            bool const fRet = eq(codomain, rt->types.fixnum);
+            bool const fRet = eq(codomain, rt->types.flonum);
             if (codomain->isFlex.val()) { PANIC("Flex FFI return type"); } // TODO: Proper error
             if (codomain->minSize.val() != sizeof(uint64_t)) {
                 PANIC("FFI return type size %ld != word size %lu\n",

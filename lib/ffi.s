@@ -24,8 +24,9 @@ callForeign:
 .macro jmpFlo reg, dest
 	cmp \reg, r12
 	je \dest		# actual NaN?
-	not \reg
-	test \reg, r12
+	mov r14, \reg
+	not r14
+	test r14, r12
 	jne \dest		# Non-NaN flonum?
 .endm
 

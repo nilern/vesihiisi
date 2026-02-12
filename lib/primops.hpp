@@ -399,4 +399,9 @@ struct PrimopExit : public FixedArityPrimop<PrimopExit, ORef> {
     static PrimopRes uncheckedInvoke(RT* state);
 };
 
+struct PrimopOpenForeignLibrary : public FixedArityPrimop<PrimopOpenForeignLibrary, ORef> {
+    static constexpr uint8_t name[] = "open-foreign-library";
+    static PrimopRes uncheckedInvoke(RT* state);
+};
+
 } // namespace

@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <dlfcn.h>
 #include <filesystem>
 
 #include "../deps/utf8proc/utf8proc.h"
@@ -1153,6 +1154,36 @@ PrimopRes PrimopExit::uncheckedInvoke(RT* state) {
         : !eq(v, False) ? EXIT_SUCCESS : EXIT_FAILURE;
 
     exit(exitCode);
+}
+
+// TODO: Non-POSIX support:
+PrimopRes PrimopOpenForeignLibrary::uncheckedInvoke(RT* rt) {
+    ORef const anyName = rt->regs[firstArgReg];
+
+    auto const cName = [&]() -> char const* {
+        if (isa<String>(*rt, anyName)) {
+            auto const name = HRef<String>::fromUnchecked(anyName);
+
+            // OPTIMIZE: Avoid copy:
+            Str const nameStr = name->str();
+            auto const cName = new char[nameStr.len + 1];
+            std::copy(nameStr.data, nameStr.data + nameStr.len, cName);
+            cName[nameStr.len] = '\0';
+            return cName;
+        } else if (eq(anyName, False)) {
+            // Empty string also seems to work but is not documented to (in `man dlopen`).
+            return nullptr;
+        } else {
+            PANIC("TODO: invalid foreign library name");
+        }
+    }();
+
+    void* const dylib = dlopen(cName, RTLD_LAZY);
+    delete [] cName;
+    if (!dylib) { PANIC("TODO: %s", dlerror()); }
+
+    rt->regs[retReg] = Pointer::create(*rt, dylib);
+    return PrimopRes::CONTINUE;
 }
 
 } // namespace

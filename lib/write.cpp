@@ -130,6 +130,10 @@ void write(RT const* state, FILE* dest, ORef v) {
             fprintf(dest, "#<type ");
             write(state, dest, type->name);
             putc('>', dest);
+        } else if (isa<Pointer>(*state, v)) {
+            auto const ptr = HRef<Pointer>::fromUnchecked(v);
+
+            fprintf(dest, "#<pointer %p>", ptr->val);
         } else if (isa(state, state->types.fatalError, v)) {
             auto const err = HRef<FatalError>::fromUnchecked(v);
 

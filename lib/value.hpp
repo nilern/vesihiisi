@@ -643,7 +643,13 @@ struct End : public FixedObject<End> {
 struct Pointer : public FixedObject<Pointer> {
     void* val;
 
+private:
+    Pointer(void* t_val) : val{t_val} {}
+
+public:
     static HRef<Type> reify(struct RT const& state);
+
+    static HRef<Pointer> create(RT& rt, void* t_val);
 };
 
 struct InputFile : public FixedObject<InputFile> {

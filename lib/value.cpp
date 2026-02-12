@@ -67,6 +67,16 @@ HRef<Type> End::reify(RT const& state) { return state.types.end; }
 
 HRef<Type> Pointer::reify(RT const& state) { return state.types.pointer; }
 
+HRef<Pointer> Pointer::create(RT& rt, void* t_val) {
+    Pointer* obj = static_cast<decltype(obj)>(rt.heap.tryAlloc(&*reify(rt)));
+    if (mustCollect(obj)) {
+        collect(&rt);
+        obj = static_cast<decltype(obj)>(rt.heap.allocOrDie(&*reify(rt)));
+    }
+
+    return HRef{new (obj) Pointer{t_val}};
+}
+
 HRef<Type> InputFile::reify(RT const& state) { return state.types.inputFile; }
 
 HRef<Type> FatalError::reify(RT const& state) { return state.types.fatalError; }

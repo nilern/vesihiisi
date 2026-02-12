@@ -646,6 +646,134 @@ IRName letfnToCPS(
     return bodyToCPS(pass, fn, letfnEnv, block, body, k);;
 }
 
+// call-foreign-domain = (-box <S-expr>) / <S-expr>
+FFICall::Domain foreignDomainToCPS(
+    CPSConv& pass, IRFn& fn, ToCpsEnv const& env, IRBlock*& block, ORef domain, ORef maybeLoc
+) {
+    if (isa<Pair>(*pass.state, domain)) {
+        auto const domainPair = HRef<Pair>::fromUnchecked(domain);
+        ORef const callee = domainPair->car().get();
+        ORef args = domainPair->cdr().get();
+
+        if (isa<Symbol>(*pass.state, callee)) {
+            auto const calleeSymbol = HRef<Symbol>::fromUnchecked(callee);
+
+            // OPTIMIZE: Symbol comparison instead of `strEq`:
+            if (strEq(calleeSymbol->name(), strLit("-box"))) {
+                auto const argsPair = HRef<Pair>::fromUnchecked(args);
+                ORef const expr = argsPair->car().get();
+                args = argsPair->cdr().get();
+
+                if (!isEmptyList(pass.state, args)) {
+                    PANIC("TODO: `-box` arity error");
+                }
+
+                IRName const name = exprToIR(pass, fn, env, block, expr, maybeLoc,
+                                             ToCpsCont{{}, ToCpsCont::VAL});
+                return FFICall::Domain{.name = name, .box = true};
+            }
+        }
+    }
+
+    IRName const name = exprToIR(pass, fn, env, block, domain, maybeLoc,
+                                 ToCpsCont{{}, ToCpsCont::VAL});
+    return FFICall::Domain{.name = name, .box = false};
+}
+
+// call-foreign-arg = (-unbox <S-expr>) / <S-expr>
+FFICall::Arg foreignArgToCPS(
+    CPSConv& pass, IRFn& fn, ToCpsEnv const& env, IRBlock*& block, ORef arg, ORef maybeLoc
+) {
+    if (isa<Pair>(*pass.state, arg)) {
+        auto const domainPair = HRef<Pair>::fromUnchecked(arg);
+        ORef const callee = domainPair->car().get();
+        ORef args = domainPair->cdr().get();
+
+        if (isa<Symbol>(*pass.state, callee)) {
+            auto const calleeSymbol = HRef<Symbol>::fromUnchecked(callee);
+
+            // OPTIMIZE: Symbol comparison instead of `strEq`:
+            if (strEq(calleeSymbol->name(), strLit("-unbox"))) {
+                auto const argsPair = HRef<Pair>::fromUnchecked(args);
+                ORef const expr = argsPair->car().get();
+                args = argsPair->cdr().get();
+
+                if (!isEmptyList(pass.state, args)) {
+                    PANIC("TODO: `-unbox` arity error");
+                }
+
+                IRName const name = exprToIR(pass, fn, env, block, expr, maybeLoc,
+                                             ToCpsCont{{}, ToCpsCont::VAL});
+                return FFICall::Arg{.name = name, .unbox = true};
+            }
+        }
+    }
+
+    IRName const name = exprToIR(pass, fn, env, block, arg, maybeLoc,
+                                 ToCpsCont{{}, ToCpsCont::VAL});
+    return FFICall::Arg{.name = name, .unbox = false};
+}
+
+AVec<FFICall::Arg> foreignArgsToCPS(
+    CPSConv& pass, IRFn& fn, ToCpsEnv const& env, IRBlock*& block, ORef args
+) {
+    auto irArgs = AVec<FFICall::Arg>{&pass.compiler->arena};
+
+    for (;/*ever*/;) {
+        if (isa<Pair>(*pass.state, args)) {
+            auto const argsPair = HRef<Pair>::fromUnchecked(args);
+            ORef const arg = argsPair->car().get();
+            ORef const argLoc = argsPair->maybeLoc().get();
+
+            irArgs.push(foreignArgToCPS(pass, fn, env, block, arg, argLoc));
+
+            args = argsPair->cdr().get();
+        } else if (isEmptyList(pass.state, args)) {
+            break;
+        } else {
+            assert(false);
+        }
+    }
+
+    return irArgs;
+}
+
+// call-foreign = (call-foreign <call-foreign-domain> <S-expr> <call-foreign-arg>*)
+IRName callForeignToCPS(
+    CPSConv& pass, IRFn& fn, ToCpsEnv const& env, IRBlock*& block, ORef args, ORef maybeLoc,
+    ToCpsCont k
+) {
+    if (!isa<Pair>(*pass.state, args)) {
+        assert(false); // TODO: Proper invalid args error
+    }
+    auto argsPair = HRef<Pair>::fromUnchecked(args);
+    ORef const domain = argsPair->car().get();
+    ORef domainLoc = argsPair->maybeLoc().get();
+    args = argsPair->cdr().get();
+
+    if (!isa<Pair>(*pass.state, args)) {
+        assert(false); // TODO: Proper invalid args error
+    }
+    argsPair = HRef<Pair>::fromUnchecked(args);
+    auto const callee = argsPair->car().get();
+    ORef calleeLoc = argsPair->maybeLoc().get();
+    args = argsPair->cdr().get();
+
+    FFICall::Domain const irDomain = foreignDomainToCPS(pass, fn, env, block, domain, domainLoc);
+    IRName const irCallee = exprToIR(pass, fn, env, block, callee, calleeLoc,
+                                     ToCpsCont{{}, ToCpsCont::VAL});
+    AVec<FFICall::Arg> irArgs = foreignArgsToCPS(pass, fn, env, block, args);
+
+    IRName name = k.destName(*pass.compiler);
+    block->stmts.push(IRStmt{FFICall{name, irDomain, irCallee, std::move(irArgs)}, maybeLoc});
+
+    if (k.type == ToCpsCont::RETURN) {
+        block->createReturn(k.ret.cont, name, maybeLoc);
+    }
+
+    return name;
+}
+
 IRName callToCPS(
     CPSConv& pass, IRFn& fn, ToCpsEnv const& env, IRBlock*& block, ORef callee, ORef calleeLoc,
     ORef args, ORef maybeLoc, ToCpsCont k
@@ -758,6 +886,8 @@ IRName exprToIR(
                     return letToCPS(pass, fn, env, block, args, k);
                 } else if (strEq(calleeSym->name(), strLit("letfn"))) {
                     return letfnToCPS(pass, fn, env, block, args, k);
+                } else if (strEq(calleeSym->name(), strLit("call-foreign"))) {
+                    return callForeignToCPS(pass, fn, env, block, args, maybeLoc, k);
                 }
             }
 

@@ -80,7 +80,8 @@ bool markIRStmt(RT* state, IRStmt* stmt) {
     }; break;
 
     case IRStmt::CLOSURE: case IRStmt::MOVE: case IRStmt::SWAP:
-    case IRStmt::KNOT: case IRStmt::KNOT_INIT: case IRStmt::KNOT_GET: break;
+    case IRStmt::KNOT: case IRStmt::KNOT_INIT: case IRStmt::KNOT_GET:
+    case IRStmt::FFI_CALL: break;
     }
 
     return true;
@@ -116,7 +117,8 @@ void assertIRStmtInTospace(RT const* state, IRStmt const* stmt) {
     case IRStmt::METHOD_DEF: assertIRFnInTospace(state, &stmt->methodDef.fn); break;
 
     case IRStmt::CLOSURE: case IRStmt::MOVE: case IRStmt::SWAP:
-    case IRStmt::KNOT: case IRStmt::KNOT_INIT: case IRStmt::KNOT_GET: break;
+    case IRStmt::KNOT: case IRStmt::KNOT_INIT: case IRStmt::KNOT_GET:
+    case IRStmt::FFI_CALL: break;
     }
 }
 
@@ -420,6 +422,39 @@ void printStmt(
         printName(state, dest, compiler, knotGet.knot);
         fputs("))", dest);
     }; break;
+
+    case IRStmt::FFI_CALL: {
+        FFICall const& ffiCall = stmt->ffiCall;
+
+        fputs("(let ", dest);
+        printName(state, dest, compiler, ffiCall.name);
+        fputs(" (call-foreign ", dest);
+
+        if (ffiCall.codomain.box) {
+            fputs("(-box ", dest);
+            printName(state, dest, compiler, ffiCall.codomain.name);
+            putc(')', dest);
+        } else {
+            printName(state, dest, compiler, ffiCall.codomain.name);
+        }
+
+        putc(' ', dest);
+        printName(state, dest, compiler, ffiCall.callee);
+
+        for (FFICall::Arg const& arg : ffiCall.args) {
+            putc(' ', dest);
+
+            if (arg.unbox) {
+                fputs("(-unbox ", dest);
+                printName(state, dest, compiler, arg.name);
+                putc(')', dest);
+            } else {
+                printName(state, dest, compiler, arg.name);
+            }
+        }
+
+        fputs("))", dest);
+    }
     }
 }
 

@@ -281,6 +281,18 @@ IRStmt stmtWithPureLoads(
         KnotGetStmt& knotGet = stmt.knotGet;
         knotGet.knot = deepLexicalUse(compiler, env, newStmts, knotGet.knot, stmt.maybeLoc);
     }; break;
+
+    case IRStmt::FFI_CALL: {
+        FFICall& ffiCall = stmt.ffiCall;
+
+        ffiCall.codomain.name =
+            deepLexicalUse(compiler, env, newStmts, ffiCall.codomain.name, stmt.maybeLoc);
+        ffiCall.callee = deepLexicalUse(compiler, env, newStmts, ffiCall.callee, stmt.maybeLoc);
+
+        for (FFICall::Arg& arg : ffiCall.args) {
+            arg.name = deepLexicalUse(compiler, env, newStmts, arg.name, stmt.maybeLoc);
+        }
+    }; break;
     }
 
     return stmt;

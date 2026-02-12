@@ -92,6 +92,8 @@ public:
         *end_++ = v;
     }
 
+    std::optional<T*> peek() { return count() > 0 ? std::optional{end_ - 1} : std::nullopt; }
+
     std::optional<T const*> peek() const {
         return count() > 0 ? std::optional{end_ - 1} : std::nullopt;
     }

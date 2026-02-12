@@ -139,6 +139,23 @@ struct KnotGetStmt {
     IRName knot;
 };
 
+struct FFICall {
+    struct Domain {
+        IRName name;
+        bool box;
+    };
+
+    struct Arg {
+        IRName name;
+        bool unbox;
+    };
+
+    IRName name;
+    Domain codomain;
+    IRName callee;
+    AVec<Arg> args;
+};
+
 struct IRStmt {
     ORef maybeLoc;
     union {
@@ -154,6 +171,7 @@ struct IRStmt {
         KnotStmt knot;
         KnotInitStmt knotInit;
         KnotGetStmt knotGet;
+        FFICall ffiCall;
     };
     enum IRStmtType {
         GLOBAL_DEF,
@@ -167,7 +185,8 @@ struct IRStmt {
         SWAP,
         KNOT,
         KNOT_INIT,
-        KNOT_GET
+        KNOT_GET,
+        FFI_CALL
     } type;
 
     IRStmt(Define t_define, ORef t_maybeLoc) :
@@ -216,6 +235,10 @@ struct IRStmt {
 
     IRStmt(KnotGetStmt t_knotGet, ORef t_maybeLoc) :
         maybeLoc{t_maybeLoc}, knotGet{t_knotGet}, type{IRStmt::KNOT_GET}
+    {}
+
+    IRStmt(FFICall&& t_ffiCall, ORef t_maybeLoc) :
+        maybeLoc{t_maybeLoc}, ffiCall{std::move(t_ffiCall)}, type{IRStmt::FFI_CALL}
     {}
 };
 

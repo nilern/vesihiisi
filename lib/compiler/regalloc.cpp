@@ -96,7 +96,7 @@ public:
     };
 
     [[nodiscard]]
-    AllocStmtArgRegRes allocStmtArgReg(IRName var) {
+    AllocStmtArgRegRes allocMethodDefDomainReg(IRName var) {
         std::optional<Reg> const optDest = tryVarReg(var);
 
         Reg const reg = allocVarReg(var);
@@ -107,6 +107,35 @@ public:
         };
     }
 
+    Reg prospectN(size_t required) {
+        size_t const maxVarCount = regVars_.count();
+        for (size_t i = 0; i < maxVarCount; ++i) {
+            size_t const start = i;
+            for (size_t found = 0; isRegFree(Reg{uint8_t(i)}); ++i) {
+                ++found;
+                if (found == required) {
+                    return Reg{uint8_t(start)};
+                }
+            }
+        }
+
+        return Reg{uint8_t(maxVarCount)};
+    }
+
+    [[nodiscard]]
+    std::optional<Move> allocFFICallUseReg(IRName var, Reg reg) {
+        assert(isRegFree(reg));
+
+        std::optional<Reg> const optSrc = tryVarReg(var);
+        if (!optSrc) {
+            add(var, reg);
+            return std::nullopt;
+        } else {
+            return std::optional{Move{.dest = reg, .src = *optSrc}};
+        }
+    }
+
+    // OPTIMIZE: `template<bool delayDupDeallocs>`
     [[nodiscard]]
     std::optional<Move> allocTransferArgReg(IRName var, Reg reg, bool delayDupDeallocs) {
         assert(isRegFree(reg));
@@ -615,7 +644,7 @@ void regAllocStmt(Compiler& compiler, RegEnv& env, AVec<IRStmt>& outputStmts, IR
                 IRName const typeName = fn.domain.vals[i];
                 if (!typeName.isValid()) { continue; } // HACK
 
-                RegEnv::AllocStmtArgRegRes const res = env.allocStmtArgReg(typeName);
+                RegEnv::AllocStmtArgRegRes const res = env.allocMethodDefDomainReg(typeName);
                 fn.domain.vals[i] = IRName{res.reg.index};
                 if (res.maybeMove) {
                     dupMoves.push(*res.maybeMove);
@@ -699,6 +728,51 @@ void regAllocStmt(Compiler& compiler, RegEnv& env, AVec<IRStmt>& outputStmts, IR
         knotGet.knot = IRName{env.getVarReg(knotGet.knot).index};
 
         outputStmts.push(std::move(stmt));
+    }; break;
+
+    case IRStmt::FFI_CALL: {
+        ORef const maybeLoc = stmt.maybeLoc;
+        outputStmts.push(std::move(stmt));
+        FFICall& ffiCall = (*outputStmts.peek())->ffiCall;
+
+        ffiCall.name = IRName{env.deallocVarReg(ffiCall.name).index};
+
+        Reg const codomainReg = env.prospectN(2 + ffiCall.args.count()); // codomain, callee, args
+        {
+            auto regIdx = uint8_t(codomainReg.index);
+
+            auto reg = Reg{regIdx++};
+            std::optional<Move> optMove = env.allocFFICallUseReg(ffiCall.codomain.name, reg);
+            if (optMove) {
+                outputStmts.push(IRStmt{MoveStmt{
+                    .dest = IRName{optMove->dest.index},
+                    .src = IRName{optMove->src.index},
+                }, maybeLoc});
+            }
+            ffiCall.codomain.name = IRName{reg.index};
+
+            reg = Reg{regIdx++};
+            optMove = env.allocFFICallUseReg(ffiCall.callee, reg);
+            if (optMove) {
+                outputStmts.push(IRStmt{MoveStmt{
+                    .dest = IRName{optMove->dest.index},
+                    .src = IRName{optMove->src.index},
+                }, maybeLoc});
+            }
+            ffiCall.callee = IRName{reg.index};
+
+            for (FFICall::Arg& arg : ffiCall.args) {
+                reg = Reg{regIdx++};
+                optMove = env.allocFFICallUseReg(arg.name, reg);
+                if (optMove) {
+                    outputStmts.push(IRStmt{MoveStmt{
+                        .dest = IRName{optMove->dest.index},
+                        .src = IRName{optMove->src.index},
+                    }, maybeLoc});
+                }
+                arg.name = IRName{reg.index};
+            }
+        }
     }; break;
     }
 }

@@ -4,7 +4,6 @@
 
 #include "../rt.hpp"
 #include "../util/avec.hpp"
-#include "../util/bytefulbitset.hpp"
 
 namespace {
 
@@ -271,6 +270,16 @@ void MethodBuilder::pushDisplacement(size_t displacement) {
     pushCodeByte(uint8_t((displacement >> UINT8_WIDTH) & UINT8_MAX));
 }
 
+void MethodBuilder::emitBitSet(BytefulBitSet const& bits) {
+    // Encode bitset backwards into `builder`:
+    size_t const byteCount = bytefulBitSetByteCount(&bits);
+    for (size_t i = byteCount; i-- > 0;) {
+        pushCodeByte(bytefulBitSetByte(&bits, i));
+    }
+    assert(byteCount < UINT8_MAX);
+    pushCodeByte((uint8_t)byteCount);
+}
+
 void MethodBuilder::emitRegBits(std::span<IRName const> names, bool specializeHack) {
     // OPTIMIZE: Use `&compiler.arena`:
     BytefulBitSet bits = newBytefulBitSet(names.size()); // Need at least `count` bits, likely more
@@ -284,13 +293,7 @@ void MethodBuilder::emitRegBits(std::span<IRName const> names, bool specializeHa
         }
     }
 
-    // Encode bitset backwards into `builder`:
-    size_t const byteCount = bytefulBitSetByteCount(&bits);
-    for (size_t i = byteCount; i-- > 0;) {
-        pushCodeByte(bytefulBitSetByte(&bits, i));
-    }
-    assert(byteCount < UINT8_MAX);
-    pushCodeByte((uint8_t)byteCount);
+    emitBitSet(bits);
 
     freeBytefulBitSet(&bits);
 }
@@ -427,6 +430,37 @@ void emitStmt(
         builder.pushReg(knotGet.knot);
         builder.pushReg(knotGet.name);
         builder.pushOp(state, OP_KNOT_GET, stmt.maybeLoc);
+    }; break;
+
+    case IRStmt::FFI_CALL: {
+        FFICall const& ffiCall = stmt.ffiCall;
+
+        {
+            // OPTIMIZE: Use `&compiler.arena`:
+            BytefulBitSet bits = newBytefulBitSet(1 + ffiCall.args.count()); // codomain, args
+
+            size_t i = 0;
+
+            if (ffiCall.codomain.box) {
+                bytefulBitSetSet(&bits, i++);
+            }
+
+            for (FFICall::Arg const& arg : ffiCall.args) {
+                if (arg.unbox) {
+                    bytefulBitSetSet(&bits, i++);
+                }
+            }
+
+            builder.emitBitSet(bits);
+
+            freeBytefulBitSet(&bits);
+        }
+
+        assert(ffiCall.args.count() <= UINT8_MAX);
+        builder.pushCodeByte(uint8_t(ffiCall.args.count()));
+        builder.pushReg(ffiCall.codomain.name);
+        builder.pushReg(ffiCall.name);
+        builder.pushOp(state, OP_FFICALL, stmt.maybeLoc);
     }; break;
     }
 }

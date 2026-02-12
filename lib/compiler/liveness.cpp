@@ -139,7 +139,19 @@ void enlivenStmt(Compiler& compiler, BitSet& liveOuts, IRStmt& stmt) {
         KnotGetStmt const& knotGet = stmt.knotGet;
         rangeStart(liveOuts, knotGet.name);
         requireLive(compiler, liveOuts, knotGet.knot);
-    }
+    }; break;
+
+    case IRStmt::FFI_CALL: {
+        FFICall const& ffiCall = stmt.ffiCall;
+
+        rangeStart(liveOuts, ffiCall.name);
+        requireLive(compiler, liveOuts, ffiCall.codomain.name);
+        requireLive(compiler, liveOuts, ffiCall.callee);
+
+        for (FFICall::Arg const& arg : ffiCall.args) {
+            requireLive(compiler, liveOuts, arg.name);
+        }
+    }; break;
     }
 }
 

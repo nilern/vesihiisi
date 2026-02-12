@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../util/bytefulbitset.hpp"
 #include "ir.hpp"
 #include "../bytecode.hpp"
 
@@ -70,6 +71,8 @@ public:
     void pushReg(IRName name) { pushCodeByte((uint8_t)(name.index)); }
 
     void pushDisplacement(size_t displacement);
+
+    void emitBitSet(BytefulBitSet const& bits);
 
     void emitRegBits(std::span<IRName const> names, bool specializeHack);
 

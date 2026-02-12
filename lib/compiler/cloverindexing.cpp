@@ -99,7 +99,8 @@ void indexStmtClovers(Compiler& compiler, CloverIdxs const& env, IRStmt& stmt) {
     }; break;
 
     case IRStmt::CLOSURE: case IRStmt::MOVE: case IRStmt::SWAP:
-    case IRStmt::KNOT: case IRStmt::KNOT_INIT: case IRStmt::KNOT_GET: break; // Not closure-related
+    case IRStmt::KNOT: case IRStmt::KNOT_INIT: case IRStmt::KNOT_GET:
+    case IRStmt::FFI_CALL: break; // Not closure-related
     }
 }
 

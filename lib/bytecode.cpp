@@ -288,7 +288,7 @@ void Disassembler::disassembleInstrBitmap(FILE* dest) {
         uint8_t const byte = next().val.codeByte;
 
         for (size_t k = 0; k < UINT8_WIDTH; ++k) {
-            uint8_t const bit = (byte >> (UINT8_WIDTH - 1 - k)) & 1;
+            uint8_t const bit = (byte >> k) & 1;
 
             fprintf(dest, "%u", bit);
         }

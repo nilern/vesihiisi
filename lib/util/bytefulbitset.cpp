@@ -38,7 +38,7 @@ void bytefulBitSetSet(BytefulBitSet* bits, size_t n) {
     }
 
     size_t const subIdx = n % UINT8_WIDTH;
-    bits->bytes[byteIdx] |= 1u << (UINT8_WIDTH - 1 - subIdx);
+    bits->bytes[byteIdx] |= 1u << subIdx;
 }
 
 } // namespace

@@ -201,7 +201,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
                 for (size_t byteIdx = 0, typeIdx = 0; byteIdx < typeSetByteCount; ++byteIdx) {
                     uint8_t const byte = rt->code[start + byteIdx];
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
-                        if ((byte >> (UINT8_WIDTH - 1 - bitIdx)) & 1) {
+                        if ((byte >> bitIdx) & 1) {
                             size_t const regIdx = UINT8_WIDTH * byteIdx + bitIdx;
                             ORef const maybeType = rt->regs[regIdx];
                             if (!isa<Type>(*rt, maybeType)) {
@@ -282,7 +282,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
                 for (size_t byteIdx = 0, cloverIdx = 0; byteIdx < cloverSetByteCount; ++byteIdx) {
                     uint8_t const byte = rt->code[start + byteIdx];
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
-                        if ((byte >> (UINT8_WIDTH - 1 - bitIdx)) & 1) {
+                        if ((byte >> bitIdx) & 1) {
                             auto const cloverPtr = // `const_cast` for init:
                                 const_cast<ORef*>(closure->clovers().data()) + cloverIdx++;
                             size_t const regIdx = UINT8_WIDTH * byteIdx + bitIdx;
@@ -333,7 +333,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
                 for (size_t byteIdx = 0, cloverIdx = 0; byteIdx < cloverSetByteCount; ++byteIdx) {
                     uint8_t const byte = rt->code[start + byteIdx];
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
-                        if ((byte >> (UINT8_WIDTH - 1 - bitIdx)) & 1) {
+                        if ((byte >> bitIdx) & 1) {
                             auto const cloverPtr = // `const_cast` for init:
                                 const_cast<ORef*>(cont->saves().data()) + cloverIdx++;
                             size_t const regIdx = UINT8_WIDTH * byteIdx + bitIdx;

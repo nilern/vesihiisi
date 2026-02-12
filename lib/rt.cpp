@@ -619,10 +619,11 @@ Object* RT::alloc(HRef<Type> type) {
 uint64_t typeTag(RT& rt, HRef<Type> type) {
     assert(!eq(type, Flonum::reify(rt)));
 
-    HRef<Type> const* begin = rt.typesArray + ptrdiff_t(TaggedType::FIXNUM);
+    HRef<Type> const* typesBegin = rt.typesArray;
+    HRef<Type> const* begin = typesBegin + ptrdiff_t(TaggedType::FIXNUM);
     HRef<Type> const* end = rt.typesArray + ptrdiff_t(TaggedType::FLONUM);
     auto const it = std::find(begin, end, type);
-    return it != end ? uint64_t(std::distance(begin, it)) : uint64_t(TaggedType::HEAPED);
+    return it != end ? uint64_t(std::distance(typesBegin, it)) : uint64_t(TaggedType::HEAPED);
 }
 
 HRef<Type> typeOf(RT const* state, ORef v) {

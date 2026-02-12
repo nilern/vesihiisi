@@ -1186,4 +1186,15 @@ PrimopRes PrimopOpenForeignLibrary::uncheckedInvoke(RT* rt) {
     return PrimopRes::CONTINUE;
 }
 
+// TODO: Non-POSIX support:
+PrimopRes PrimopCloseForeignLibrary::uncheckedInvoke(RT* rt) {
+    auto const dylib = HRef<Pointer>::fromUnchecked(rt->regs[firstArgReg]);
+
+    if (dlclose(dylib->val) != 0) {
+        PANIC("TODO: %s", dlerror());
+    }
+
+    return PrimopRes::CONTINUE; // Incidentally returns the (now possibly invalid) dylib handle
+}
+
 } // namespace

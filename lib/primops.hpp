@@ -399,8 +399,15 @@ struct PrimopExit : public FixedArityPrimop<PrimopExit, ORef> {
     static PrimopRes uncheckedInvoke(RT* state);
 };
 
+// TODO: A proper dylib type instead of `Pointer`
 struct PrimopOpenForeignLibrary : public FixedArityPrimop<PrimopOpenForeignLibrary, ORef> {
     static constexpr uint8_t name[] = "open-foreign-library";
+    static PrimopRes uncheckedInvoke(RT* state);
+};
+
+// TODO: A proper dylib type instead of `Pointer`
+struct PrimopCloseForeignLibrary : public FixedArityPrimop<PrimopCloseForeignLibrary, Pointer> {
+    static constexpr uint8_t name[] = "close-foreign-library";
     static PrimopRes uncheckedInvoke(RT* state);
 };
 

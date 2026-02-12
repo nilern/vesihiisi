@@ -12,7 +12,7 @@ BytefulBitSet newBytefulBitSet(size_t cap) {
     return BytefulBitSet{.bytes = bytes, .byteCount = 0, .byteCap = byteCap};
 }
 
-void bytefulBitSetSet(BytefulBitSet* bits, size_t n) {
+void bytefulBitSetSet(BytefulBitSet* bits, size_t n, bool v) {
     size_t const byteIdx = n / UINT8_WIDTH;
 
     if (byteIdx >= bits->byteCap) { // Does not even fit allocation => grow:
@@ -38,7 +38,7 @@ void bytefulBitSetSet(BytefulBitSet* bits, size_t n) {
     }
 
     size_t const subIdx = n % UINT8_WIDTH;
-    bits->bytes[byteIdx] |= 1u << subIdx;
+    bits->bytes[byteIdx] |= static_cast<uint8_t>(v) << subIdx;
 }
 
 } // namespace

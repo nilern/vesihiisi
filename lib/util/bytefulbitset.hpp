@@ -25,6 +25,6 @@ inline uint8_t bytefulBitSetByte(BytefulBitSet const* bits, size_t i) {
     return bits->bytes[i];
 }
 
-void bytefulBitSetSet(BytefulBitSet* bits, size_t n);
+void bytefulBitSetSet(BytefulBitSet* bits, size_t n, bool v);
 
 } // namespace

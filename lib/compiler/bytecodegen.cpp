@@ -289,7 +289,7 @@ void MethodBuilder::emitRegBits(std::span<IRName const> names, bool specializeHa
         size_t const regIdx = name.index;
         // FIXME: Hack for `specialize`, assumes that r0 cannot happen:
         if (!specializeHack || regIdx != 0) {
-            bytefulBitSetSet(&bits, regIdx);
+            bytefulBitSetSet(&bits, regIdx, true);
         }
     }
 
@@ -441,14 +441,10 @@ void emitStmt(
 
             size_t i = 0;
 
-            if (ffiCall.codomain.box) {
-                bytefulBitSetSet(&bits, i++);
-            }
+            bytefulBitSetSet(&bits, i++, ffiCall.codomain.box);
 
             for (FFICall::Arg const& arg : ffiCall.args) {
-                if (arg.unbox) {
-                    bytefulBitSetSet(&bits, i++);
-                }
+                bytefulBitSetSet(&bits, i++, arg.unbox);
             }
 
             builder.emitBitSet(bits);

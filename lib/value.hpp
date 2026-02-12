@@ -222,7 +222,7 @@ uint64_t typeTag(RT& rt, HRef<Type> type);
 /// @pre `type != Flonum::reify(rt)`
 inline ORef tag(RT& rt, HRef<Type> type, uint64_t bits) {
     uint64_t const tag = typeTag(rt, type);
-    return ORef{tag | bits};
+    return ORef{nonFlonumTag | (tag << payloadWidth) | (bits & payloadMask)};
 }
 
 inline bool isHeaped(ORef v) {

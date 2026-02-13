@@ -34,6 +34,17 @@
         (body (cddr form)))
     `(if ,condition (do ,@body) #f)))
 
+(define-macro (cond _ form)
+  (let ((cases (cdr form)))
+    (if (identical? cases ())
+      #f
+      (let ((case (car cases)))
+        (if (identical? (car case) 'else)
+          `(do ,@(cdr case))
+          `(if ,(car case)
+             (do ,@(cdr case))
+             (cond ,@(cdr cases))))))))
+
 ;;; Collections
 ;;; ================================================================================================
 

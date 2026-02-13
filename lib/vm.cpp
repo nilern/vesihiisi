@@ -394,7 +394,6 @@ VMRes run(RT* rt, HRef<Closure> self) {
             auto const f = HRef<Pointer>::fromUnchecked(anyF);
             ORef const* args = fPtr + 1;
 
-            // FIXME: Negative fixnum arguments (they should be sign-extended):
             uint64_t const rawRes = callForeign(f->val, fRet, unboxings, args, argc);
 
             auto const res = [&]() -> ORef {

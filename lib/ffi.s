@@ -14,6 +14,7 @@ callForeign:
 	push r12
 	push r13
 	push r14
+	push r15
 	push rsi		# `returnsFlonum`
 	push rdi		# The foreign function to be called
 	mov rbp, rdx	# `unboxings`
@@ -24,14 +25,22 @@ callForeign:
 .macro jmpFlo reg, dest
 	cmp \reg, r12
 	je \dest		# actual NaN?
-	mov r14, \reg
-	not r14
-	test r14, r12
+	mov r15, \reg
+	not r15
+	test r15, r12
 	jne \dest		# Non-NaN flonum?
 .endm
 
-.macro marshal reg, i, unboxed
-	and \reg, r13
+.macro marshal reg, i, nonFixnum, unboxed
+	mov r15, \reg	# Copy for testing fixnumness
+	and \reg, r13	# Strip tag bits
+	not r15
+	test r15, r14
+	jne \nonFixnum
+# Sign extension to i64:
+	sal \reg, 16
+	sar \reg, 16
+\nonFixnum:
 	test BYTE PTR ((\i + 1) / 8)[rbp], 1 << ((\i + 1) % 8)
 	je \unboxed					# Does not need unboxing load?
 	mov \reg, QWORD PTR [\reg]
@@ -48,11 +57,12 @@ callForeign:
 	test r8, r8
 	je .doCallForeign				# `argc == 0` => done marshalling
 	movabs r12, 9222246136947933184	# `nonFlonumTag`
+	movabs r13, 281474976710655	# `payloadMask`
+	movabs r14, 9222527611924643840	# `fixnumTag`
 	mov rdi, QWORD PTR [r10]		# `rdi = args[0]`
 	jmpFlo rdi, .arg0f
 # Non-flonum:
-	movabs r13, 281474976710655	# `payloadMask`
-	marshal rdi, 0, .arg0Unboxed
+	marshal rdi, 0, .arg0NonFixnum, .arg0Unboxed
 	jmp .arg1
 .arg0f:
 	marshalFlo xmm0, rdi
@@ -63,14 +73,13 @@ callForeign:
 	mov rsi, QWORD PTR 1[r10]
 	jmpFlo rsi, .arg1f
 # Non-flonum:
-	movabs r13, 281474976710655
 	test ah, ah
 	je .iArg0
-	marshal rsi, 1, .arg1Unboxed1
+	marshal rsi, 1, .arg1NonFixnum1, .arg1Unboxed1
 	jmp .arg2
 .iArg0:
 	mov rdi, rsi
-	marshal rdi, 1, .arg1Unboxed0
+	marshal rdi, 1, .arg1NonFixnum0, .arg1Unboxed0
 	jmp .arg2
 .arg1f:
 	marshalFlo xmm0, rdi
@@ -89,6 +98,7 @@ callForeign:
 	movq rax, xmm0
 
 .done:
+	pop r15
 	pop r14
 	pop r13
 	pop r12

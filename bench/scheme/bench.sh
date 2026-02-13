@@ -4,6 +4,8 @@ export VSHS_HOME=../..
 
 cat ./prelude.lisp ./gabriel/cpstak.lisp ./postlude.lisp | ../../vesihiisi -
 
+cat ./prelude.lisp ./gabriel/ctak.lisp ./postlude.lisp | ../../vesihiisi -
+
 cat ./prelude.lisp ./gabriel/diviter.lisp ./postlude.lisp | ../../vesihiisi -
 
 cat ./prelude.lisp ./gabriel/divrec.lisp ./postlude.lisp | ../../vesihiisi -

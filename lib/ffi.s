@@ -70,7 +70,7 @@ callForeign:
 .arg1: # `args[1]`
 	cmp r8, 1
 	je .doCallForeign
-	mov rsi, QWORD PTR 1[r10]
+	mov rsi, QWORD PTR 8[r10]
 	jmpFlo rsi, .arg1f
 # Non-flonum:
 	test ah, ah
@@ -82,9 +82,15 @@ callForeign:
 	marshal rdi, 1, .arg1NonFixnum0, .arg1Unboxed0
 	jmp .arg2
 .arg1f:
-	marshalFlo xmm0, rdi
+	test al, al
+	jne .fArg1
+	marshalFlo xmm0, rsi
+	jmp .arg2
+.fArg1:
+	marshalFlo xmm1, rsi
 
 .arg2:
+# TODO: More than 2 arguments
 
 # Finally, the foreign function call itself:
 .doCallForeign:

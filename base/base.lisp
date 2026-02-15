@@ -48,6 +48,10 @@
 ;;; Collections
 ;;; ================================================================================================
 
+(define array!-set! (fn ((: xs <array!>) i v) (flex-set! xs i v)))
+
+(define list->array! (fn (xs) (apply array! xs)))
+
 (define for-each (fn (f vs) (fold (fn (v _) (f v)) vs vs)))
 
 ;;; I/O

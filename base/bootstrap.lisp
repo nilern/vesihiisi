@@ -36,6 +36,8 @@
 (define cadr (fn (xs) (car (cdr xs))))
 (define cdar (fn (xs) (cdr (car xs))))
 (define cddr (fn (xs) (cdr (cdr xs))))
+(define caddr (fn (xs) (car (cdr (cdr xs)))))
+(define cdddr (fn (xs) (cdr (cdr (cdr xs)))))
 
 (define fold-left
   (fn (f acc xs)

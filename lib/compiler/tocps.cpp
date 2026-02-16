@@ -155,8 +155,12 @@ IRName exprToIR(CPSConv& pass, IRFn& fn, ToCpsEnv const& env, IRBlock*& block, O
 IRName bodyToCPS(
     CPSConv& pass, IRFn& fn, ToCpsEnv const& env, IRBlock*& block, ORef body, ToCpsCont k
 ) {
+    if (isEmptyList(pass.state, body)) {
+        return constToCPS(pass, *block, False, Default, k);
+    }
+
     if (!isa<Pair>(*pass.state, body)) {
-        assert(false); // TODO: Proper empty/improper body error
+        PANIC("TODO: Improper body error");
     }
     auto argsPair = HRef<Pair>::fromUnchecked(body);
 
@@ -174,7 +178,7 @@ IRName bodyToCPS(
 
             argsPair = HRef<Pair>::fromUnchecked(body);
         } else {
-            assert(false); // TODO: Proper improper args error
+            PANIC("TODO: Improper body error");
         }
     }
 }

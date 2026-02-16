@@ -450,16 +450,19 @@ public:
     static HRef<Type> reify(struct RT const& state);
 };
 
-struct Symbol : public FlexObject<Symbol, uint8_t> {
+struct Symbol : public FixedObject<Symbol> {
     Fixnum const hash;
+    ORef name;
 
-    Symbol(Fixnum t_hash, Str name) : hash{t_hash} {
-        memcpy(const_cast<uint8_t*>(flexData()), name.data, name.len);
-    }
+private:
+    Symbol(Fixnum t_hash, ORef t_name) : hash{t_hash}, name{t_name} {}
 
-    static HRef<Type> reify(struct RT const& state);
+public:
+    static HRef<Type> reify(RT const& state);
 
-    Str name() const { return Str{flexData(), static_cast<size_t>(flexCount().val())}; }
+    Symbol(Fixnum t_hash, HRef<String> t_name) : Symbol{t_hash, static_cast<ORef>(t_name)} {}
+
+    static HRef<Symbol> gensym(RT& rt);
 };
 
 // TODO: `template<typename T> struct Array<T> :`?

@@ -976,7 +976,11 @@ PrimopRes PrimopStringToSymbol::uncheckedInvoke(RT* state) {
     auto const str = HRef<String>::fromUnchecked(state->regs[firstArgReg]);
 
     state->regs[retReg] = internHeaped(state, str);
+    return PrimopRes::CONTINUE;
+}
 
+PrimopRes PrimopGensym::uncheckedInvoke(RT* rt) {
+    rt->regs[retReg] = Symbol::gensym(*rt);
     return PrimopRes::CONTINUE;
 }
 

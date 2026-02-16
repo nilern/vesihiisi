@@ -16,11 +16,7 @@
 (define char<= (fn (x y) (not (char< y x))))
 (define char>= (fn (x y) (not (char< x y))))
 
-(define symbol->string
-  (fn ((: sym <symbol>))
-    (let ((len (flex-count sym))
-          (str (make-flex <string> len)))
-      (flex-copy! str 0 sym 0 len))))
+(define symbol->string (fn ((: sym <symbol>)) (slot-get sym 1)))
 
 (define cons* (fn (x xs loc) (make <pair> x xs loc)))
 (define cons (fn (x xs) (cons* x xs 0.)))

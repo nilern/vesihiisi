@@ -193,7 +193,7 @@ Type* tryCreateSymbolType(Heap& heap, Type const* typeType) {
     if (!type) { return nullptr; }
 
     return new (type) Type{
-        Fixnum((intptr_t)sizeof(Symbol)), Fixnum((intptr_t)alignof(Symbol)), True, False, True,
+        Fixnum((intptr_t)sizeof(Symbol)), Fixnum((intptr_t)alignof(Symbol)), False, False, False,
         Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
 }
@@ -266,8 +266,6 @@ HRef<Method> createPrimopMethod(
     RT* state, Str name, MethodCode nativeCode, bool hasVarArg, Fixnum arity, ...);
 
 HRef<Closure> allocClosure(RT* state, HRef<Method> method, Fixnum cloverCount);
-
-HRef<Symbol> intern(RT* state, Str name);
 
 HRef<Var> getVar(RT* state, HRef<Namespace> nsRef, HRef<Symbol> name);
 
@@ -582,6 +580,7 @@ RT* RT::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* a
     PrimopStringIteratorPeek::install(*dest);
     PrimopStringIteratorNext::install(*dest);
     PrimopStringToSymbol::install(*dest);
+    PrimopGensym::install(*dest);
     PrimopFileExists::install(*dest);
     PrimopOpenInputFile::install(*dest);
     PrimopClosePort::install(*dest);

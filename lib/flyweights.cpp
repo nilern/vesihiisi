@@ -24,29 +24,20 @@ void SymbolTable::prune(RT const& state) {
     }
 }
 
-HRef<Symbol> createUninternedSymbol(RT* state, Fixnum hash, Str name) {
-    Symbol* ptr = static_cast<decltype(ptr)>(
-        state->heap.tryAllocFlex(&*state->types.symbol, Fixnum((intptr_t)name.len)));
+HRef<Symbol> createUninternedSymbolFromHeaped(RT* state, Fixnum hash, HRef<String> name) {
+    Symbol* ptr = static_cast<decltype(ptr)>(state->heap.tryAlloc(&*state->types.symbol));
     if (mustCollect(ptr)) {
+        auto const nameG = state->pushRoot(&name);
         collect(state);
-        ptr = static_cast<decltype(ptr)>(
-            state->heap.allocFlexOrDie(&*state->types.symbol, Fixnum((intptr_t)name.len)));
+        ptr = static_cast<decltype(ptr)>(state->heap.allocOrDie(&*state->types.symbol));
     }
 
     return HRef{new (ptr) Symbol{hash, name}};
 }
 
-HRef<Symbol> createUninternedSymbolFromHeaped(RT* state, Fixnum hash, HRef<String> name) {
-    Symbol* ptr = static_cast<decltype(ptr)>(
-        state->heap.tryAllocFlex(&*state->types.symbol, name->flexCount()));
-    if (mustCollect(ptr)) {
-        auto const nameG = state->pushRoot(&name);
-        collect(state);
-        ptr = static_cast<decltype(ptr)>(
-            state->heap.allocFlexOrDie(&*state->types.symbol, name->flexCount()));
-    }
-
-    return HRef{new (ptr) Symbol{hash, name->str()}};
+HRef<Symbol> createUninternedSymbol(RT* state, Fixnum hash, Str nameStr) {
+    HRef<String> const name = createString(state, nameStr);
+    return createUninternedSymbolFromHeaped(state, hash, name);
 }
 
 Fixnum hashStr(Str s) { return Fixnum((intptr_t)fnv1aHash(s)); }
@@ -62,8 +53,9 @@ SymbolTable::IndexOfRes SymbolTable::indexOf(Fixnum hash, Str name) const {
 
         if (isHeaped(*entry)) {
             HRef<Symbol> const symbol = HRef<Symbol>::fromUnchecked(*entry);
+            assert(isHeaped(symbol->name));
             if (eq(symbol->hash, hash)
-                && strEq(symbol->name(), name)
+                && strEq(HRef<String>::fromUnchecked(symbol->name)->str(), name)
             ) {
                 return IndexOfRes{i, true};
             }

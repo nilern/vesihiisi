@@ -33,6 +33,18 @@ HRef<Type> StringIterator::reify(RT const& state) { return state.types.stringIte
 
 HRef<Type> Symbol::reify(RT const& state) { return state.types.symbol; }
 
+HRef<Symbol> Symbol::gensym(RT& rt) {
+    Object* ptr = rt.heap.tryAlloc(&*reify(rt));
+    if (mustCollect(ptr)) {
+        collect(&rt);
+        ptr = rt.heap.allocOrDie(&*reify(rt));
+    }
+
+    int const hash = rand(); // FIXME: Sloppy C `rand()`
+    auto const fxHash = Fixnum{int64_t{hash}};
+    return HRef{new (static_cast<Symbol*>(ptr)) Symbol{fxHash, Default}};
+}
+
 HRef<Type> Array::reify(RT const& state) { return state.types.array; }
 
 HRef<Type> ArrayMut::reify(RT const& state) { return state.types.arrayMut; }

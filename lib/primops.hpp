@@ -320,9 +320,15 @@ struct PrimopStringIteratorNext
     static constexpr uint8_t name[] = "string-iterator-next!";
     static PrimopRes uncheckedInvoke(RT* state);
 };
+
+// Symbols
 struct PrimopStringToSymbol : public FixedArityPrimop<PrimopStringToSymbol, String> {
     static constexpr uint8_t name[] = "string->symbol";
     static PrimopRes uncheckedInvoke(RT* state);
+};
+struct PrimopGensym : public FixedArityPrimop<PrimopGensym> {
+    static constexpr uint8_t name[] = "gensym";
+    static PrimopRes uncheckedInvoke(RT* rt);
 };
 
 // I/O

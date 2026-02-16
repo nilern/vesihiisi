@@ -659,18 +659,23 @@ FFICall::Domain foreignDomainToCPS(
             auto const calleeSymbol = HRef<Symbol>::fromUnchecked(callee);
 
             // OPTIMIZE: Symbol comparison instead of `strEq`:
-            if (strEq(calleeSymbol->name(), strLit("-box"))) {
-                auto const argsPair = HRef<Pair>::fromUnchecked(args);
-                ORef const expr = argsPair->car().get();
-                args = argsPair->cdr().get();
+            ORef const anyName = calleeSymbol->name;
+            if (isa<String>(*pass.state, anyName)) {
+                auto const name = HRef<String>::fromUnchecked(anyName);
 
-                if (!isEmptyList(pass.state, args)) {
-                    PANIC("TODO: `-box` arity error");
+                if (strEq(name->str(), strLit("-box"))) {
+                    auto const argsPair = HRef<Pair>::fromUnchecked(args);
+                    ORef const expr = argsPair->car().get();
+                    args = argsPair->cdr().get();
+
+                    if (!isEmptyList(pass.state, args)) {
+                        PANIC("TODO: `-box` arity error");
+                    }
+
+                    IRName const name = exprToIR(pass, fn, env, block, expr, maybeLoc,
+                                                 ToCpsCont{{}, ToCpsCont::VAL});
+                    return FFICall::Domain{.name = name, .box = true};
                 }
-
-                IRName const name = exprToIR(pass, fn, env, block, expr, maybeLoc,
-                                             ToCpsCont{{}, ToCpsCont::VAL});
-                return FFICall::Domain{.name = name, .box = true};
             }
         }
     }
@@ -693,18 +698,23 @@ FFICall::Arg foreignArgToCPS(
             auto const calleeSymbol = HRef<Symbol>::fromUnchecked(callee);
 
             // OPTIMIZE: Symbol comparison instead of `strEq`:
-            if (strEq(calleeSymbol->name(), strLit("-unbox"))) {
-                auto const argsPair = HRef<Pair>::fromUnchecked(args);
-                ORef const expr = argsPair->car().get();
-                args = argsPair->cdr().get();
+            ORef const anyName = calleeSymbol->name;
+            if (isa<String>(*pass.state, anyName)) {
+                auto const name = HRef<String>::fromUnchecked(anyName);
 
-                if (!isEmptyList(pass.state, args)) {
-                    PANIC("TODO: `-unbox` arity error");
+                if (strEq(name->str(), strLit("-unbox"))) {
+                    auto const argsPair = HRef<Pair>::fromUnchecked(args);
+                    ORef const expr = argsPair->car().get();
+                    args = argsPair->cdr().get();
+
+                    if (!isEmptyList(pass.state, args)) {
+                        PANIC("TODO: `-unbox` arity error");
+                    }
+
+                    IRName const name = exprToIR(pass, fn, env, block, expr, maybeLoc,
+                                                 ToCpsCont{{}, ToCpsCont::VAL});
+                    return FFICall::Arg{.name = name, .unbox = true};
                 }
-
-                IRName const name = exprToIR(pass, fn, env, block, expr, maybeLoc,
-                                             ToCpsCont{{}, ToCpsCont::VAL});
-                return FFICall::Arg{.name = name, .unbox = true};
             }
         }
     }
@@ -872,22 +882,27 @@ IRName exprToIR(
                 HRef<Symbol> const calleeSym = HRef<Symbol>::fromUnchecked(callee);
 
                 // OPTIMIZE: Symbol comparisons instead of `strEq`:
-                if (strEq(calleeSym->name(), strLit("fn"))) {
-                    return fnToCPS(pass, fn, env, block, args, maybeLoc, k);
-                } else if (strEq(calleeSym->name(), strLit("if"))) {
-                    return ifToCPS(pass, fn, env, block, args, maybeLoc, k);
-                } else if (strEq(calleeSym->name(), strLit("quote"))) {
-                    return quoteToCPS(pass, block, args, k);
-                } else if (strEq(calleeSym->name(), strLit("define"))) {
-                    return defToCPS(pass, fn, env, block, args, maybeLoc, k);
-                } else if (strEq(calleeSym->name(), strLit("set!"))) {
-                    return setToCPS(pass, fn, env, block, args, maybeLoc, k);
-                } else if (strEq(calleeSym->name(), strLit("let"))) {
-                    return letToCPS(pass, fn, env, block, args, k);
-                } else if (strEq(calleeSym->name(), strLit("letfn"))) {
-                    return letfnToCPS(pass, fn, env, block, args, k);
-                } else if (strEq(calleeSym->name(), strLit("call-foreign"))) {
-                    return callForeignToCPS(pass, fn, env, block, args, maybeLoc, k);
+                ORef const anyName = calleeSym->name;
+                if (isa<String>(*pass.state, anyName)) {
+                    auto const name = HRef<String>::fromUnchecked(anyName);
+
+                    if (strEq(name->str(), strLit("fn"))) {
+                        return fnToCPS(pass, fn, env, block, args, maybeLoc, k);
+                    } else if (strEq(name->str(), strLit("if"))) {
+                        return ifToCPS(pass, fn, env, block, args, maybeLoc, k);
+                    } else if (strEq(name->str(), strLit("quote"))) {
+                        return quoteToCPS(pass, block, args, k);
+                    } else if (strEq(name->str(), strLit("define"))) {
+                        return defToCPS(pass, fn, env, block, args, maybeLoc, k);
+                    } else if (strEq(name->str(), strLit("set!"))) {
+                        return setToCPS(pass, fn, env, block, args, maybeLoc, k);
+                    } else if (strEq(name->str(), strLit("let"))) {
+                        return letToCPS(pass, fn, env, block, args, k);
+                    } else if (strEq(name->str(), strLit("letfn"))) {
+                        return letfnToCPS(pass, fn, env, block, args, k);
+                    } else if (strEq(name->str(), strLit("call-foreign"))) {
+                        return callForeignToCPS(pass, fn, env, block, args, maybeLoc, k);
+                    }
                 }
             }
 

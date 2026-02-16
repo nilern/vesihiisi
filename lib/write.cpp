@@ -38,8 +38,13 @@ void write(RT const* state, FILE* dest, ORef v) {
         } else if (isa<Symbol>(*state, v)) {
             HRef<Symbol> const s = HRef<Symbol>::fromUnchecked(v);
 
-            Str const name = s->name();
-            fprintf(dest, "%.*s", (int)name.len, name.data);
+            ORef const anyName = s->name;
+            if (isHeaped(anyName)) {
+                Str const nameStr = HRef<String>::fromUnchecked(anyName)->str();
+                fprintf(dest, "%.*s", (int)nameStr.len, nameStr.data);
+            } else {
+                fprintf(dest, "G__%lu", static_cast<uint64_t>(s->hash.val()));
+            }
         } else if (isa<Pair>(*state, v)) {
             auto pair = HRef<Pair>::fromUnchecked(v);
             

@@ -81,6 +81,8 @@ private:
     void rehash();
 };
 
+HRef<Symbol> intern(RT* state, Str name);
+
 // Specializations
 // =================================================================================================
 

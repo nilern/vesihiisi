@@ -93,11 +93,20 @@
 ;;; Collections
 ;;; ================================================================================================
 
+(define for-each (fn (f vs) (fold (fn (v _) (f v)) vs vs)))
+
+(define make-array!
+  (make-multimethod 'make-array!
+    (fn (len) (make-flex <array!> len))
+    (fn (len v)
+      (let ((arr (make-array! len)))
+        (induct ((i 0 (fx+ i 1)))
+                ((identical? i len) arr)
+          (array!-set! arr i v))))))
+
 (define array!-set! (fn ((: xs <array!>) i v) (flex-set! xs i v)))
 
 (define list->array! (fn (xs) (apply array! xs)))
-
-(define for-each (fn (f vs) (fold (fn (v _) (f v)) vs vs)))
 
 ;;; I/O
 ;;; ================================================================================================

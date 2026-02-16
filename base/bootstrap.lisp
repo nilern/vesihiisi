@@ -1271,7 +1271,20 @@
 (set! eval
   (let ((nonexpanding-eval eval))
     (fn (expr loc debug)
-      (nonexpanding-eval (macroexpand-all () expr) loc debug))))
+      (if debug
+        (let ()
+          (write-string ";; # S-expression:\n")
+          (write expr)
+          (write-string "\n\n"))
+        #f)
+      (let ((expr (macroexpand-all () expr)))
+        (if debug
+          (let ()
+            (write-string ";; # Macroexpansion:\n")
+            (write expr)
+            (write-string "\n\n"))
+          #f)
+        (nonexpanding-eval expr loc debug)))))
 
 ;; TODO: Reader macros (for both readers)
 ;; OPTIMIZE: Make output more efficient (there is a whole tradition about that):

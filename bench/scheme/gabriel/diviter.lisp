@@ -2,19 +2,15 @@
 
 (define create-n
   (fn (n)
-    (letfn (((loop n xs)
-              (if (= n 0)
-                xs
-                (loop (- n 1) (cons () xs)))))
-      (loop n ()))))
+    (induct ((n n (- n 1))
+             (a () (cons () a)))
+            ((= n 0) a))))
 
 (define iterative-div2
   (fn (l)
-    (letfn (((loop l a)
-              (if (identical? l ())
-                a
-                (loop (cddr l) (cons (car l) a)))))
-      (loop l ()))))
+    (induct ((l l (cddr l))
+             (a () (cons (car l) a)))
+            ((identical? l ()) a))))
 
 (define main
   (fn args

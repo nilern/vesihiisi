@@ -45,6 +45,51 @@
              (do ,@(cdr case))
              (cond ,@(cdr cases))))))))
 
+(define-macro (and _ form)
+  (let ((args (cdr form)))
+    (if (identical? args ())
+      #t
+      (let ((tmp-val (car args))
+            (args (cdr args)))
+        (if (identical? args ())
+          tmp-val
+          `(if ,tmp-val
+             (and ,@args)
+             #f))))))
+
+(define-macro (or _ form)
+  (let ((args (cdr form)))
+    (if (identical? args ())
+      #f
+      (let ((tmp-val (car args))
+            (args (cdr args)))
+        (if (identical? args ())
+          tmp-val
+          (let ((tmp (gensym)))
+            `(let ((,tmp ,tmp-val))
+               (if ,tmp
+                 ,tmp
+                 (or ,@args)))))))))
+
+(define-macro (induct _ form)
+  (let ((args (cdr form))
+        (inductions (cadr form))
+        (ctrl (caddr form))
+        (body (cdddr form))
+
+        (inductions (map (fn (induction)
+                           (if (= (count induction) 2)
+                             `(,@induction ,(car induction))
+                             induction))
+                         inductions))
+        (loop (gensym)))
+    `(letfn (((,loop ,@(map car inductions))
+               (if ,(car ctrl)
+                 (do ,@(cdr ctrl))
+                 (do ,@body
+                     (,loop ,@(map caddr inductions))))))
+       (,loop ,@(map cadr inductions)))))
+
 ;;; Collections
 ;;; ================================================================================================
 

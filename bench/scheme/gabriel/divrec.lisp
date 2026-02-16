@@ -2,11 +2,9 @@
 
 (define create-n
   (fn (n)
-    (letfn (((loop n xs)
-              (if (= n 0)
-                xs
-                (loop (- n 1) (cons () xs)))))
-      (loop n ()))))
+    (induct ((n n (- n 1))
+             (a () (cons () a)))
+            ((= n 0) a))))
 
 (define recursive-div2
   (fn (l)

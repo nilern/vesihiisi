@@ -155,6 +155,9 @@ private:
     constexpr explicit Fixnum(uint64_t t_bits) : Scalar{t_bits} {}
 };
 
+constexpr Fixnum fixnumMin = Fixnum{-int64_t((uint64_t(1) << (payloadWidth - 1)))};
+constexpr Fixnum fixnumMax = Fixnum{int64_t(uint64_t(1) << (payloadWidth - 1)) - 1};
+
 struct Flonum : public Scalar {
     [[maybe_unused]] // TODO: certainly use
     static HRef<struct Type> reify(struct RT const& state);

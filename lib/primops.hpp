@@ -262,8 +262,16 @@ struct PrimopFxQuot : public FixedArityPrimop<PrimopFxQuot, Fixnum, Fixnum> {
     static constexpr uint8_t name[] = "fx-quot";
     static PrimopRes uncheckedInvoke(RT* state);
 };
+struct PrimopFxRem : public FixedArityPrimop<PrimopFxRem, Fixnum, Fixnum> {
+    static constexpr uint8_t name[] = "fx-rem";
+    static PrimopRes uncheckedInvoke(RT* state);
+};
 struct PrimopFxLt : public FixedArityPrimop<PrimopFxLt, Fixnum, Fixnum> {
     static constexpr uint8_t name[] = "fx<";
+    static PrimopRes uncheckedInvoke(RT* state);
+};
+struct PrimopFxAbs : public FixedArityPrimop<PrimopFxAbs, Fixnum> {
+    static constexpr uint8_t name[] = "fx-abs";
     static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopFxShl : public FixedArityPrimop<PrimopFxShl, Fixnum, Fixnum> {

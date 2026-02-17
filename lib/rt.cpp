@@ -517,6 +517,8 @@ RT* RT::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* a
     }
 
     installPrimordial(dest, strLit("fixnum-width"), Fixnum{int64_t(payloadWidth)});
+    installPrimordial(dest, strLit("least-fixnum"), fixnumMin);
+    installPrimordial(dest, strLit("greatest-fixnum"), fixnumMax);
     {
         Str const debugName = strLit("*vm-debug*");
         installPrimordial(dest, debugName, Bool{debugFromArgv(argc, argv)});
@@ -568,7 +570,9 @@ RT* RT::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* a
     PrimopFxSub::install(*dest);
     PrimopFxMul::install(*dest);
     PrimopFxQuot::install(*dest);
+    PrimopFxRem::install(*dest);
     PrimopFxLt::install(*dest);
+    PrimopFxAbs::install(*dest);
     PrimopFxShl::install(*dest);
     PrimopFxShr::install(*dest);
     PrimopFxLshr::install(*dest);

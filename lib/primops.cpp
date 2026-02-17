@@ -842,12 +842,45 @@ PrimopRes PrimopFxQuot::uncheckedInvoke(RT* state) {
     return PrimopRes::CONTINUE;
 }
 
+PrimopRes PrimopFxRem::uncheckedInvoke(RT* state) {
+    intptr_t const x = Fixnum::fromUnchecked(state->regs[firstArgReg]).val();
+    intptr_t const y = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
+
+    if (y == 0) {
+        HRef<Closure> const f = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
+        Fixnum const xRef = Fixnum::fromUnchecked(state->regs[firstArgReg]);
+        Fixnum const yRef = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]);
+        return primopError(state, createDivByZeroError(state, f, xRef, yRef));
+    }
+
+    if (x == Fixnum::min && y == -1) {
+        // Due to two's complement `-fixnumMin == fixnumMax + 1` but this is the only overflowing
+        // combination.
+
+        HRef<Closure> const f = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
+        Fixnum const xRef = Fixnum::fromUnchecked(state->regs[firstArgReg]);
+        Fixnum const yRef = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]);
+        return primopError(state, createOverflowError(state, f, xRef, yRef));
+    }
+
+    state->regs[retReg] = Fixnum{x % y};
+
+    return PrimopRes::CONTINUE;
+}
+
 PrimopRes PrimopFxLt::uncheckedInvoke(RT* state) {
     intptr_t const x = Fixnum::fromUnchecked(state->regs[firstArgReg]).val();
     intptr_t const y = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
 
     state->regs[retReg] = Bool(x < y);
 
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes PrimopFxAbs::uncheckedInvoke(RT* state) {
+    int64_t const x = Fixnum::fromUnchecked(state->regs[firstArgReg]).val();
+
+    state->regs[retReg] = Fixnum{abs(x)};
     return PrimopRes::CONTINUE;
 }
 

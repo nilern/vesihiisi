@@ -98,6 +98,64 @@
   (let ((width fixnum-width))
     (fn () width)))
 
+(define least-fixnum
+  ;; Thunkify:
+  (let ((min least-fixnum))
+    (fn () min)))
+
+(define greatest-fixnum
+  ;; Thunkify:
+  (let ((max greatest-fixnum))
+    (fn () max)))
+
+(define expt
+  (make-multimethod 'expt
+    (fn ((: base <fixnum>) (: power <fixnum>))
+      (when (fx< power 0) (error 'TODO))
+      (induct ((n 1 (fx* n base))
+               (power power (fx- power 1)))
+              ((identical? power 0) n)))))
+
+;; FIXME: Negative inputs result in garbage outputs:
+(define fx-ilog2 (fn (n) (fx- (fx- (fixnum-width) 1) (fx-nlz n))))
+
+;; FIXME: Negative inputs result in garbage outputs:
+(define fx-ilog10
+  ;; Hacker's Delight Figure 11-13:
+  (let ((maxes (array 0 9 99 999 9999
+                      99999 999999 9999999 99999999 999999999
+                      9999999999 99999999999 999999999999 9999999999999 99999999999999)))
+    (fn (n)
+      (let ((approx (fx>> (fx* 19 (fx-ilog2 n)) 6)) ; 19 / 64 * ilog2(n)
+            (correction (fx>>> (fx- (array-get maxes (fx+ approx 1)) n)
+                               (fx- (fixnum-width) 1)))) ; [0, 1)
+        (fx+ approx correction)))))
+
+(define fixnum->string
+  (fn ((: n <fixnum>))
+    (if (identical? n 0)
+      "0"
+      (if (identical? n (least-fixnum))
+        "-140737488355328"
+        (let ((a (fx-abs n))
+              (max-divisor-power (fx-ilog10 a))
+              (max-divisor (expt 10 max-divisor-power))
+              (len (if (fx< n 0) (fx+ max-divisor-power 2) (fx+ max-divisor-power 1)))
+              (str (make-flex <string> len)))
+          (letfn (((loop i n divisor)
+                    (if (fx< i len)
+                      (do (flex-u8-set! str i (fx+ 48 (fx-quot n divisor))) ; #"0" = 48
+                          (loop (fx+ i 1) (fx-rem n divisor) (fx-quot divisor 10)))
+                      str)))
+            (if (>= n 0)
+              (loop 0 a max-divisor)
+              (do (flex-u8-set! str 0 (char->integer #"-"))
+                  (loop 1 a max-divisor)))))))))
+
+(define number->string
+  (make-multimethod 'number->string
+    fixnum->string))
+
 ;;; Collections
 ;;; ================================================================================================
 

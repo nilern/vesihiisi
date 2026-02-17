@@ -222,8 +222,16 @@ struct PrimopFlexGet : public FixedArityPrimop<PrimopFlexGet, ORef, Fixnum> {
     static constexpr uint8_t name[] = "flex-get";
     static PrimopRes uncheckedInvoke(RT* state);
 };
+struct PrimopFlexU8Get : public FixedArityPrimop<PrimopFlexU8Get, ORef, Fixnum> {
+    static constexpr uint8_t name[] = "flex-u8-get";
+    static PrimopRes uncheckedInvoke(RT* state);
+};
 struct PrimopFlexSet : public FixedArityPrimop<PrimopFlexSet, ORef, Fixnum, ORef> {
     static constexpr uint8_t name[] = "flex-set!";
+    static PrimopRes uncheckedInvoke(RT* state);
+};
+struct PrimopFlexU8Set : public FixedArityPrimop<PrimopFlexU8Set, ORef, Fixnum, Fixnum> {
+    static constexpr uint8_t name[] = "flex-u8-set!";
     static PrimopRes uncheckedInvoke(RT* state);
 };
 struct PrimopFlexCopy

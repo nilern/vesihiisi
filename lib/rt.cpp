@@ -559,7 +559,9 @@ RT* RT::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* a
     PrimopMakeFlex::install(*dest);
     PrimopFlexCount::install(*dest);
     PrimopFlexGet::install(*dest);
+    PrimopFlexU8Get::install(*dest);
     PrimopFlexSet::install(*dest);
+    PrimopFlexU8Set::install(*dest);
     PrimopFlexCopy::install(*dest);
     PrimopFlexClone::install(*dest);
     PrimopFxAdd::install(*dest);

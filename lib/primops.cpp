@@ -572,6 +572,31 @@ PrimopRes PrimopFlexGet::uncheckedInvoke(RT* state) {
     return PrimopRes::CONTINUE;
 }
 
+PrimopRes PrimopFlexU8Get::uncheckedInvoke(RT* state) {
+    ORef const v = state->regs[firstArgReg];
+    int64_t const i = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
+
+    Type const* const type = typePtrOf(state, v);
+    if (!type->isFlex.val()) {
+        assert(false); // TODO: Proper nonflex error
+    }
+    if (!type->isBytes.val()) {
+        assert(false); // TODO: Proper nonbytes error
+    }
+    auto const obj = HRef<Object>::fromUnchecked(v);
+
+    void const* const ptr = &*obj;
+    int64_t const count = ((FlexHeader const*)ptr - 1)->count.val();
+    if (i < 0 || i >= count) {
+        assert(false); // TODO: Proper bounds error
+    }
+
+    auto const flexBytes = (uint8_t const*)ptr + type->minSize.val();
+    state->regs[retReg] = Fixnum{int64_t{flexBytes[i]}};
+
+    return PrimopRes::CONTINUE;
+}
+
 PrimopRes PrimopFlexSet::uncheckedInvoke(RT* state) {
     ORef const v = state->regs[firstArgReg];
     int64_t const i = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
@@ -591,10 +616,43 @@ PrimopRes PrimopFlexSet::uncheckedInvoke(RT* state) {
         assert(false); // TODO: Proper bounds error
     }
 
-    auto flexSlots = SlotsMut{ptr, (ORef*)((char const*)ptr + type->minSize.val())};
+    auto flexSlots = SlotsMut{ptr, (ORef*)((char*)ptr + type->minSize.val())};
     flexSlots[size_t(i)].set(*state, iv);
     // Once again most convenient and consistent to just return this
     state->regs[retReg] = state->regs[firstArgReg + 2]; // Reload in case write barrier caused GC
+
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes PrimopFlexU8Set::uncheckedInvoke(RT* state) {
+    ORef const v = state->regs[firstArgReg];
+    int64_t const i = Fixnum::fromUnchecked(state->regs[firstArgReg + 1]).val();
+    auto const fxv = Fixnum::fromUnchecked(state->regs[firstArgReg + 2]);
+    int64_t const iv = fxv.val();
+
+    Type const* const type = typePtrOf(state, v);
+    if (!type->isFlex.val()) {
+        assert(false); // TODO: Proper nonflex error
+    }
+    if (!type->isBytes.val()) {
+        assert(false); // TODO: Proper nonbytes error
+    }
+
+    Object* const ptr = &*HRef<Object>::fromUnchecked(v);
+    int64_t const count = ((FlexHeader const*)ptr - 1)->count.val();
+    if (i < 0 || i >= count) {
+        assert(false); // TODO: Proper bounds error
+    }
+
+    if (iv < 0 || iv > UINT8_MAX) {
+        PANIC("TODO: byte overflow");
+    }
+    auto const bv = uint8_t(iv);
+
+    auto flexBytes = (uint8_t*)ptr + type->minSize.val();
+    flexBytes[i] = bv; // Not a slot so no write barrier necessary
+    // Once again most convenient and consistent to just return this:
+    state->regs[retReg] = fxv;
 
     return PrimopRes::CONTINUE;
 }

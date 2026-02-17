@@ -516,6 +516,7 @@ RT* RT::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* a
         }
     }
 
+    installPrimordial(dest, strLit("fixnum-width"), Fixnum{int64_t(payloadWidth)});
     {
         Str const debugName = strLit("*vm-debug*");
         installPrimordial(dest, debugName, Bool{debugFromArgv(argc, argv)});
@@ -566,6 +567,10 @@ RT* RT::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* a
     PrimopFxMul::install(*dest);
     PrimopFxQuot::install(*dest);
     PrimopFxLt::install(*dest);
+    PrimopFxShl::install(*dest);
+    PrimopFxShr::install(*dest);
+    PrimopFxLshr::install(*dest);
+    PrimopFxNlz::install(*dest);
     PrimopFixnumToFlonum::install(*dest);
     PrimopFlAdd::install(*dest);
     PrimopFlSub::install(*dest);
@@ -1081,6 +1086,23 @@ HRef<FatalError> createDivByZeroError(
     ptr = &*res; // Post-GC reload
 
     return HRef{new (ptr) FatalError{name, ORefSpan{{callee, x, y}}}};
+}
+
+HRef<FatalError> createShiftCountError(RT& rt, Fixnum shiftCount) {
+    Fixnum const count = Fixnum{1l};
+
+    Object* ptr = rt.heap.tryAllocFlex(&*rt.types.fatalError, count);
+    if (mustCollect(ptr)) {
+        collect(&rt);
+        ptr = rt.heap.allocFlexOrDie(&*rt.types.fatalError, count);
+    }
+    auto res = HRef{static_cast<FatalError*>(ptr)};
+
+    auto const resG = rt.pushRoot(&res);
+    HRef<Symbol> const name = intern(&rt, strLit("shift-count"));
+    ptr = &*res; // Post-GC reload
+
+    return HRef{new (ptr) FatalError{name, ORefSpan{{shiftCount}}}};
 }
 
 } // namespace

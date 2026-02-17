@@ -228,6 +228,8 @@ HRef<FatalError> createOverflowError(RT* state, HRef<Closure> callee, Fixnum x, 
 
 HRef<FatalError> createDivByZeroError(RT* state, HRef<Closure> callee, Fixnum x, Fixnum y);
 
+HRef<FatalError> createShiftCountError(RT& rt, Fixnum shiftCount);
+
 void collect(RT* state);
 
 struct IRFn;

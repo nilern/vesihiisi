@@ -258,6 +258,22 @@ struct PrimopFxLt : public FixedArityPrimop<PrimopFxLt, Fixnum, Fixnum> {
     static constexpr uint8_t name[] = "fx<";
     static PrimopRes uncheckedInvoke(RT* state);
 };
+struct PrimopFxShl : public FixedArityPrimop<PrimopFxShl, Fixnum, Fixnum> {
+    static constexpr uint8_t name[] = "fx<<";
+    static PrimopRes uncheckedInvoke(RT* state);
+};
+struct PrimopFxShr : public FixedArityPrimop<PrimopFxShr, Fixnum, Fixnum> {
+    static constexpr uint8_t name[] = "fx>>";
+    static PrimopRes uncheckedInvoke(RT* state);
+};
+struct PrimopFxLshr : public FixedArityPrimop<PrimopFxLshr, Fixnum, Fixnum> {
+    static constexpr uint8_t name[] = "fx>>>";
+    static PrimopRes uncheckedInvoke(RT* state);
+};
+struct PrimopFxNlz : public FixedArityPrimop<PrimopFxNlz, Fixnum> {
+    static constexpr uint8_t name[] = "fx-nlz";
+    static PrimopRes uncheckedInvoke(RT* state);
+};
 struct PrimopFixnumToFlonum : public FixedArityPrimop<PrimopFixnumToFlonum, Fixnum> {
     static constexpr uint8_t name[] = "fixnum->flonum";
     static PrimopRes uncheckedInvoke(RT* state);

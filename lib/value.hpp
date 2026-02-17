@@ -30,6 +30,7 @@ enum class TaggedType : uint64_t {
 
 constexpr uint64_t payloadWidth = 48;
 constexpr uint64_t payloadMask = ((uint64_t)1 << payloadWidth) - 1; // `payloadWidth` ones
+constexpr uint64_t nonPayloadMask = ~payloadMask;
 
 constexpr uint64_t tagMask = (uint64_t)0x7fff << payloadWidth;
 

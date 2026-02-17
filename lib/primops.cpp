@@ -738,7 +738,9 @@ PrimopRes PrimopFxMul::uncheckedInvoke(RT* state) {
 #if defined __has_builtin && __has_builtin(__builtin_smull_overflow)
     int64_t res;
     if (__builtin_smull_overflow(x, y, &res)
-        || (res >> payloadWidth) != ((res & (int64_t)payloadMask) >> (payloadWidth - 1))
+        || (uint64_t(res) & nonPayloadMask)
+               != (uint64_t((res << (UINT64_WIDTH - payloadWidth)) >> (UINT64_WIDTH - payloadWidth))
+                   & nonPayloadMask)
     ) {
         // Overflow has occurred if we overflowed `int64_t` or the extra bits of `res` are not all
         // equal to the sign bit of the payload.
@@ -788,6 +790,61 @@ PrimopRes PrimopFxLt::uncheckedInvoke(RT* state) {
 
     state->regs[retReg] = Bool(x < y);
 
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes PrimopFxShl::uncheckedInvoke(RT* rt) {
+    auto const fxX = Fixnum::fromUnchecked(rt->regs[firstArgReg]);
+    int64_t const x = fxX.val();
+    auto const fxAmount = Fixnum::fromUnchecked(rt->regs[firstArgReg + 1]);
+    int64_t const amount = fxAmount.val();
+
+    if (amount < 0 || amount >= int64_t(payloadWidth)) {
+        return primopError(rt, createShiftCountError(*rt, fxAmount));
+    }
+
+    auto uRes = uint64_t(x) << amount;
+    if ((uRes & nonPayloadMask) != 0) {
+        auto const callee = HRef<Closure>::fromUnchecked(rt->regs[calleeReg]);
+        return primopError(rt, createOverflowError(rt, callee, fxX, fxAmount));
+    }
+
+    rt->regs[retReg] = Fixnum{int64_t(uRes)};
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes PrimopFxShr::uncheckedInvoke(RT* rt) {
+    int64_t const x = Fixnum::fromUnchecked(rt->regs[firstArgReg]).val();
+    auto const fxAmount = Fixnum::fromUnchecked(rt->regs[firstArgReg + 1]);
+    int64_t const amount = fxAmount.val();
+
+    if (amount < 0 || amount >= int64_t(payloadWidth)) {
+        return primopError(rt, createShiftCountError(*rt, fxAmount));
+    }
+
+    rt->regs[retReg] = Fixnum{x >> amount};
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes PrimopFxLshr::uncheckedInvoke(RT* rt) {
+    auto const x = Fixnum::fromUnchecked(rt->regs[firstArgReg]);
+    auto const fxAmount = Fixnum::fromUnchecked(rt->regs[firstArgReg + 1]);
+    int64_t const amount = fxAmount.val();
+
+    if (amount < 0 || amount >= int64_t(payloadWidth)) {
+        return primopError(rt, createShiftCountError(*rt, fxAmount));
+    }
+
+    rt->regs[retReg] = ORef{fixnumTag | (x.bits & payloadMask) >> uint64_t(amount)}; // HACK
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes PrimopFxNlz::uncheckedInvoke(RT* rt) {
+    int64_t const x = Fixnum::fromUnchecked(rt->regs[firstArgReg]).val();
+
+    auto const res = stdc_leading_zeros(uint64_t(x)) - (UINT64_WIDTH - payloadWidth);
+
+    rt->regs[retReg] = Fixnum{int64_t(res)};
     return PrimopRes::CONTINUE;
 }
 

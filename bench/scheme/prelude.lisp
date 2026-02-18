@@ -1,4 +1,17 @@
-;;; Adapted from Gambit Scheme and R7RS benchmarks
+;;; Retro Schemey stuff we do not want in our stdlib:
+
+(define assq
+  (fn (k alist)
+    (letfn (((loop alist)
+               (if (isa? <pair> alist)
+                 (let ((entry (car alist)))
+                   (if (identical? (car entry) k)
+                     entry
+                     (loop (cdr alist))))
+                 #f)))
+      (loop alist))))
+
+;;; Benchmarking harness adapted from Gambit Scheme and R7RS benchmarks:
 
 (define time*
   (fn (thunk)

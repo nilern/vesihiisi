@@ -108,6 +108,10 @@
   (let ((max greatest-fixnum))
     (fn () max)))
 
+(define remainder
+  (make-multimethod 'remainder
+    fx-rem))
+
 (define expt
   (make-multimethod 'expt
     (fn ((: base <fixnum>) (: power <fixnum>))
@@ -156,6 +160,25 @@
   (make-multimethod 'number->string
     fixnum->string))
 
+;; TODO: Sign, non-decimal radices, flonums:
+(define string->number
+  (fn (s)
+    (let ((it (string-iterator s))
+          (?c (string-iterator-next! it)))
+      ;; TODO: DRY wrt. following loop:
+      (if (identical? ?c end)
+        #f
+        (if (and (>= ?c #"0") (<= ?c #"9"))
+          (letfn (((loop n)
+                    (let ((?c (string-iterator-next! it)))
+                      (if (identical? ?c end)
+                        n
+                        (if (and (>= ?c #"0") (<= ?c #"9"))
+                          (loop (+ (* n 10) (fx- (char->integer ?c) (char->integer #"0"))))
+                          #f)))))
+            (loop (fx- (char->integer ?c) (char->integer #"0"))))
+          #f)))))
+
 ;;; Collections
 ;;; ================================================================================================
 
@@ -173,6 +196,12 @@
 (define array!-set! (fn ((: xs <array!>) i v) (flex-set! xs i v)))
 
 (define list->array! (fn (xs) (apply array! xs)))
+
+(define string-iterator (fn ((: s <string>)) (make <string-iterator> s 0)))
+
+(define iter
+  (make-multimethod 'iter
+    string-iterator))
 
 ;;; I/O
 ;;; ================================================================================================

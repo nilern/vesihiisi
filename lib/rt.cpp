@@ -582,6 +582,10 @@ RT* RT::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* a
     PrimopFlSub::install(*dest);
     PrimopFlMul::install(*dest);
     PrimopFlDiv::install(*dest);
+    PrimopFlLt::install(*dest);
+    PrimopFlGt::install(*dest);
+    PrimopFlLeq::install(*dest);
+    PrimopFlGeq::install(*dest);
     PrimopCharLt::install(*dest);
     PrimopCharToInteger::install(*dest);
     PrimopCharIsAlphabetic::install(*dest);

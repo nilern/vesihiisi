@@ -983,6 +983,38 @@ PrimopRes PrimopFlDiv::uncheckedInvoke(RT* state) {
     return PrimopRes::CONTINUE;
 }
 
+PrimopRes PrimopFlLt::uncheckedInvoke(RT* state) {
+    double const x = Flonum::fromUnchecked(state->regs[firstArgReg]).val();
+    double const y = Flonum::fromUnchecked(state->regs[firstArgReg + 1]).val();
+
+    state->regs[retReg] = Bool{x < y};
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes PrimopFlGt::uncheckedInvoke(RT* state) {
+    double const x = Flonum::fromUnchecked(state->regs[firstArgReg]).val();
+    double const y = Flonum::fromUnchecked(state->regs[firstArgReg + 1]).val();
+
+    state->regs[retReg] = Bool{x > y};
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes PrimopFlLeq::uncheckedInvoke(RT* state) {
+    double const x = Flonum::fromUnchecked(state->regs[firstArgReg]).val();
+    double const y = Flonum::fromUnchecked(state->regs[firstArgReg + 1]).val();
+
+    state->regs[retReg] = Bool{x <= y};
+    return PrimopRes::CONTINUE;
+}
+
+PrimopRes PrimopFlGeq::uncheckedInvoke(RT* state) {
+    double const x = Flonum::fromUnchecked(state->regs[firstArgReg]).val();
+    double const y = Flonum::fromUnchecked(state->regs[firstArgReg + 1]).val();
+
+    state->regs[retReg] = Bool{x >= y};
+    return PrimopRes::CONTINUE;
+}
+
 PrimopRes PrimopCharLt::uncheckedInvoke(RT* state) {
     uint32_t const c1 = Char::fromUnchecked(state->regs[firstArgReg]).val();
     uint32_t const c2 = Char::fromUnchecked(state->regs[firstArgReg + 1]).val();

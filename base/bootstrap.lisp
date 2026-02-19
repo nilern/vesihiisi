@@ -306,21 +306,25 @@
 (define <
   (make-multimethod '<
     (fn ((: x <fixnum>) (: y <fixnum>)) (fx< x y))
+    fl<
     (fn ((: x <char>) (: y <char>)) (char< x y))))
 
 (define >
   (make-multimethod '>
     (fn ((: x <fixnum>) (: y <fixnum>)) (fx> x y))
+    fl>
     (fn ((: x <char>) (: y <char>)) (char> x y))))
 
 (define <=
   (make-multimethod '<=
     (fn ((: x <fixnum>) (: y <fixnum>)) (fx<= x y))
+    fl<=
     (fn ((: x <char>) (: y <char>)) (char<= x y))))
 
 (define >=
   (make-multimethod '>=
     (fn ((: x <fixnum>) (: y <fixnum>)) (fx>= x y))
+    fl>=
     (fn ((: x <char>) (: y <char>)) (char>= x y))))
 
 (define > (fn (x y) (< y x)))

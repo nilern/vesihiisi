@@ -312,6 +312,22 @@ struct PrimopFlDiv : public FixedArityPrimop<PrimopFlDiv, Flonum, Flonum> {
     static constexpr uint8_t name[] = "fl/";
     static PrimopRes uncheckedInvoke(RT* state);
 };
+struct PrimopFlLt : public FixedArityPrimop<PrimopFlLt, Flonum, Flonum> {
+    static constexpr uint8_t name[] = "fl<";
+    static PrimopRes uncheckedInvoke(RT* state);
+};
+struct PrimopFlGt : public FixedArityPrimop<PrimopFlGt, Flonum, Flonum> {
+    static constexpr uint8_t name[] = "fl>";
+    static PrimopRes uncheckedInvoke(RT* state);
+};
+struct PrimopFlLeq : public FixedArityPrimop<PrimopFlLeq, Flonum, Flonum> {
+    static constexpr uint8_t name[] = "fl<=";
+    static PrimopRes uncheckedInvoke(RT* state);
+};
+struct PrimopFlGeq : public FixedArityPrimop<PrimopFlGeq, Flonum, Flonum> {
+    static constexpr uint8_t name[] = "fl>=";
+    static PrimopRes uncheckedInvoke(RT* state);
+};
 
 // Characters
 struct PrimopCharLt : public FixedArityPrimop<PrimopCharLt, Char, Char> {

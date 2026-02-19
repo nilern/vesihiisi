@@ -8,6 +8,8 @@ cat ./prelude.lisp ./gabriel/cpstak.lisp ./postlude.lisp | ../../vesihiisi -
 
 cat ./prelude.lisp ./gabriel/ctak.lisp ./postlude.lisp | ../../vesihiisi -
 
+cat ./prelude.lisp ./gabriel/deriv.lisp ./postlude.lisp | ../../vesihiisi -
+
 cat ./prelude.lisp ./gabriel/destruc.lisp ./postlude.lisp | ../../vesihiisi -
 
 cat ./prelude.lisp ./gabriel/diviter.lisp ./postlude.lisp | ../../vesihiisi -

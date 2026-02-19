@@ -71,24 +71,35 @@
                  ,tmp
                  (or ,@args)))))))))
 
+(define-macro (recur _ form)
+  (let ((args (cdr form))
+        (name (car args))
+        (bindings (cadr args))
+        (body (cddr args))
+
+        (params (map car bindings))
+        (inits (map cadr bindings)))
+    `(letfn (((,name ,@params) ,@body))
+       (,name ,@inits))))
+
 (define-macro (induct _ form)
   (let ((args (cdr form))
         (inductions (cadr form))
         (ctrl (caddr form))
         (body (cdddr form))
 
-        (inductions (map (fn (induction)
-                           (if (= (count induction) 2)
-                             `(,@induction ,(car induction))
-                             induction))
-                         inductions))
-        (loop (gensym)))
-    `(letfn (((,loop ,@(map car inductions))
-               (if ,(car ctrl)
-                 (do ,@(cdr ctrl))
-                 (do ,@body
-                     (,loop ,@(map caddr inductions))))))
-       (,loop ,@(map cadr inductions)))))
+        (loop (gensym))
+        (bindings (map (fn (induction) (list (car induction) (cadr induction))) inductions))
+        (steps (map (fn (induction)
+                      (if (= (count induction) 2)
+                        (car induction)
+                        (caddr induction)))
+                    inductions)))
+    `(recur ,loop (,@bindings)
+       (if ,(car ctrl)
+         (do ,@(cdr ctrl))
+         (do ,@body
+             (,loop ,@steps))))))
 
 ;;; Scalars
 ;;; ================================================================================================

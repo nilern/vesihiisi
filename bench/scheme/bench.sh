@@ -12,6 +12,8 @@ cat ./prelude.lisp ./gabriel/diviter.lisp ./postlude.lisp | ../../vesihiisi -
 
 cat ./prelude.lisp ./gabriel/divrec.lisp ./postlude.lisp | ../../vesihiisi -
 
+cat ./prelude.lisp ./gabriel/nboyer.lisp ./postlude.lisp | ../../vesihiisi -
+
 cat ./prelude.lisp ./gabriel/puzzle.lisp ./postlude.lisp | ../../vesihiisi -
 
 cat ./prelude.lisp ./gabriel/tak.lisp ./postlude.lisp | ../../vesihiisi -

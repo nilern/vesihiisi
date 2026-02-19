@@ -108,6 +108,10 @@
   (let ((max greatest-fixnum))
     (fn () max)))
 
+(define quotient
+  (make-multimethod 'quotient
+    fx-quot))
+
 (define remainder
   (make-multimethod 'remainder
     fx-rem))
@@ -155,6 +159,9 @@
               (loop 0 a max-divisor)
               (do (flex-u8-set! str 0 (char->integer #"-"))
                   (loop 1 a max-divisor)))))))))
+
+;; TODO: Make extensible:
+(define number? (fn (v) (or (isa? <fixnum> v) (isa? <flonum> v))))
 
 (define number->string
   (make-multimethod 'number->string

@@ -221,6 +221,45 @@
   (make-multimethod 'iter
     string-iterator))
 
+;;; Strings
+;;; ================================================================================================
+
+(define string-count (fn (s) (fold (fn (_ len) (fx+ len 1)) 0 s)))
+
+(define string-copy
+  (make-multimethod 'string-copy
+    (fn (s start limit)
+      (let ((it (string-iterator s)))
+        (letfn (((find-start ci)
+                  (if (identical? ci start)
+                    (find-end ci (slot-get it 1)) ; HACK: `slot-get`
+                    (if (not (identical? (string-iterator-next! it) end))
+                      (find-start (fx+ ci 1))
+                      (error 'string-copy-bounds s start limit))))
+
+                ((find-end ci start-byte)
+                  (if (identical? ci limit)
+                    (flex-copy s start-byte (slot-get it 1)) ; HACK: `slot-get`
+                    (if (not (identical? (string-iterator-next! it) end))
+                      (find-end (fx+ ci 1) start-byte)
+                      (error 'string-copy-bounds s start limit)))))
+
+          (find-start 0))))
+
+    (fn (s start)
+      (let ((it (string-iterator s)))
+        (letfn (((find-start ci)
+                  (if (identical? ci start)
+                    (flex-copy s (slot-get it 1) (flex-count s)) ; HACK: `slot-get`
+                    (if (not (identical? (string-iterator-next! it) end))
+                      (find-start (fx+ ci 1))
+                      (error 'string-copy-bounds s start)))))
+          (find-start 0))))
+
+    (fn (s) (flex-copy s 0 (flex-count s)))))
+
+(define substring (fn args (apply string-copy args)))
+
 ;;; I/O
 ;;; ================================================================================================
 
@@ -479,6 +518,7 @@
             (continulet (prompt-frame-continulet stash*)))
         (box-set! stash (prompt-frame-next stash*))
         (continue continulet thunk))))
+  (define abort-to (fn (p v) (call-at-prompt p (fn () v))))
 
   (define yield-to
     (fn (prompt v)
@@ -578,8 +618,8 @@
                             thunk
                             (fn (exn)
                               (let ((v (handle-exception exn)))
-                                (call-at-prompt p (fn () v))))))
-                        (fn (k v) v))))) ; Unreachable
+                                (abort-to p v)))))
+                        (fn (_ v) v))))) ; Unreachable
 
 (set! *error-handler* throw)
 

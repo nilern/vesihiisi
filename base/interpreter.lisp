@@ -39,7 +39,7 @@
                     (if (identical? (next! arg-it) #"-") ; Flag?
                       (let ()
                         (if (identical? (peek arg-it) #"-") ; Long flag?
-                          (let ((arg-name (flex-copy arg 2 (flex-count arg))) ; FIXME: `substring`
+                          (let ((arg-name (substring arg 2))
                                 (flag-idx (index-of long-flag-names arg-name)))
                             (if flag-idx
                               ((array-get flag-inits flag-idx) config)

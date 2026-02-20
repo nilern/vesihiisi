@@ -153,18 +153,14 @@ public:
     [[nodiscard]]
     bool isValid() const { return tospace.isValid() && fromspace.isValid() && nursery.isValid(); }
 
-    // FIXME: Allocating objects that do not fit in nursery (or even tospace!):
-
     [[nodiscard]]
-    Object* tryAlloc(Type const* type) { return nursery.tryAlloc(type); }
+    Object* tryAlloc(Type const* type);
 
     [[nodiscard]]
     Object* allocOrDie(Type const* type) { return nursery.allocOrDie(type); }
 
     [[nodiscard]]
-    Object* tryAllocFlex(Type const* type, Fixnum length) {
-        return nursery.tryAllocFlex(type, length);
-    }
+    Object* tryAllocFlex(Type const* type, Fixnum length);
 
     [[nodiscard]]
     Object* allocFlexOrDie(Type const* type, Fixnum length) {

@@ -367,6 +367,11 @@ struct Type : public FixedObject<Type> {
     {}
 
     static HRef<Type> reify(struct RT const& state);
+
+    size_t flexSize(size_t flexCount) const {
+        return size_t(minSize.val())
+            + (isBytes.val() ? flexCount : flexCount * sizeof(ORef));
+    }
 };
 
 struct Header {

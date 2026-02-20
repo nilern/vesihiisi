@@ -83,8 +83,7 @@ Object* Heap::Semispace::tryAllocFlex(Type const* type, Fixnum length) {
 
     // Check bound and commit reservation:
     uintptr_t len = (uintptr_t)length.val();
-    uintptr_t const flexSize = type->isBytes.val() ? len : len * sizeof(ORef);
-    uintptr_t const size = (uintptr_t)type->minSize.val() + flexSize;
+    uintptr_t const size = type->flexSize(len);
     char* const free = (char*)(void*)(address + size);
     if (free > limit) { return nullptr; }
     this->free = free;
@@ -152,8 +151,7 @@ Object* Heap::Nursery::tryAllocFlex(Type const* type, Fixnum length) {
 
     // Check bound and commit reservation:
     uintptr_t len = (uintptr_t)length.val();
-    uintptr_t const flexSize = type->isBytes.val() ? len : len * sizeof(ORef);
-    uintptr_t const size = (uintptr_t)type->minSize.val() + flexSize;
+    uintptr_t const size = type->flexSize(len);
     char* const free = (char*)(void*)(address + size);
     if (free > reinterpret_cast<char const*>(remembered)) { return nullptr; }
     this->free = free;
@@ -226,6 +224,32 @@ Object* Heap::tryEvacuate(Object* obj) {
 
 Heap Heap::tryCreate(size_t size) { return Heap{size}; }
 
+Object* Heap::tryAlloc(Type const* type) {
+    Object* obj = nursery.tryAlloc(type);
+    if (!obj) {
+        if (uint64_t(type->minSize.val()) >= nursery.size() / 2) {
+            obj = tospace.tryAlloc(type);
+            if (!obj) {
+                escalate(); // FIXME: OOM when even tospace after GC is too small.
+            }
+        }
+    }
+    return obj;
+}
+
+Object* Heap::tryAllocFlex(Type const* type, Fixnum length) {
+    Object* obj = nursery.tryAllocFlex(type, length);
+    if (!obj) {
+        if (uint64_t(type->flexSize(size_t(length.val()))) >= nursery.size() / 2) {
+            obj = tospace.tryAllocFlex(type, length);
+            if (!obj) {
+                escalate(); // FIXME: OOM when even tospace after GC is too small.
+            }
+        }
+    }
+    return obj;
+}
+
 [[nodiscard]]
 Object* Heap::mark(Object* obj) {
     obj = obj->canonical();
@@ -270,6 +294,7 @@ Object* Heap::Semispace::nextGrey(char* scan) const {
 
     ++orefScan; // Skip <header>
 
+    assert(start <= (char*)orefScan && (char*)orefScan < limit);
     return reinterpret_cast<Object*>(orefScan);
 }
 

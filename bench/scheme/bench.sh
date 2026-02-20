@@ -7,7 +7,13 @@ do
   cat ./prelude.lisp $benchmark ./postlude.lisp | ../../vesihiisi -
 done
 
-for benchmark in numeric*.lisp
+for benchmark in kvw/*.lisp
+do
+  cat ./prelude.lisp $benchmark ./postlude.lisp | ../../vesihiisi -
+done
+
+
+for benchmark in numeric/*.lisp
 do
   cat ./prelude.lisp $benchmark ./postlude.lisp | ../../vesihiisi -
 done

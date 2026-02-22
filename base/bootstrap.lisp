@@ -964,22 +964,26 @@
                     (seq-> (sat acceptable? description)
                             (fn (c) (if c (digit-value c) c))))))
       ;; TODO: Improve flonum precision:
-      ;; <digit radix>+ ('.' <digit radix>*)?
+      ;; (+|-)? <digit radix>+ ('.' <digit radix>*)?
       (number (fn (radix)
                 (let ((fl-radix (inexact radix))
                       (digit (digit-in radix)))
-                  (seq-> (mfoldl (fn (d n) (+ (* radix n) d)) digit digit)
-                          (opt (mfoldl (fn (d acc)
+                  (seq-> (opt (alt "sign" #"+" #"-"))
+                         (mfoldl (fn (d n) (+ (* radix n) d)) digit digit)
+                           (opt (mfoldl (fn (d acc)
                                         (let ((c-frac (/ (inexact d) (cdr acc))))
                                           ;; OPTIMIZE: `set-c(a|d)r!` instead of `cons`:
                                           (cons (+ (car acc) c-frac)
                                                 (* (cdr acc) fl-radix))))
                                       (seq-> #"." (fn (_) (cons 0. fl-radix)))
                                       digit))
-                          (fn (integral acc)
-                            (if (not acc)
-                              integral
-                              (+ (inexact integral) (car acc))))))))
+                          (fn (sign integral acc)
+                            (let ((abs-val (if (not acc)
+                                             integral
+                                             (+ (inexact integral) (car acc)))))
+                              (if (if sign (identical? sign #"-") #f)
+                                (- abs-val)
+                                abs-val)))))))
       (decimal-number (number 10))
       (hex-number (number 16))
 

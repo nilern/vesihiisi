@@ -45,6 +45,8 @@ constexpr IRName invalidIRName = {IRName::invalidIndex};
 struct IRLabel {
     size_t blockIndex;
 
+    bool operator==(IRLabel that) const { return blockIndex == that.blockIndex; }
+
     void print(FILE* dest) const { fprintf(dest, ":%ld", blockIndex); }
 };
 

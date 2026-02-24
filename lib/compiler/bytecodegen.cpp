@@ -31,9 +31,9 @@ bool MethodBuilder::mark(RT& state) {
 
     maybeFilename_ = TRY_NULLOPT_TO_FALSE(state.heap.mark(maybeFilename_));
 
-    size_t const filenameRunCount = revFilenameRuns_.count();
-    for (size_t i = 1; i < filenameRunCount; i += 2) { // Skip fixnums at 0, 2, 4...
-        revFilenameRuns_[i] = TRY_NULLOPT_TO_FALSE(state.heap.mark(revFilenameRuns_[i]));
+    size_t const filenameRunCount = filenameRuns_.count();
+    for (size_t i = 0; i < filenameRunCount; i += 2) { // Skip fixnums at 1, 3, 5...
+        filenameRuns_[i] = TRY_NULLOPT_TO_FALSE(state.heap.mark(filenameRuns_[i]));
     }
 
     if (parent_) {
@@ -55,9 +55,9 @@ void MethodBuilder::assertInTospace(RT const& state) const {
         assert(state.heap.evacuated(&*HRef<Object>::fromUnchecked(maybeFilename_)));
     }
 
-    size_t const filenameRunCount = revFilenameRuns_.count();
-    for (size_t i = 1; i < filenameRunCount; i += 2) { // Skip fixnums at 0, 2, 4...
-        ORef const v = revFilenameRuns_[i];
+    size_t const filenameRunCount = filenameRuns_.count();
+    for (size_t i = 0; i < filenameRunCount; i += 2) { // Skip fixnums at 1, 3, 5...
+        ORef const v = filenameRuns_[i];
         if (isHeaped(v)) {
             assert(state.heap.evacuated(&*HRef<Object>::fromUnchecked(v)));
         }
@@ -67,8 +67,6 @@ void MethodBuilder::assertInTospace(RT const& state) const {
 }
 
 HRef<Method> MethodBuilder::buildMethod(RT& state, IRFn& toplevelFn, IRFn const& fn) && {
-    flushMethodBuilderDeltas();
-
     // Allocate method code:
     Fixnum const codeCount = Fixnum{int64_t(code_.count())};
     ByteArray* maybeCode = tryAllocByteArray(&state, codeCount);
@@ -78,13 +76,7 @@ HRef<Method> MethodBuilder::buildMethod(RT& state, IRFn& toplevelFn, IRFn const&
     }
     HRef<ByteArray> code = HRef<ByteArray>(maybeCode);
     auto const codeG = state.pushRoot(&code);
-
-    { // Initialize method (reversing copy):
-        uint8_t* codePtr = (uint8_t*)maybeCode->flexData();
-        for (size_t i = code_.count(); i-- > 0; ++codePtr) {
-            *codePtr = code_[i];
-        }
-    }
+    std::copy(code_.begin(), code_.end(), const_cast<uint8_t*>(maybeCode->flexData())); // Init
 
     // Create method consts:
     Fixnum const constCount = Fixnum{int64_t(consts_.count())};
@@ -102,8 +94,8 @@ HRef<Method> MethodBuilder::buildMethod(RT& state, IRFn& toplevelFn, IRFn const&
         }
     }
 
-    // Copy `revFilenameRuns` to GC heap:
-    size_t const filenamesSlotCount = revFilenameRuns_.count();
+    // Copy `filenameRuns` to GC heap:
+    size_t const filenamesSlotCount = filenameRuns_.count();
     auto const fxFilenamesSlotCount = Fixnum{(int64_t)filenamesSlotCount};
     Array* maybeFilenames = tryAllocArray(&state, fxFilenamesSlotCount);
     if (mustCollect(maybeFilenames)) {
@@ -114,19 +106,23 @@ HRef<Method> MethodBuilder::buildMethod(RT& state, IRFn& toplevelFn, IRFn const&
     auto const filenamesG = state.pushRoot(&filenames);
     // Part of initialization, so `const_cast`:
     ORef* const filenamesData = const_cast<ORef*>(filenames->flexData());
-    for (size_t i = 0; i < filenamesSlotCount; ++i) { // Reversing copy
-        filenamesData[i] = revFilenameRuns_[filenamesSlotCount - 1 - i];
-    }
+    std::copy(filenameRuns_.begin(), filenameRuns_.end(), filenamesData);
 
     // Copy initial src byte index and `revIdxDeltas` to GC heap:
-    size_t const firstSrcIdx = srcIdx_;
-    size_t const revIdxDeltasCount = revIdxDeltas_.count();
+    assert(fn.blocks.count() >= 1);
+    IRBlock const& entryBlock = *fn.blocks[0];
+    ORef const firstMaybeLoc = entryBlock.stmts.count() > 0
+                                   ? entryBlock.stmts[0].maybeLoc
+                                   : entryBlock.transfer.maybeLoc;
+    MethodBuilderLoc const firstLoc = MethodBuilderLoc::fromORef(state, firstMaybeLoc);
+    size_t const firstSrcIdx = firstLoc.srcIdx;
+    size_t const idxDeltasCount = idxDeltas_.count();
     size_t const firstSrcIdxBitSize = requiredBitsize((int64_t)firstSrcIdx);
     // `firstSrcIdxBitSize` rounded up to nearest mutiple of `bytecodeVarIntPayloadWidth`.
     // `firstSrcIdxBitSize` cannot be 0 because no number can be stored in less than one bit:
     size_t const firstSrcIdxSize = 1 + ((firstSrcIdxBitSize - 1) / bytecodeVarIntPayloadWidth);
     // First code byte index is always zero, so not encoded:
-    size_t const srcByteIdxsSize = firstSrcIdxSize + revIdxDeltasCount;
+    size_t const srcByteIdxsSize = firstSrcIdxSize + idxDeltasCount;
     auto const fxByteIdxsSize = Fixnum{(int64_t)srcByteIdxsSize};
     ByteArray* maybeSrcByteIdxs = tryAllocByteArray(&state, fxByteIdxsSize);
     if (mustCollect(maybeSrcByteIdxs)) {
@@ -151,9 +147,7 @@ HRef<Method> MethodBuilder::buildMethod(RT& state, IRFn& toplevelFn, IRFn const&
             bytecodeVarIntTerminalBit | (firstSrcIdx & bytecodeVarIntPayloadMask);
 
         // Following deltas:
-        for (size_t j = 0; j < revIdxDeltasCount; ++j) { // Reversing copy starting at `i`
-            srcByteIdxsData[i + j] = revIdxDeltas_[revIdxDeltasCount - 1 - j];
-        }
+        std::copy(idxDeltas_.begin(), idxDeltas_.end(), srcByteIdxsData + i);
     }
 
     size_t const arity = fn.blocks[0]->params.count() - 2;
@@ -190,73 +184,77 @@ HRef<Method> MethodBuilder::buildMethod(RT& state, IRFn& toplevelFn, IRFn const&
 MethodBuilder::MethodBuilder(RT const& state, Arena* arena, MethodBuilder* parent, IRFn const& fn) :
     code_{arena},
     labelIdxs_{arena, fn.blocks.count()},
+    branchTargets_{arena},
     consts_{arena},
-    prevMaybeLocRevIdx_{0},
-    prevDeltaCodeByteRevIdx_{0},
+    prevMaybeLocIdx_{0},
+    prevDeltaCodeByteIdx_{0},
     filenameCount_{0},
-    revIdxDeltas_{arena},
-    revFilenameRuns_{arena},
+    idxDeltas_{arena},
+    filenameRuns_{arena},
     parent_{parent}
 {
     assert(fn.blocks.count() >= 1);
-    IRBlock const& lastBlock = *fn.blocks[fn.blocks.count() -  1];
-    ORef const lastMaybeLoc = lastBlock.stmts.count() > 0
-        ? lastBlock.stmts[lastBlock.stmts.count() - 1].maybeLoc
-        : lastBlock.transfer.maybeLoc;
-    MethodBuilderLoc const lastLoc = MethodBuilderLoc::fromORef(state, lastMaybeLoc);
+    IRBlock const& entryBlock = *fn.blocks[0];
+    ORef const firstMaybeLoc = entryBlock.stmts.count() > 0
+       ? entryBlock.stmts[0].maybeLoc
+       : entryBlock.transfer.maybeLoc;
+    MethodBuilderLoc const firstLoc = MethodBuilderLoc::fromORef(state, firstMaybeLoc);
 
-    srcIdx_ = lastLoc.srcIdx;
-    maybeFilename_ = lastLoc.maybeFilename;
+    srcIdx_ = firstLoc.srcIdx;
+    maybeFilename_ = firstLoc.maybeFilename;
 }
 
-void encodeRevDelta(AVec<uint8_t>& revIdxDeltas, int64_t delta, size_t bitsize) {
-    // This could become slightly negative since we are encoding at a granularity of
-    // `bytecodeVarIntPayloadWidth`, so make it signed:
-    auto remBits = (intptr_t)bitsize;
+void encodeDelta(AVec<uint8_t>& idxDeltas, int64_t delta, size_t bitsize) {
+    size_t remBits = bitsize;
 
-    uint8_t const byte = bytecodeVarIntTerminalBit | ((uint8_t)delta & bytecodeVarIntPayloadMask);
-    revIdxDeltas.push(byte);
-    delta = delta >> bytecodeVarIntPayloadWidth;
-    remBits -= bytecodeVarIntPayloadWidth;
-
-    while (remBits > 0) {
-        uint8_t const byte = (uint8_t)delta & bytecodeVarIntPayloadMask;
-        revIdxDeltas.push(byte);
-        delta = delta >> bytecodeVarIntPayloadWidth;
-        remBits -= bytecodeVarIntPayloadWidth;
+    size_t const firstWidth = remBits % bytecodeVarIntPayloadWidth;
+    if (firstWidth != 0) {
+        remBits -= firstWidth;
+        auto const firstMask = uint8_t((1 << firstWidth) - 1);
+        auto const byte = uint8_t((uint64_t(delta) >> remBits) & firstMask);
+        idxDeltas.push(byte);
     }
+
+    while (remBits > bytecodeVarIntPayloadWidth) {
+        remBits -= bytecodeVarIntPayloadWidth;
+        auto const byte = uint8_t((uint64_t(delta) >> remBits) & bytecodeVarIntPayloadMask);
+        idxDeltas.push(byte);
+    }
+
+    auto const byte = uint8_t(bytecodeVarIntTerminalBit | (delta & bytecodeVarIntPayloadMask));
+    idxDeltas.push(byte);
 }
 
 void MethodBuilder::pushMaybeLoc(RT const& state, ORef maybeLoc) {
     auto const loc = MethodBuilderLoc::fromORef(state, maybeLoc);
 
-    filenameCount_ += code_.count() - prevMaybeLocRevIdx_;
+    filenameCount_ += code_.count() - prevMaybeLocIdx_;
     if (!(eq(loc.maybeFilename, maybeFilename_))) {
-        revFilenameRuns_.push(Fixnum{(int64_t)filenameCount_});
-        revFilenameRuns_.push(maybeFilename_);
+        filenameRuns_.push(maybeFilename_);
+        filenameRuns_.push(Fixnum{(int64_t)filenameCount_});
 
         maybeFilename_ = loc.maybeFilename;
         filenameCount_ = 0;
     }
 
     if (loc.srcIdx != srcIdx_) {
-        auto const srcIdxDelta = (int64_t)srcIdx_ - (int64_t)loc.srcIdx;
-        encodeRevDelta(revIdxDeltas_, srcIdxDelta, requiredBitsize(srcIdxDelta));
-        auto const codeByteRevIdxDelta =
-            (int64_t)(code_.count() - prevDeltaCodeByteRevIdx_);
-        encodeRevDelta(revIdxDeltas_, codeByteRevIdxDelta,
-                       requiredBitsize(codeByteRevIdxDelta));
+        auto const codeByteIdxDelta = int64_t(code_.count() - prevDeltaCodeByteIdx_);
+        encodeDelta(idxDeltas_, codeByteIdxDelta, requiredBitsize(codeByteIdxDelta));
+        auto const srcIdxDelta = (int64_t)loc.srcIdx - (int64_t)srcIdx_;
+        encodeDelta(idxDeltas_, srcIdxDelta, requiredBitsize(srcIdxDelta));
 
         srcIdx_ = loc.srcIdx;
-        prevDeltaCodeByteRevIdx_ = code_.count();
+        prevDeltaCodeByteIdx_ = code_.count();
     }
 
-    prevMaybeLocRevIdx_ = code_.count();
+    prevMaybeLocIdx_ = code_.count();
 }
 
 void MethodBuilder::flushMethodBuilderDeltas() {
-    revFilenameRuns_.push(Fixnum{(int64_t)filenameCount_});
-    revFilenameRuns_.push(maybeFilename_);
+    filenameCount_ += code_.count() - prevMaybeLocIdx_;
+
+    filenameRuns_.push(maybeFilename_);
+    filenameRuns_.push(Fixnum{(int64_t)filenameCount_});
 }
 
 void MethodBuilder::pushOp(RT const& state, Opcode op, ORef maybeLoc) {
@@ -264,20 +262,23 @@ void MethodBuilder::pushOp(RT const& state, Opcode op, ORef maybeLoc) {
     pushMaybeLoc(state, maybeLoc);
 }
 
-void MethodBuilder::pushDisplacement(size_t displacement) {
-    assert(displacement <= UINT16_MAX); // TODO: Enable even bigger displacements
-    pushCodeByte(uint8_t(displacement & UINT8_MAX));
-    pushCodeByte(uint8_t((displacement >> UINT8_WIDTH) & UINT8_MAX));
+void MethodBuilder::reserveDisplacement(IRLabel dest) {
+    size_t const displacementIdx = code_.count();
+    branchTargets_.set(displacementIdx, dest);
+
+    pushCodeByte(0);
+    pushCodeByte(0);
 }
 
 void MethodBuilder::emitBitSet(BytefulBitSet const& bits) {
-    // Encode bitset backwards into `builder`:
     size_t const byteCount = bytefulBitSetByteCount(&bits);
-    for (size_t i = byteCount; i-- > 0;) {
-        pushCodeByte(bytefulBitSetByte(&bits, i));
-    }
+
     assert(byteCount < UINT8_MAX);
     pushCodeByte((uint8_t)byteCount);
+
+    for (size_t i = 0; i < byteCount; ++i) {
+        pushCodeByte(bytefulBitSetByte(&bits, i));
+    }
 }
 
 void MethodBuilder::emitRegBits(std::span<IRName const> names, bool specializeHack) {
@@ -317,15 +318,29 @@ uint8_t MethodBuilder::constIndex(MethodBuilder::Const c) {
     return freshConstIndex(c);
 }
 
+void MethodBuilder::patchBranches() {
+    for (auto const& entry : branchTargets_) {
+        size_t const branchIdx = entry.key;
+        IRLabel const destLabel = entry.value;
+
+        size_t const destIdx = labelIdxs_.get(destLabel);
+        size_t const displacement = destIdx - (branchIdx + sizeof(uint16_t));
+        assert(displacement <= UINT16_MAX); // TODO: Enable even bigger displacements?
+
+        code_[branchIdx] = uint8_t((displacement >> UINT8_WIDTH) & UINT8_MAX);
+        code_[branchIdx + 1] = uint8_t(displacement & UINT8_MAX);
+    }
+}
+
 // Emit Bytecode over IR into Builder
 // =================================================================================================
 
 void emitConstDef(
     RT const& state, MethodBuilder& builder, IRName name, MethodBuilder::Const c, ORef maybeLoc
 ) {
-    builder.emitConstArg(c);
-    builder.pushReg(name);
     builder.pushOp(state, OP_CONST, maybeLoc);
+    builder.pushReg(name);
+    builder.emitConstArg(c);
 }
 
 HRef<Method> emitMethod(
@@ -338,29 +353,30 @@ void emitStmt(
     case IRStmt::GLOBAL_DEF: {
         Define const& define = stmt.define;
 
-        builder.pushReg(define.val);
-        builder.emitConstArg({define.name, MethodBuilder::Const::GLOBAL_NAME});
         builder.pushOp(state, OP_DEFINE, stmt.maybeLoc);
+        builder.emitConstArg({define.name, MethodBuilder::Const::GLOBAL_NAME});
+        builder.pushReg(define.val);
     }; break;
 
     case IRStmt::GLOBAL_SET: {
         GlobalSet const& globalSet = stmt.globalSet;
 
-        builder.pushReg(globalSet.val);
-        builder.emitConstArg({globalSet.name, MethodBuilder::Const::GLOBAL_NAME});
         builder.pushOp(state, OP_GLOBAL_SET, stmt.maybeLoc);
+        builder.emitConstArg({globalSet.name, MethodBuilder::Const::GLOBAL_NAME});
+        builder.pushReg(globalSet.val);
     }; break;
 
     case IRStmt::GLOBAL: {
         IRGlobal const& global = stmt.global;
 
-        builder.emitConstArg({global.name, MethodBuilder::Const::GLOBAL_NAME});
-        builder.pushReg(global.tmpName);
         builder.pushOp(state, OP_GLOBAL, stmt.maybeLoc);
+        builder.pushReg(global.tmpName);
+        builder.emitConstArg({global.name, MethodBuilder::Const::GLOBAL_NAME});
     }; break;
 
     case IRStmt::CONST_DEF: {
         ConstDef const& constDef = stmt.constDef;
+
         emitConstDef(state, builder, constDef.name, {constDef.v, MethodBuilder::Const::VALUE},
                      stmt.maybeLoc);
     }; break;
@@ -375,27 +391,29 @@ void emitStmt(
             emitConstDef(state, builder, methodDef.name, {method, MethodBuilder::Const::VALUE},
                          stmt.maybeLoc);
         } else {
-            builder.emitRegBits(std::span{fn.domain.vals, fn.domain.count}, true);
-            builder.emitConstArg({method, MethodBuilder::Const::VALUE});
-            builder.pushReg(methodDef.name);
             builder.pushOp(state, OP_SPECIALIZE, stmt.maybeLoc);
+            builder.pushReg(methodDef.name);
+            builder.emitConstArg({method, MethodBuilder::Const::VALUE});
+            builder.emitRegBits(std::span{fn.domain.vals, fn.domain.count}, true);
         }
     }; break;
 
     case IRStmt::CLOSURE: {
         IRClosure const& closure = stmt.closure;
-        builder.emitClose(*closure.closes);
-        builder.pushReg(closure.method);
-        builder.pushReg(closure.name);
+
         builder.pushOp(state, OP_CLOSURE, stmt.maybeLoc);
+        builder.pushReg(closure.name);
+        builder.pushReg(closure.method);
+        builder.emitClose(*closure.closes);
     }; break;
 
     case IRStmt::CLOVER: {
         Clover const& clover = stmt.clover;
-        builder.pushCodeByte(clover.idx);
-        builder.pushReg(clover.closure);
-        builder.pushReg(clover.name);
+
         builder.pushOp(state, OP_CLOVER, stmt.maybeLoc);
+        builder.pushReg(clover.name);
+        builder.pushReg(clover.closure);
+        builder.pushCodeByte(clover.idx);
     }; break;
 
     case IRStmt::UNSPILL: {
@@ -408,44 +426,59 @@ void emitStmt(
 
     case IRStmt::MOVE: {
         MoveStmt const& mov = stmt.mov;
-        builder.pushReg(mov.src);
-        builder.pushReg(mov.dest);
+
         builder.pushOp(state, OP_MOVE, stmt.maybeLoc);
+        builder.pushReg(mov.dest);
+        builder.pushReg(mov.src);
     }; break;
 
     case IRStmt::SWAP: {
         SwapStmt const& swap = stmt.swap;
-        builder.pushReg(swap.reg2);
-        builder.pushReg(swap.reg1);
+
         builder.pushOp(state, OP_SWAP, stmt.maybeLoc);
+        builder.pushReg(swap.reg1);
+        builder.pushReg(swap.reg2);
     }; break;
 
     case IRStmt::KNOT: {
         KnotStmt const& knot = stmt.knot;
-        builder.pushReg(knot.name);
+
         builder.pushOp(state, OP_KNOT, stmt.maybeLoc);
+        builder.pushReg(knot.name);
     }; break;
 
     case IRStmt::KNOT_INIT: {
         KnotInitStmt const& knotInit = stmt.knotInit;
-        builder.pushReg(knotInit.v);
-        builder.pushReg(knotInit.knot);
+
         builder.pushOp(state, OP_KNOT_INIT, stmt.maybeLoc);
+        builder.pushReg(knotInit.knot);
+        builder.pushReg(knotInit.v);
     }; break;
 
     case IRStmt::KNOT_GET: {
         KnotGetStmt const& knotGet = stmt.knotGet;
-        builder.pushReg(knotGet.knot);
-        builder.pushReg(knotGet.name);
+
         builder.pushOp(state, OP_KNOT_GET, stmt.maybeLoc);
+        builder.pushReg(knotGet.name);
+        builder.pushReg(knotGet.knot);
     }; break;
 
     case IRStmt::FFI_CALL: {
         FFICall const& ffiCall = stmt.ffiCall;
 
+        builder.pushOp(state, OP_FFICALL, stmt.maybeLoc);
+        builder.pushReg(ffiCall.name);
+        builder.pushReg(ffiCall.codomain.name);
+        size_t const argc = ffiCall.args.count();
+        if (argc >= UINT8_MAX) {
+            // TODO: Handle absurd argument count (probably too late here)
+            PANIC("Too many (%lu) fficall arguments", argc);
+        }
+        builder.pushCodeByte(uint8_t(argc));
+
         {
             // OPTIMIZE: Use `&compiler.arena`:
-            BytefulBitSet bits = newBytefulBitSet(1 + ffiCall.args.count()); // codomain, args
+            BytefulBitSet bits = newBytefulBitSet(1 + argc); // codomain, args
 
             size_t i = 0;
 
@@ -459,70 +492,65 @@ void emitStmt(
 
             freeBytefulBitSet(&bits);
         }
-
-        assert(ffiCall.args.count() <= UINT8_MAX);
-        builder.pushCodeByte(uint8_t(ffiCall.args.count()));
-        builder.pushReg(ffiCall.codomain.name);
-        builder.pushReg(ffiCall.name);
-        builder.pushOp(state, OP_FFICALL, stmt.maybeLoc);
     }; break;
     }
 }
 
-void emitTransfer(RT const& state, MethodBuilder& builder, IRTransfer const& transfer) {
+void emitTransfer(
+    RT const& state, MethodBuilder& builder, std::optional<IRLabel> fallthrough,
+    IRTransfer const& transfer
+) {
     switch (transfer.type) {
     case IRTransfer::CALL: {
         Call const& call = transfer.call;
 
         // Guaranteed not to need an `OP_BR` to return block here.
 
-        builder.emitClose(call.closes);
-
-        size_t const regCount = 2 + call.args.count();
-        assert(regCount < UINT8_MAX); // TODO: Handle absurd argument count (probably too late here)
-        builder.pushCodeByte((uint8_t)regCount);
+        builder.pushOp(state, OP_CALL, transfer.maybeLoc);
 
         builder.emitFreshConstArg({Default, MethodBuilder::Const::INLINE_CACHE});
         builder.freshConstIndex({Default, MethodBuilder::Const::INLINE_CACHE});
 
-        builder.pushOp(state, OP_CALL, transfer.maybeLoc);
+        size_t const regCount = firstArgReg + call.args.count();
+        if (regCount >= UINT8_MAX) {
+            // TODO: Handle absurd argument count (probably too late here)
+            PANIC("Too many (%lu) call arguments", call.args.count());
+        }
+        builder.pushCodeByte((uint8_t)regCount);
+
+        builder.emitClose(call.closes);
     }; break;
 
     case IRTransfer::TAILCALL: {
         Tailcall const& tailcall = transfer.tailcall;
 
-        size_t const regCount = 2 + tailcall.args.count();
-        assert(regCount < UINT8_MAX); // TODO: Handle absurd argument count (probably too late here)
-        builder.pushCodeByte((uint8_t)regCount);
+        builder.pushOp(state, OP_TAILCALL, transfer.maybeLoc);
 
         builder.emitFreshConstArg({Default, MethodBuilder::Const::INLINE_CACHE});
         builder.freshConstIndex({Default, MethodBuilder::Const::INLINE_CACHE});
 
-        builder.pushOp(state, OP_TAILCALL, transfer.maybeLoc);
+        size_t const regCount = firstArgReg + tailcall.args.count();
+        if (regCount >= UINT8_MAX) {
+            // TODO: Handle absurd argument count (probably too late here)
+            PANIC("Too many (%lu) tailcall arguments", tailcall.args.count());
+        }
+        builder.pushCodeByte((uint8_t)regCount);
     }; break;
 
     case IRTransfer::IF: {
         IRIf const& iff = transfer.iff;
 
-        size_t const postIndex = builder.codeCount() - 1;
-        size_t const destIndex = builder.getLabelIndex(iff.alt);
-        size_t const displacement = postIndex - destIndex;
-
-        builder.pushDisplacement(displacement);
-        builder.pushReg(iff.cond);
         builder.pushOp(state, OP_BRF, transfer.maybeLoc);
+        builder.pushReg(iff.cond);
+        builder.reserveDisplacement(iff.alt);
     }; break;
 
     case IRTransfer::GOTO: {
         IRGoto const& gotoo = transfer.gotoo;
 
-        size_t const postIndex = builder.codeCount() - 1;
-        size_t const destIndex = builder.getLabelIndex(gotoo.dest);
-        size_t const displacement = postIndex - destIndex;
-
-        if (displacement > 0) { // Only emit branches that actually jump a distance.
-            builder.pushDisplacement(displacement);
+        if (!fallthrough || gotoo.dest != *fallthrough) {
             builder.pushOp(state, OP_BR, transfer.maybeLoc);
+            builder.reserveDisplacement(gotoo.dest);
         }
     }; break;
 
@@ -533,15 +561,16 @@ void emitTransfer(RT const& state, MethodBuilder& builder, IRTransfer const& tra
 }
 
 void emitBlock(
-    RT& state, Compiler& compiler, IRFn& toplevelFn, MethodBuilder& builder, IRBlock const& block
+    RT& state, Compiler& compiler, IRFn& toplevelFn, MethodBuilder& builder,
+    std::optional<IRLabel> fallthrough, IRBlock const& block
 ) {
-    emitTransfer(state, builder, block.transfer);
+    builder.setLabelIndex(block.label, builder.codeCount());
 
-    for (size_t i = block.stmts.count(); i-- > 0;) {
-        emitStmt(state, compiler, toplevelFn, builder, block.stmts[i]);
+    for (IRStmt const& stmt : block.stmts) {
+        emitStmt(state, compiler, toplevelFn, builder, stmt);
     }
 
-    builder.setLabelIndex(block.label, builder.codeCount() - 1);
+    emitTransfer(state, builder, fallthrough, block.transfer);
 }
 
 HRef<Method> emitMethod(
@@ -550,9 +579,22 @@ HRef<Method> emitMethod(
     auto builder = MethodBuilder{state, &compiler.arena, parentBuilder, fn};
 
     // Thanks to previous passes, CFG DAG blocks are conveniently in reverse post-order:
-    for (size_t i = fn.blocks.count(); i-- > 0;) {
-        emitBlock(state, compiler, toplevelFn, builder, *fn.blocks[i]);
+    {
+        auto const end = fn.blocks.end();
+        for (auto it = fn.blocks.begin(); it != end;) {
+            IRBlock const* const block = *it;
+            ++it;
+            std::optional<IRLabel> const fallthrough = it != end
+                ? std::optional{(*it)->label}
+                : std::nullopt;
+
+            emitBlock(state, compiler, toplevelFn, builder, fallthrough, *block);
+        }
     }
+
+    builder.flushMethodBuilderDeltas();
+
+    builder.patchBranches();
 
     return std::move(builder).buildMethod(state, toplevelFn, fn);
 }

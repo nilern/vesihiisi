@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../util/asmallmap.hpp"
 #include "../util/bytefulbitset.hpp"
 #include "ir.hpp"
 #include "../bytecode.hpp"
@@ -35,24 +36,23 @@ private:
     AVec<uint8_t> code_;
 
     LabelIdxs labelIdxs_;
+    ASmallMap<size_t, IRLabel> branchTargets_;
 
     AVec<Const> consts_;
 
-    size_t prevMaybeLocRevIdx_;
+    size_t prevMaybeLocIdx_;
     size_t srcIdx_;
-    size_t prevDeltaCodeByteRevIdx_;
+    size_t prevDeltaCodeByteIdx_;
     ORef maybeFilename_;
     size_t filenameCount_;
-    AVec<uint8_t> revIdxDeltas_;
-    AVec<ORef> revFilenameRuns_;
+    AVec<uint8_t> idxDeltas_;
+    AVec<ORef> filenameRuns_;
 
     MethodBuilder* parent_;
 
     void pushMaybeLoc(RT const& state, ORef maybeLoc);
 
     uint8_t constIndex(MethodBuilder::Const c);
-
-    void flushMethodBuilderDeltas();
 
 public:
     MethodBuilder(RT const& state, Arena* arena, MethodBuilder* parent, IRFn const& fn);
@@ -70,7 +70,7 @@ public:
 
     void pushReg(IRName name) { pushCodeByte((uint8_t)(name.index)); }
 
-    void pushDisplacement(size_t displacement);
+    void reserveDisplacement(IRLabel dest);
 
     void emitBitSet(BytefulBitSet const& bits);
 
@@ -86,6 +86,10 @@ public:
 
     void setLabelIndex(IRLabel label, size_t index) { labelIdxs_.set(label, index); }
     size_t getLabelIndex(IRLabel label) const { return labelIdxs_.get(label); }
+
+    void flushMethodBuilderDeltas();
+
+    void patchBranches();
 
     HRef<Method> buildMethod(RT& state, IRFn& toplevelFn, IRFn const& fn) &&;
 };

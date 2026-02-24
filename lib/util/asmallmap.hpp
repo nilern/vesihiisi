@@ -9,11 +9,13 @@ template<typename K, typename V> requires
             && std::equality_comparable<K>
     && (std::is_trivially_destructible<V>{}()) && (std::is_trivially_copyable<V>{}())
 class ASmallMap {
+public:
     struct Entry {
         K key;
         V value;
     };
 
+private:
     AVec<Entry> entries_;
 
     explicit ASmallMap(AVec<Entry>&& entries) : entries_{std::move(entries)} {}
@@ -40,4 +42,8 @@ public:
             entries_.push(Entry{k, v});
         }
     }
+
+    using const_iterator = Entry const*;
+    const_iterator begin() const { return entries_.begin(); }
+    const_iterator end() const { return entries_.end(); }
 };

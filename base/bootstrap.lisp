@@ -161,7 +161,7 @@
 
 (define fn-method (fn ((: f <fn>)) (slot-get f 0)))
 
-(define has-vararg? (fn ((: method <method>)) (slot-get method 3)))
+(define has-vararg? (fn ((: method <method>)) (slot-get method 2)))
 
 (define min-arity
   (fn ((: method <method>) has-vararg)

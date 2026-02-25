@@ -348,22 +348,21 @@ struct Type : public FixedObject<Type> {
     Fixnum const minSize;
     Fixnum const align;
     Bool const isBytes;
-    Bool const hasCodePtr;
     Bool const isFlex;
     Fixnum const hash;
     HRef<struct Symbol> const name;
 
     Type(
-        Fixnum t_minSize, Fixnum t_align, Bool t_isBytes, Bool t_hasCodePtr, Bool t_isFlex,
-        Fixnum t_hash, HRef<struct Symbol> t_name
+        Fixnum t_minSize, Fixnum t_align, Bool t_isBytes, Bool t_isFlex, Fixnum t_hash,
+        HRef<struct Symbol> t_name
     ) :
-        minSize{t_minSize}, align{t_align}, isBytes{t_isBytes}, hasCodePtr{t_hasCodePtr},
-        isFlex{t_isFlex}, hash{t_hash}, name{t_name}
+        minSize{t_minSize}, align{t_align}, isBytes{t_isBytes}, isFlex{t_isFlex}, hash{t_hash},
+        name{t_name}
     {}
 
     Type(Type const& that) :
-        minSize{that.minSize}, align{that.align}, isBytes{that.isBytes},
-        hasCodePtr{that.hasCodePtr}, isFlex{that.isFlex}, hash{that.hash}, name{that.name}
+        minSize{that.minSize}, align{that.align}, isBytes{that.isBytes}, isFlex{that.isFlex},
+        hash{that.hash}, name{that.name}
     {}
 
     static HRef<Type> reify(struct RT const& state);
@@ -549,8 +548,7 @@ enum class PrimopRes : uintptr_t {
 using MethodCode = PrimopRes (*)(struct RT*);
 
 struct Method : public FlexMutObject<Method, ORef> {
-    MethodCode const nativeCode;
-    ORef const code;
+    HRef<ByteArray> const code;
     ORef const consts;
     Bool const hasVarArg;
     Fixnum const hash;
@@ -559,17 +557,21 @@ struct Method : public FlexMutObject<Method, ORef> {
     ORef const maybeSrcByteIdxs;
 
     Method(
-        MethodCode t_nativeCode, ORef t_code, ORef t_consts, Bool t_hasVarArg, Fixnum t_hash,
-        ORef t_maybeName, ORef t_maybeFilenames, ORef t_maybeSrcByteIdxs, ORefSpan t_domain
+        HRef<ByteArray> t_code, ORef t_consts, Bool t_hasVarArg, Fixnum t_hash, ORef t_maybeName,
+        ORef t_maybeFilenames, ORef t_maybeSrcByteIdxs, ORefSpan t_domain
     ) :
-        nativeCode{t_nativeCode}, code{t_code}, consts{t_consts}, hasVarArg{t_hasVarArg},
-        hash{t_hash}, maybeName{t_maybeName}, maybeFilenames{t_maybeFilenames},
+        code{t_code}, consts{t_consts}, hasVarArg{t_hasVarArg}, hash{t_hash},
+        maybeName{t_maybeName}, maybeFilenames{t_maybeFilenames},
         maybeSrcByteIdxs{t_maybeSrcByteIdxs}
     {
         memcpy(const_cast<ORef*>(flexData()), t_domain.data(), t_domain.size_bytes());
     }
 
     static HRef<Type> reify(struct RT const& state);
+
+    MethodCode nativeCode() const { return *reinterpret_cast<MethodCode const*>(code->flexData()); }
+
+    static size_t entryPc() { return sizeof(MethodCode); }
 
     ORefSpan domain() const { return flexItems(); }
     ORefSpanMut domain() { return flexItemsMut(); }

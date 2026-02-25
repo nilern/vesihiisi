@@ -58,6 +58,8 @@ public:
     AVec(AVec<T>&&) = default;
     AVec<T>& operator=(AVec<T>&&) = default;
 
+    T* data() { return start_; }
+
     Slice<T const> slice() const { return Slice{static_cast<T const*>(start_), count()}; }
 
     size_t count() const { return end_ - start_; }

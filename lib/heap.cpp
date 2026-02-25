@@ -326,13 +326,7 @@ char* Heap::scanObj(Object* const obj) {
             slotCount += uint64_t(flexHeader.count.val()); // Add flex slot count
         }
 
-        if (type->hasCodePtr.val()) {
-            // Skip code pointer:
-            byteScan += sizeof(MethodCode);
-            --slotCount; // Assuming that code pointer is ORef-sized...
-        }
-        // Assuming that we are still at least ORef-aligned even if we skipped a code pointer...:
-        ORef* orefScan = std::bit_cast<ORef*>(byteScan);
+        auto orefScan = std::bit_cast<ORef*>(byteScan);
 
         // Finally, actually scan slots:
         for (size_t i = 0; i < slotCount; ++i, ++orefScan) {

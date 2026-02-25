@@ -32,7 +32,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
         auto const method = HRef<Method>::fromUnchecked(anyMethod);
         assert(isHeaped(method->code));
         rt->setMethod(method);
-        rt->pc = 0;
+        rt->pc = Method::entryPc();
         rt->regs[calleeReg] = self;
         rt->regs[retContReg] = rt->singletons.exit; // Return continuation
         rt->entryRegc = 2;
@@ -428,7 +428,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
             assert(isa<Method>(*rt, closure->method));
             return HRef<Method>::fromUnchecked(closure->method);
         }();
-        switch (method->nativeCode(rt)) {
+        switch (method->nativeCode()(rt)) {
         case PrimopRes::INTERPRET: { // Bytecode method:
             // Check domain:
             switch (checkDomain(rt)) {
@@ -465,7 +465,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
 
             // Jump to beginning:
             rt->setMethod(method);
-            rt->pc = 0;
+            rt->pc = Method::entryPc();
         }; VM_CONTINUE;
 
         case PrimopRes::CONTINUE: // Returned:

@@ -143,7 +143,7 @@ Type* tryCreateFixedType(Heap& heap, Type const* typeType) {
     if (!type) { return nullptr; }
 
     return new (type) Type{
-        Fixnum((int64_t)sizeof(T)), Fixnum((int64_t)alignof(T)), Bool{isBytes}, False, False,
+        Fixnum((int64_t)sizeof(T)), Fixnum((int64_t)alignof(T)), Bool{isBytes}, False,
         Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
 }
@@ -159,14 +159,14 @@ Type* tryCreateIndexedType(Heap& heap, Type const* typeType) {
         : alignof(ORef);
 
     return new (type) Type{
-        Fixnum{0l}, Fixnum{int64_t(align)}, Bool{isBytes}, False, True,
+        Fixnum{0l}, Fixnum{int64_t(align)}, Bool{isBytes}, True,
         Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
 }
 
 Type* tryCreateTypeType(Heap& heap) {
     auto const bootstrapTypeType = Type{
-        Fixnum((intptr_t)sizeof(Type)), Fixnum((intptr_t)alignof(Type)), False, False, False,
+        Fixnum((intptr_t)sizeof(Type)), Fixnum((intptr_t)alignof(Type)), False, False,
         Fixnum{0l}, HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
     
@@ -183,7 +183,7 @@ Type* tryCreateAnyType(Heap& heap, Type const* typeType) {
     if (!type) { return nullptr; }
 
     return new (type) Type{ // TODO: Avoid requiring some nonsensical values like this:
-        Fixnum{0l}, Fixnum((intptr_t)objectMinAlign), True, False, False,
+        Fixnum{0l}, Fixnum((intptr_t)objectMinAlign), True, False,
         Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
 }
@@ -193,7 +193,7 @@ Type* tryCreateSymbolType(Heap& heap, Type const* typeType) {
     if (!type) { return nullptr; }
 
     return new (type) Type{
-        Fixnum((intptr_t)sizeof(Symbol)), Fixnum((intptr_t)alignof(Symbol)), False, False, False,
+        Fixnum((intptr_t)sizeof(Symbol)), Fixnum((intptr_t)alignof(Symbol)), False, False,
         Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
 }
@@ -203,7 +203,7 @@ Type* tryCreateEmptyType(Heap& heap, Type const* typeType) {
     if (!type) { return nullptr; }
 
     return new (type) Type{
-        Fixnum{0l}, Fixnum((intptr_t)objectMinAlign), True, False, False,
+        Fixnum{0l}, Fixnum((intptr_t)objectMinAlign), True, False,
         Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
 }
@@ -213,7 +213,7 @@ Type* tryCreateMethodType(Heap& heap, Type const* typeType) {
     if (!type) { return nullptr; }
 
     return new (type) Type{
-        Fixnum((int64_t)sizeof(Method)), Fixnum((int64_t)alignof(Method)), False, True, True,
+        Fixnum((int64_t)sizeof(Method)), Fixnum((int64_t)alignof(Method)), False, True,
         Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
 }
@@ -223,7 +223,7 @@ Type* tryCreateClosureType(Heap& heap, Type const* typeType) {
     if (!type) { return nullptr; }
 
     return new (type) Type{
-        Fixnum((int64_t)sizeof(Closure)), Fixnum((int64_t)alignof(Closure)), False, False, True,
+        Fixnum((int64_t)sizeof(Closure)), Fixnum((int64_t)alignof(Closure)), False, True,
         Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
 }
@@ -233,8 +233,7 @@ Type* tryCreateContinuationType(Heap& heap, Type const* typeType) {
     if (!type) { return nullptr; }
 
     return new (type) Type{
-        Fixnum((int64_t)sizeof(Continuation)), Fixnum((int64_t)alignof(Continuation)), False, False,
-        True,
+        Fixnum((int64_t)sizeof(Continuation)), Fixnum((int64_t)alignof(Continuation)), False, True,
         Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
 }
@@ -244,8 +243,7 @@ Type* tryCreateFatalErrorType(Heap& heap, Type const* typeType) {
     if (!type) { return nullptr; }
 
     return new (type) Type{
-        Fixnum((int64_t)sizeof(FatalError)), Fixnum((int64_t)alignof(FatalError)), False, False,
-        True,
+        Fixnum((int64_t)sizeof(FatalError)), Fixnum((int64_t)alignof(FatalError)), False, True,
         Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
 }
@@ -255,7 +253,7 @@ Type* tryCreateImmType(Heap& heap, Type const* typeType) {
     if (!type) { return nullptr; }
     
     return new (type) Type{ // TODO: Avoid requiring some nonsensical values like this:
-        Fixnum{0l}, Fixnum((intptr_t)objectMinAlign), True, False, False,
+        Fixnum{0l}, Fixnum((intptr_t)objectMinAlign), True, False,
         Fixnum::fromUnchecked(ORef{0}), HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
     };
 }
@@ -760,7 +758,7 @@ HRef<Type> createSlotsType(RT* state, HRef<Symbol> name, Fixnum slotCount, Bool 
         : Fixnum{int64_t(size_t(slotCount.val() - 1) * sizeof(ORef))};
 
     return HRef{new (ptr) Type{
-        minSize, Fixnum((int64_t)objectMinAlign), False, False, isFlex, name->hash, name
+        minSize, Fixnum((int64_t)objectMinAlign), False, isFlex, name->hash, name
     }};
 }
 
@@ -860,8 +858,8 @@ Method* tryAllocBytecodeMethod(
     if (!ptr) { return ptr; }
 
     return new (ptr) Method{
-        interpret, code, consts, hasVarArg, hash, maybeName,
-        maybeFilenames, maybeSrcByteIdxs, ORefSpan{} // leave `domain` to `Default`s
+        code, consts, hasVarArg, hash, maybeName, maybeFilenames, maybeSrcByteIdxs,
+        ORefSpan{} // leave `domain` to `Default`s
     };
 }
 
@@ -873,8 +871,8 @@ Method* allocBytecodeMethodOrDie(
         static_cast<Method*>(state->heap.allocFlexOrDie(&*state->types.method, arity));
 
     return new (ptr) Method{
-        interpret, code, consts, hasVarArg, hash, maybeName,
-        maybeFilenames, maybeSrcByteIdxs, ORefSpan{} // leave `domain` to `Default`s
+        code, consts, hasVarArg, hash, maybeName, maybeFilenames, maybeSrcByteIdxs,
+        ORefSpan{} // leave `domain` to `Default`s
     };
 }
 
@@ -895,8 +893,8 @@ HRef<Method> allocBytecodeMethod(
     }
 
     return HRef{new (ptr) Method{
-        interpret, code, consts, hasVarArg, hash, maybeName,
-        maybeFilenames, maybeSrcByteIdxs, ORefSpan{} // leave `domain` to `Default`s
+        code, consts, hasVarArg, hash, maybeName, maybeFilenames, maybeSrcByteIdxs,
+        ORefSpan{} // leave `domain` to `Default`s
     }};
 }
 
@@ -906,15 +904,31 @@ HRef<Method> vcreatePrimopMethod(
 ) {
     size_t const arity = (uintptr_t)fxArity.val();
 
-    // Taking address of `va_arg(va_domain, HRef<Type>)` seems questionable so copy into fixed array to
-    // allow GC:
+    // Taking address of `va_arg(va_domain, HRef<Type>)` seems questionable so copy into fixed
+    // array to allow GC:
     HRef<Type>* const domain = static_cast<HRef<Type>*>(malloc(arity * sizeof *domain));
     for (size_t i = 0; i < arity; ++i) {
         domain[i] = HRef<Type>::fromUnchecked(va_arg(va_domain, ORef));
     }
 
-    Method* ptr =
-        static_cast<decltype(ptr)>(state->heap.tryAllocFlex(&*state->types.method, fxArity));
+    ByteArray* codePtr = static_cast<decltype(codePtr)>(
+        state->heap.tryAllocFlex(&*state->types.byteArray, Fixnum{int64_t(sizeof(MethodCode))}));
+    if (mustCollect(codePtr)) {
+        auto domainRoots = std::vector<RootGuard>{};
+        domainRoots.reserve(arity);
+        for (size_t i = 0; i < arity; ++i) {
+            domainRoots.push_back(state->pushRoot(domain + i));
+        }
+        collect(state);
+        codePtr = static_cast<decltype(codePtr)>(
+            state->heap.allocFlexOrDie(
+                &*state->types.byteArray, Fixnum{int64_t(sizeof(MethodCode))}));
+    }
+    *reinterpret_cast<MethodCode*>(const_cast<uint8_t*>(codePtr->flexData())) = nativeCode;
+    auto code = HRef{codePtr};
+    auto codeG = state->pushRoot(&code);
+
+    Method* ptr = (Method*)state->heap.tryAllocFlex(&*state->types.method, fxArity);
     if (mustCollect(ptr)) {
         auto domainRoots = std::vector<RootGuard>{};
         domainRoots.reserve(arity);
@@ -930,8 +944,8 @@ HRef<Method> vcreatePrimopMethod(
         fnv1aHash_n(std::bit_cast<uint8_t*>(&nativeCode), sizeof nativeCode); // HACK
 
     new (ptr) Method{
-        nativeCode, Default, Default, Bool{hasVarArg}, Fixnum{int64_t(hash)}, Default, Default,
-        Default, ORefSpan{static_cast<ORef*>(domain), arity}
+        code, Default, Bool{hasVarArg}, Fixnum{int64_t(hash)}, Default, Default, Default,
+        ORefSpan{static_cast<ORef*>(domain), arity}
     };
 
     HRef<Method> method = HRef(ptr);

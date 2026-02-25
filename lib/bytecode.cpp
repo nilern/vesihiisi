@@ -62,7 +62,7 @@ public:
     }
 
     Disassembler(RT const* t_state, Method const* t_method)
-        : Disassembler{t_state, t_method, 0} {}
+        : Disassembler{t_state, t_method, Method::entryPc()} {}
 
     static Disassembler* create(RT const* t_state, Method const* t_method);
 

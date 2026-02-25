@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "../rt.hpp"
+#include "../primops.hpp"
 #include "../util/avec.hpp"
 
 namespace {
@@ -76,7 +77,7 @@ HRef<Method> MethodBuilder::buildMethod(RT& state, IRFn& toplevelFn, IRFn const&
     }
     HRef<ByteArray> code = HRef<ByteArray>(maybeCode);
     auto const codeG = state.pushRoot(&code);
-    std::copy(code_.begin(), code_.end(), const_cast<uint8_t*>(maybeCode->flexData())); // Init
+    std::copy(code_.begin(), code_.end(), const_cast<uint8_t*>(code->flexData()));
 
     // Create method consts:
     Fixnum const constCount = Fixnum{int64_t(consts_.count())};
@@ -193,6 +194,9 @@ MethodBuilder::MethodBuilder(RT const& state, Arena* arena, MethodBuilder* paren
     filenameRuns_{arena},
     parent_{parent}
 {
+    for (size_t i = 0; i < sizeof(MethodCode); ++i) { code_.push(0); } // OPTIMIZE
+    *reinterpret_cast<MethodCode*>(code_.data()) = interpret;
+
     assert(fn.blocks.count() >= 1);
     IRBlock const& entryBlock = *fn.blocks[0];
     ORef const firstMaybeLoc = entryBlock.stmts.count() > 0

@@ -323,18 +323,18 @@
 (define continulet-trace
   (fn (k)
     (letfn (((trace k)
-               (let ((method (continuation-method k)))
-                 (if (isa? <method> method)
-                   (let ((name (let ((name (method-name method)))
-                                 (if (isa? <symbol> name) name #f)))
-                         (loc (continuation-call-loc k))
-                         (entry (if loc
-                                  (array name
-                                         (source-location-filename loc)
-                                         (try-source-location-coords loc))
-                                  (array name #f #f))))
-                     (cons entry (trace (flex-get k 0))))
-                   ()))))
+                (if (not (identical? k vm-exit-continuation))
+                  (let ((method (continuation-method k))
+                        (name (let ((name (method-name method)))
+                                (if (isa? <symbol> name) name #f)))
+                        (loc (continuation-call-loc k))
+                        (entry (if loc
+                                (array name
+                                        (source-location-filename loc)
+                                        (try-source-location-coords loc))
+                                (array name #f #f))))
+                    (cons entry (trace (flex-get k 0))))
+                  ())))
       (trace k))))
 
 (define display-trace-entry

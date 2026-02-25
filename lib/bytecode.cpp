@@ -84,6 +84,8 @@ public:
 
     void skipOperands(uint8_t codeByte);
 
+    void skipReturnCodePtr();
+
     void disassembleReg(FILE* dest, uint8_t reg);
 
     void disassembleDisplacement(FILE* dest);
@@ -177,6 +179,10 @@ void Disassembler::skipInstrBitmap() {
     for (size_t j = 0; j < byteCount; ++j) { next(); }
 }
 
+void Disassembler::skipReturnCodePtr() {
+    for (size_t i = 0; i < sizeof(MethodCode); ++i) { next(); }
+}
+
 void Disassembler::skipOperands(uint8_t codeByte) {
     switch (static_cast<Opcode>(codeByte)) { // FIXME: Handle invalid instruction
     case OP_MOVE: {
@@ -256,6 +262,7 @@ void Disassembler::skipOperands(uint8_t codeByte) {
         next();
         next();
         skipInstrBitmap();
+        skipReturnCodePtr();
     }; break;
 
     case OP_TAILCALL: {
@@ -439,6 +446,7 @@ void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t co
         auto const regc = next().val.codeByte;
         fprintf(dest, "call %u? %u ", ci, regc);
         disassembleInstrBitmap(dest);
+        skipReturnCodePtr();
     }; break;
 
     case OP_TAILCALL: {

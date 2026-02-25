@@ -492,22 +492,28 @@ VMRes run(RT* rt, HRef<Closure> self) {
         }; break; // All is in place, just keep trampolining
 
         case PrimopRes::ABORT: return VMRes{};
+
+        case PrimopRes::EXIT_VM: return VMRes{.val = rt->regs[retReg], .success = true};
         }
     }
 
     kontinue: {
         assert(isa<Continuation>(*rt, rt->regs[retContReg]));
         auto const ret = HRef<Continuation>::fromUnchecked(rt->regs[retContReg]);
-        ORef const anyMethod = ret->method;
-        if (isHeaped(anyMethod)) { // Return to bytecode method:
-            assert(isa<Method>(*rt, anyMethod));
-            rt->setMethod(HRef<Method>::fromUnchecked(anyMethod));
-            rt->pc = (size_t)ret->pc.val();
-        } else { // Exit:
-            return VMRes{.val = rt->regs[retReg], .success = true};
-        }
+        HRef<Method> const method = ret->method;
 
-        VM_CONTINUE;
+        rt->setMethod(method);
+        rt->pc = (size_t)ret->pc.val();
+        MethodCode const nativeReturnCode = *reinterpret_cast<MethodCode const*>(rt->code + rt->pc);
+        rt->pc += sizeof(MethodCode);
+
+        switch (nativeReturnCode(rt)) {
+        case PrimopRes::INTERPRET: VM_CONTINUE;
+
+        case PrimopRes::EXIT_VM: return VMRes{.val = rt->regs[retReg], .success = true};
+
+        default: PANIC("Unreachable code reached");
+        }
     }
     }
 }

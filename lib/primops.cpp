@@ -41,7 +41,9 @@ PrimopRes primopTypeError(RT* state, HRef<Type> type, ORef v) {
     return primopError(state, createTypeError(state, type, v));
 }
 
-PrimopRes interpret(RT* /*state*/) { return PrimopRes::INTERPRET; }
+PrimopRes interpret(RT* /*rt*/) { return PrimopRes::INTERPRET; }
+
+PrimopRes exitVMOnReturn(RT* /*rt*/) { return PrimopRes::EXIT_VM; }
 
 PrimopRes primopAbort(RT* state) {
     switch (checkDomain(state)) {
@@ -57,27 +59,20 @@ PrimopRes primopAbort(RT* state) {
 
     assert(isa(state, state->types.continuation, state->regs[retContReg]));
     auto const cont = HRef<Continuation>::fromUnchecked(state->regs[retContReg]);
-    ORef const anyCaller = cont->method;
-    if (isa<Method>(*state, anyCaller)) {
-        auto const caller = HRef<Method>::fromUnchecked(anyCaller);
+    HRef<Method> const caller = cont->method;
 
-        size_t const retPc = uint64_t(cont->pc.val());
-        auto const maybeCallLoc = locateCallerPc(state, caller, retPc);
+    size_t const retPc = uint64_t(cont->pc.val());
+    auto const maybeCallLoc = locateCallerPc(state, caller, retPc);
 
-        ORef const maybeCallerName = caller->maybeName;
-        if (isa<Symbol>(*state, maybeCallerName)) {
-            fputs(" in ", stderr);
-            write(state, stderr, HRef<Symbol>::fromUnchecked(maybeCallerName));
-        }
-
-        fputs(" at ", stderr);
-
-        if (maybeCallLoc.hasVal) { maybeCallLoc.val.print(*state, stderr); }
-    } else {
-        // FIXME: Exit continuation should have a method that inherits toplevel thunk location to
-        // make this work.
-        assert(false);
+    ORef const maybeCallerName = caller->maybeName;
+    if (isa<Symbol>(*state, maybeCallerName)) {
+        fputs(" in ", stderr);
+        write(state, stderr, HRef<Symbol>::fromUnchecked(maybeCallerName));
     }
+
+    fputs(" at ", stderr);
+
+    if (maybeCallLoc.hasVal) { maybeCallLoc.val.print(*state, stderr); }
 
     putc('\n', stderr);
 
@@ -1315,8 +1310,7 @@ PrimopRes PrimopEval::uncheckedInvoke(RT* state) {
 PrimopRes PrimopContinuationCallLoc::uncheckedInvoke(RT* state) {
     auto const cont = HRef<Continuation>::fromUnchecked(state->regs[firstArgReg]);
 
-    if (!isa<Method>(*state, cont->method)) { PANIC("TODO"); }
-    auto const method = HRef<Method>::fromUnchecked(cont->method);
+    HRef<Method> const method = cont->method;
     Maybe<ZLoc> const maybeLoc = locateCallerPc(state, method, size_t(cont->pc.val()));
 
     state->regs[retReg] = [&]() -> ORef {

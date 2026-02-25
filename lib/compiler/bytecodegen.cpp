@@ -303,6 +303,45 @@ void MethodBuilder::emitRegBits(std::span<IRName const> names, bool specializeHa
     freeBytefulBitSet(&bits);
 }
 
+void MethodBuilder::emitAligningClose(std::span<IRName const> names, size_t align) {
+    // OPTIMIZE: Use `&compiler.arena`:
+    BytefulBitSet bits = newBytefulBitSet(names.size()); // Need at least `count` bits, likely more
+
+    // Set bits for each register:
+    for (IRName const name : names) {
+        size_t const regIdx = name.index;
+        bytefulBitSetSet(&bits, regIdx, true);
+    }
+
+    size_t const prePc = code_.count();
+    size_t const closeByteCount = bytefulBitSetByteCount(&bits);
+    size_t const postClosePc = prePc + 1 + closeByteCount;
+    size_t const postPc = alignUp(postClosePc, align);
+    size_t const padding = postPc - postClosePc;
+    size_t const byteCount = closeByteCount + padding;
+
+    assert(byteCount < UINT8_MAX);
+    pushCodeByte((uint8_t)byteCount);
+
+    for (size_t i = 0; i < closeByteCount; ++i) {
+        pushCodeByte(bytefulBitSetByte(&bits, i));
+    }
+
+    for (size_t i = 0; i < padding; ++i) { pushCodeByte(0); }
+
+    freeBytefulBitSet(&bits);
+}
+
+void MethodBuilder::emitCodePtr(MethodCode nativeCode) {
+    assert((code_.count() & (alignof(MethodCode) - 1)) == 0);
+
+    size_t const startIdx = code_.count();
+
+    for (size_t i = 0; i < sizeof(MethodCode); ++i) { code_.push(0); } // OPTIMIZE
+
+    *reinterpret_cast<MethodCode*>(code_.data() + startIdx) = nativeCode;
+}
+
 uint8_t MethodBuilder::freshConstIndex(MethodBuilder::Const c) {
     size_t const i = consts_.count();
     consts_.push(c);
@@ -522,7 +561,8 @@ void emitTransfer(
         }
         builder.pushCodeByte((uint8_t)regCount);
 
-        builder.emitClose(call.closes);
+        builder.emitAligningClose(call.closes, alignof(MethodCode));
+        builder.emitCodePtr(interpret);
     }; break;
 
     case IRTransfer::TAILCALL: {

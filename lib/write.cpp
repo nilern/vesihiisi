@@ -109,7 +109,7 @@ void write(RT const* state, FILE* dest, ORef v) {
 
             // TODO: DRY with #<method ... directly above:
             if (isa<Method>(*state, closure->method)) {
-                auto const method = HRef<Method>::fromUnchecked(closure->method);
+                HRef<Method> const method = HRef<Method>::fromUnchecked(closure->method);
                 ORef const maybeName = method->maybeName;
                 if (isHeaped(maybeName)) {
                     putc(' ', dest);

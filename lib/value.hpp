@@ -542,7 +542,8 @@ enum class PrimopRes : uintptr_t {
     TAILAPPLY,
     MISSPECULATION,
     ERROR,
-    ABORT
+    ABORT,
+    EXIT_VM
 };
 
 using MethodCode = PrimopRes (*)(struct RT*);
@@ -597,7 +598,7 @@ public:
 };
 
 struct Continuation : FlexObject<Continuation, ORef> {
-    ORef const method;
+    HRef<Method> const method;
     Fixnum const pc;
 
     [[maybe_unused]]

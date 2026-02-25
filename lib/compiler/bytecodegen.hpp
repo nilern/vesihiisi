@@ -78,6 +78,10 @@ public:
 
     void emitClose(std::span<IRName const> args) { emitRegBits(args, false); }
 
+    void emitAligningClose(std::span<IRName const> args, size_t align);
+
+    void emitCodePtr(MethodCode nativeCode);
+
     uint8_t freshConstIndex(MethodBuilder::Const c);
 
     void emitFreshConstArg(MethodBuilder::Const c) { pushCodeByte(freshConstIndex(c)); }

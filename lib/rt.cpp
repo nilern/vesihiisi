@@ -434,9 +434,6 @@ RT* RT::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* a
     if (!emptyList) { return nullptr; }
     auto const unbound = static_cast<Unbound*>(heap.tryAlloc(unboundType));
     if (!unbound) { return nullptr; }
-    auto const exit = static_cast<Continuation*>(heap.tryAllocFlex(continuationType, Fixnum{0l}));
-    if (!exit) { return nullptr; }
-    const_cast<Fixnum&>(exit->pc) = Fixnum{0l}; // HACK: Init
 
     // HACK:
     Var* const debugPlaceholder = tryCreateUnboundVar(heap, varType, HRef(unbound));
@@ -489,7 +486,7 @@ RT* RT::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* a
             .end = HRef{end},
             .emptyList = HRef(emptyList),
             .unbound = HRef(unbound),
-            .exit = HRef(exit),
+            .exit = HRef<Continuation>::fromUnchecked(ORef{0}), // HACK
             .quote = HRef<Symbol>::fromUnchecked(ORef{0}), // HACK
             .ofType = HRef<Symbol>::fromUnchecked(ORef{0}) // HACK
         },
@@ -501,6 +498,15 @@ RT* RT::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* a
 
     dest->singletons.quote = intern(dest, strLit("quote"));
     dest->singletons.ofType = intern(dest, strLit(":"));
+    {
+        HRef<ArrayMut> exitConsts = createArrayMut(dest, Fixnum{int64_t{0}});
+        auto const exitConstsG = dest->pushRoot(&exitConsts);
+        auto const exitMethod = createPrimopMethod(dest, strLit("exit-vm-on-return"),
+                                                   exitVMOnReturn, false, Fixnum{int64_t(0)});
+        *const_cast<ORef*>(&exitMethod->consts) = exitConsts;
+        dest->singletons.exit =
+            allocContinuation(dest, exitMethod, Fixnum{int64_t(0)}, Fixnum{int64_t(0)});
+    }
 
     for (size_t i = 0; i < BOOTSTRAP_TYPE_COUNT; ++i) {
         char const* const name = typeNames[i];
@@ -537,6 +543,7 @@ RT* RT::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* a
         assert(varRes.type == FindVarRes::NS_FOUND_VAR);
         dest->errorHandler = varRes.var;
     }
+    installPrimordial(dest, strLit("vm-exit-continuation"), dest->singletons.exit);
     installPrimordial(dest, strLit("end"), dest->singletons.end);
     installPrimordial(dest, strLit("standard-input"), createInputFile(dest, UTF8InputFile{stdin}));
     installPrimordial(dest, strLit("*vshs-home*"),
@@ -996,7 +1003,7 @@ HRef<Continuation> allocContinuation(
             &*state->types.continuation, cloverCount));
     }
 
-    const_cast<ORef&>(ptr->method) = method; // Initing so `const_cast` and no write barrier
+    const_cast<HRef<Method>&>(ptr->method) = method; // Initing so `const_cast` and no write barrier
     const_cast<Fixnum&>(ptr->pc) = pc; // Initing so `const_cast`
 
     return HRef(ptr);

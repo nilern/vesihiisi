@@ -54,7 +54,7 @@ Object* Heap::Semispace::tryAlloc(Type const* type) {
     address += sizeof(Header); // Reserve header
     // Align oref:
     auto const align = uintptr_t(type->align.val());
-    address = (address + align - 1) & ~(align - 1);
+    address = alignUp(address, align);
 
     // Check bound and commit reservation:
     auto const size = uintptr_t(type->minSize.val());
@@ -79,7 +79,7 @@ Object* Heap::Semispace::tryAllocFlex(Type const* type, Fixnum length) {
     address += sizeof(FlexHeader); // Reserve header
     // Align oref:
     auto const align = uintptr_t(type->align.val());
-    address = (address + align - 1) & ~(align - 1);
+    address = alignUp(address, align);
 
     // Check bound and commit reservation:
     auto const len = uintptr_t(length.val());
@@ -115,7 +115,7 @@ Object* Heap::Nursery::tryAlloc(Type const* type) {
     address += sizeof(Header); // Reserve header
     // Align oref:
     auto const align = uintptr_t(type->align.val());
-    address = (address + align - 1) & ~(align - 1);
+    address = alignUp(address, align);
 
     // Check bound and commit reservation:
     auto const size = uintptr_t(type->minSize.val());
@@ -147,7 +147,7 @@ Object* Heap::Nursery::tryAllocFlex(Type const* type, Fixnum length) {
     address += sizeof(FlexHeader); // Reserve header
     // Align oref:
     auto const align = uintptr_t(type->align.val());
-    address = (address + align - 1) & ~(align - 1);
+    address = alignUp(address, align);
 
     // Check bound and commit reservation:
     auto const len = uintptr_t(length.val());
@@ -284,7 +284,7 @@ Object* Heap::Semispace::nextGrey(char* scan) const {
 
     auto address = std::bit_cast<uintptr_t>(scan);
     uintptr_t const align = alignof(ORef);
-    address = (address + align - 1) & ~(align - 1);
+    address = alignUp(address, align);
 
     auto orefScan = std::bit_cast<ORef*>(address);
 

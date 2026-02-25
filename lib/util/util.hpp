@@ -22,6 +22,8 @@
 
 namespace {
 
+inline size_t alignUp(size_t n, size_t align) { return (n + align - 1) & ~(align - 1); }
+
 inline size_t requiredBitsize(int64_t n) {
     // Hacker's Delight Section 5-3 Counting Leading 0's:
     int64_t const nabs = n ^ (n >> (INT64_WIDTH - 1)); // `n >= 0 ? n : -n - 1`

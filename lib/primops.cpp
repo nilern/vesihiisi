@@ -41,7 +41,7 @@ PrimopRes primopTypeError(RT* state, HRef<Type> type, ORef v) {
     return primopError(state, createTypeError(state, type, v));
 }
 
-PrimopRes callBytecode(RT* /*state*/) { return PrimopRes::TAILCALL; }
+PrimopRes interpret(RT* /*state*/) { return PrimopRes::INTERPRET; }
 
 PrimopRes primopAbort(RT* state) {
     switch (checkDomain(state)) {

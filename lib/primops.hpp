@@ -139,7 +139,8 @@ struct Primop {
         switch (checkRes) {
         case PrimopRes::CONTINUE: break;
         case PrimopRes::MISSPECULATION: case PrimopRes::ERROR: return checkRes;
-        case PrimopRes::TAILCALL: case PrimopRes::TAILAPPLY: case PrimopRes::ABORT:
+        case PrimopRes::INTERPRET: case PrimopRes::TAILCALL: case PrimopRes::TAILAPPLY:
+        case PrimopRes::ABORT:
             PANIC("Unreachable code reached.");
         }
 
@@ -158,7 +159,7 @@ struct VarargsPrimop : public Primop<CRTPSub, Domain...> {
 };
 
 // Pseudo-Operation
-PrimopRes callBytecode(RT* state);
+PrimopRes interpret(RT* state);
 
 // Control Flow
 PrimopRes primopAbort(RT* state);

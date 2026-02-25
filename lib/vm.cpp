@@ -421,13 +421,15 @@ VMRes run(RT* rt, HRef<Closure> self) {
         // Do not need return value here as a call is set up even in case of error:
         calleeClosure(rt, originalCallee, inlineCacheIdx);
 
+        applyClosure:
         auto method = [&](){
             assert(isa<Closure>(*rt, rt->regs[calleeReg]));
             auto closure = HRef<Closure>::fromUnchecked(rt->regs[calleeReg]);
             assert(isa<Method>(*rt, closure->method));
             return HRef<Method>::fromUnchecked(closure->method);
         }();
-        if (isHeaped(method->code)) { // Bytecode method:
+        switch (method->nativeCode(rt)) {
+        case PrimopRes::INTERPRET: { // Bytecode method:
             // Check domain:
             switch (checkDomain(rt)) {
             case DomainCheckRes::OK: break;
@@ -464,54 +466,32 @@ VMRes run(RT* rt, HRef<Closure> self) {
             // Jump to beginning:
             rt->setMethod(method);
             rt->pc = 0;
+        }; VM_CONTINUE;
 
-            VM_CONTINUE;
-        } else {
-            applyPrimop:
-            switch (method->nativeCode(rt)) {
-            case PrimopRes::CONTINUE: // Returned:
-                goto kontinue;
+        case PrimopRes::CONTINUE: // Returned:
+            goto kontinue;
 
-            case PrimopRes::TAILCALL: { // Set up another call in its place:
-                inlineCacheIdx = std::nullopt;
-            }; break; // All is in place, just keep trampolining
+        case PrimopRes::TAILCALL: { // Set up another call in its place:
+            inlineCacheIdx = std::nullopt;
+        }; break; // All is in place, just keep trampolining
 
-            // TODO: DRY with loop head:
-            case PrimopRes::TAILAPPLY: {
-                method = [&](){
-                    assert(isa<Closure>(*rt, rt->regs[calleeReg]));
-                    auto closure = HRef<Closure>::fromUnchecked(rt->regs[calleeReg]);
-                    assert(isa<Method>(*rt, closure->method));
-                    return HRef<Method>::fromUnchecked(closure->method);
-                }();
-                if (isHeaped(method->code)) {
-                    rt->setMethod(method);
-                    rt->pc = 0;
+        case PrimopRes::TAILAPPLY: goto applyClosure;
 
-                    rt->domainChecking = RT::DomainChecking::CHECK;
+        case PrimopRes::MISSPECULATION: {
+            // `originalCallee` is valid since speculation does not allocate or do write
+            // barriers:
+            rt->regs[calleeReg] = originalCallee;
+            // These writes do invalidate `originalCallee`:
+            rt->consts[*inlineCacheIdx].set(*rt, Default);
+            rt->consts[*inlineCacheIdx + 1].set(*rt, Default);
+            inlineCacheIdx = std::nullopt;
+        }; break;
 
-                    VM_CONTINUE;
-                } else {
-                    goto applyPrimop;
-                }
-            }; break;
+        case PrimopRes::ERROR: { // Set up an error call in its place:
+            inlineCacheIdx = std::nullopt;
+        }; break; // All is in place, just keep trampolining
 
-            case PrimopRes::MISSPECULATION: {
-                // `originalCallee` is valid since speculation does not allocate or do write
-                // barriers:
-                rt->regs[calleeReg] = originalCallee;
-                // These writes do invalidate `originalCallee`:
-                rt->consts[*inlineCacheIdx].set(*rt, Default);
-                rt->consts[*inlineCacheIdx + 1].set(*rt, Default);
-                inlineCacheIdx = std::nullopt;
-            }; break;
-
-            case PrimopRes::ERROR: { // Set up an error call in its place:
-                inlineCacheIdx = std::nullopt;
-            }; break; // All is in place, just keep trampolining
-
-            case PrimopRes::ABORT: return VMRes{};
-            }
+        case PrimopRes::ABORT: return VMRes{};
         }
     }
 

@@ -537,6 +537,7 @@ struct EmptyList : public FixedObject<EmptyList> {
 };
 
 enum class PrimopRes : uintptr_t {
+    INTERPRET,
     CONTINUE,
     TAILCALL,
     TAILAPPLY,

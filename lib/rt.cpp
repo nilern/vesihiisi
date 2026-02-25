@@ -860,7 +860,7 @@ Method* tryAllocBytecodeMethod(
     if (!ptr) { return ptr; }
 
     return new (ptr) Method{
-        callBytecode, code, consts, hasVarArg, hash, maybeName,
+        interpret, code, consts, hasVarArg, hash, maybeName,
         maybeFilenames, maybeSrcByteIdxs, ORefSpan{} // leave `domain` to `Default`s
     };
 }
@@ -873,7 +873,7 @@ Method* allocBytecodeMethodOrDie(
         static_cast<Method*>(state->heap.allocFlexOrDie(&*state->types.method, arity));
 
     return new (ptr) Method{
-        callBytecode, code, consts, hasVarArg, hash, maybeName,
+        interpret, code, consts, hasVarArg, hash, maybeName,
         maybeFilenames, maybeSrcByteIdxs, ORefSpan{} // leave `domain` to `Default`s
     };
 }
@@ -895,8 +895,8 @@ HRef<Method> allocBytecodeMethod(
     }
 
     return HRef{new (ptr) Method{
-            callBytecode, code, consts, hasVarArg, hash, maybeName,
-            maybeFilenames, maybeSrcByteIdxs, ORefSpan{} // leave `domain` to `Default`s
+        interpret, code, consts, hasVarArg, hash, maybeName,
+        maybeFilenames, maybeSrcByteIdxs, ORefSpan{} // leave `domain` to `Default`s
     }};
 }
 

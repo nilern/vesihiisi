@@ -2,6 +2,8 @@
 
 #include <vector>
 
+#include "../deps/asmjit/asmjit/x86.h"
+
 #include "value.hpp"
 #include "heap.hpp"
 #include "flyweights.hpp"
@@ -110,6 +112,8 @@ struct RT {
     HRef<Var> errorHandler;
 
     std::vector<ORef*> shadowstack;
+
+    asmjit::JitRuntime jit;
 
     static RT* tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* argv[]);
 

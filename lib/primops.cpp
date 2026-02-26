@@ -41,6 +41,8 @@ PrimopRes primopTypeError(RT* state, HRef<Type> type, ORef v) {
     return primopError(state, createTypeError(state, type, v));
 }
 
+PrimopRes callBytecode(RT* /*rt*/) { return PrimopRes::CALL_BYTECODE; }
+
 PrimopRes interpret(RT* /*rt*/) { return PrimopRes::INTERPRET; }
 
 PrimopRes exitVMOnReturn(RT* /*rt*/) { return PrimopRes::EXIT_VM; }

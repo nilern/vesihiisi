@@ -15,6 +15,7 @@
 #include "dispatch.cpp"
 #include "primops.cpp"
 #include "vm.cpp"
+#include "jit.cpp"
 #include "compiler/ir.cpp"
 #include "compiler/tocps.cpp"
 #include "compiler/liveness.cpp"

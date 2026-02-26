@@ -536,7 +536,8 @@ struct EmptyList : public FixedObject<EmptyList> {
 };
 
 enum class PrimopRes : uintptr_t {
-    INTERPRET,
+    INTERPRET,     // Continue interpreting bytecode from current location
+    CALL_BYTECODE, // Enter function in bytecode interpreter
     CONTINUE,
     TAILCALL,
     TAILAPPLY,
@@ -549,19 +550,20 @@ enum class PrimopRes : uintptr_t {
 using MethodCode = PrimopRes (*)(struct RT*);
 
 struct Method : public FlexMutObject<Method, ORef> {
-    HRef<ByteArray> const code;
+    HRef<ByteArrayMut> const code;
     ORef const consts;
     Bool const hasVarArg;
+    Fixnum callCount;
     Fixnum const hash;
     ORef const maybeName;
     ORef const maybeFilenames;
     ORef const maybeSrcByteIdxs;
 
     Method(
-        HRef<ByteArray> t_code, ORef t_consts, Bool t_hasVarArg, Fixnum t_hash, ORef t_maybeName,
+        HRef<ByteArrayMut> t_code, ORef t_consts, Bool t_hasVarArg, Fixnum t_hash, ORef t_maybeName,
         ORef t_maybeFilenames, ORef t_maybeSrcByteIdxs, ORefSpan t_domain
     ) :
-        code{t_code}, consts{t_consts}, hasVarArg{t_hasVarArg}, hash{t_hash},
+        code{t_code}, consts{t_consts}, hasVarArg{t_hasVarArg}, callCount{int64_t{0}}, hash{t_hash},
         maybeName{t_maybeName}, maybeFilenames{t_maybeFilenames},
         maybeSrcByteIdxs{t_maybeSrcByteIdxs}
     {

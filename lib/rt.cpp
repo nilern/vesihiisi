@@ -857,7 +857,7 @@ HRef<Pair> createPair(RT *state, ORef car, ORef cdr, ORef maybeLoc) {
 }
 
 Method* tryAllocBytecodeMethod(
-    RT* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
+    RT* state, HRef<ByteArrayMut> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
     Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs
 ) {
     auto const ptr =
@@ -871,7 +871,7 @@ Method* tryAllocBytecodeMethod(
 }
 
 Method* allocBytecodeMethodOrDie(
-    RT* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
+    RT* state, HRef<ByteArrayMut> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
     Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs
 ) {
     auto const ptr =
@@ -884,7 +884,7 @@ Method* allocBytecodeMethodOrDie(
 }
 
 HRef<Method> allocBytecodeMethod(
-    RT* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
+    RT* state, HRef<ByteArrayMut> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
     Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs
 ) {
     auto ptr = static_cast<Method*>(state->heap.tryAllocFlex(&*state->types.method, arity));
@@ -918,8 +918,9 @@ HRef<Method> vcreatePrimopMethod(
         domain[i] = HRef<Type>::fromUnchecked(va_arg(va_domain, ORef));
     }
 
-    ByteArray* codePtr = static_cast<decltype(codePtr)>(
-        state->heap.tryAllocFlex(&*state->types.byteArray, Fixnum{int64_t(sizeof(MethodCode))}));
+    ByteArrayMut* codePtr = static_cast<decltype(codePtr)>(
+        state->heap.tryAllocFlex(
+            &*ByteArrayMut::reify(*state), Fixnum{int64_t(sizeof(MethodCode))}));
     if (mustCollect(codePtr)) {
         auto domainRoots = std::vector<RootGuard>{};
         domainRoots.reserve(arity);
@@ -929,7 +930,7 @@ HRef<Method> vcreatePrimopMethod(
         collect(state);
         codePtr = static_cast<decltype(codePtr)>(
             state->heap.allocFlexOrDie(
-                &*state->types.byteArray, Fixnum{int64_t(sizeof(MethodCode))}));
+                &*ByteArrayMut::reify(*state), Fixnum{int64_t(sizeof(MethodCode))}));
     }
     *reinterpret_cast<MethodCode*>(const_cast<uint8_t*>(codePtr->flexData())) = nativeCode;
     auto code = HRef{codePtr};

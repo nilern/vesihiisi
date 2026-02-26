@@ -10,6 +10,7 @@
 #include "primops.hpp"
 #include "namespace.hpp"
 #include "flyweights.hpp"
+#include "jit.hpp"
 
 extern "C" uint64_t callForeign(
     void* f, bool fRet, uint8_t const* unboxings, ORef const* args, size_t argc);
@@ -428,8 +429,18 @@ VMRes run(RT* rt, HRef<Closure> self) {
             assert(isa<Method>(*rt, closure->method));
             return HRef<Method>::fromUnchecked(closure->method);
         }();
+        applyMethod:
         switch (method->nativeCode()(rt)) {
-        case PrimopRes::INTERPRET: { // Bytecode method:
+        case PrimopRes::INTERPRET: VM_CONTINUE;
+
+        case PrimopRes::CALL_BYTECODE: { // Bytecode method:
+            int64_t const callCount = method->callCount.val() + 1;
+            method->callCount = Fixnum{callCount};
+            if (uint64_t(callCount) == rt->jitThreshold) {
+                jitCompile(*rt, *method);
+                goto applyMethod;
+            }
+
             // Check domain:
             switch (checkDomain(rt)) {
             case DomainCheckRes::OK: break;

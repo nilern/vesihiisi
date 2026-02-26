@@ -70,14 +70,14 @@ void MethodBuilder::assertInTospace(RT const& state) const {
 HRef<Method> MethodBuilder::buildMethod(RT& state, IRFn& toplevelFn, IRFn const& fn) && {
     // Allocate method code:
     Fixnum const codeCount = Fixnum{int64_t(code_.count())};
-    ByteArray* maybeCode = tryAllocByteArray(&state, codeCount);
+    ByteArrayMut* maybeCode = tryAllocByteArrayMut(&state, codeCount);
     if (mustCollect(maybeCode)) {
         collectTracingIR(&state, &toplevelFn, this);
-        maybeCode = allocByteArrayOrDie(&state, codeCount);
+        maybeCode = allocByteArrayMutOrDie(&state, codeCount);
     }
-    HRef<ByteArray> code = HRef<ByteArray>(maybeCode);
+    HRef<ByteArrayMut> code = HRef{maybeCode};
     auto const codeG = state.pushRoot(&code);
-    std::copy(code_.begin(), code_.end(), const_cast<uint8_t*>(code->flexData()));
+    std::copy(code_.begin(), code_.end(), code->itemsMut().begin());
 
     // Create method consts:
     Fixnum const constCount = Fixnum{int64_t(consts_.count())};
@@ -195,7 +195,7 @@ MethodBuilder::MethodBuilder(RT const& state, Arena* arena, MethodBuilder* paren
     parent_{parent}
 {
     for (size_t i = 0; i < sizeof(MethodCode); ++i) { code_.push(0); } // OPTIMIZE
-    *reinterpret_cast<MethodCode*>(code_.data()) = interpret;
+    *reinterpret_cast<MethodCode*>(code_.data()) = callBytecode;
 
     assert(fn.blocks.count() >= 1);
     IRBlock const& entryBlock = *fn.blocks[0];

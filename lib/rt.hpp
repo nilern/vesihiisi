@@ -114,6 +114,7 @@ struct RT {
     std::vector<ORef*> shadowstack;
 
     asmjit::JitRuntime jit;
+    size_t jitThreshold = 10;
 
     static RT* tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* argv[]);
 
@@ -192,6 +193,14 @@ inline ByteArray* allocByteArrayOrDie(RT* state, Fixnum count) {
     return (ByteArray*)state->heap.allocFlexOrDie(&*state->types.byteArray, count);
 }
 
+inline ByteArrayMut* tryAllocByteArrayMut(RT* state, Fixnum count) {
+    return (ByteArrayMut*)state->heap.tryAllocFlex(&*state->types.byteArrayMut, count);
+}
+
+inline ByteArrayMut* allocByteArrayMutOrDie(RT* state, Fixnum count) {
+    return (ByteArrayMut*)state->heap.allocFlexOrDie(&*state->types.byteArrayMut, count);
+}
+
 HRef<ByteArrayMut> createByteArrayMut(RT* state, Fixnum count);
 
 HRef<Loc> createLoc(RT* state, HRef<String> filename, Fixnum byteIdx);
@@ -200,15 +209,15 @@ HRef<Pair> allocPair(RT* state);
 HRef<Pair> createPair(RT* state, ORef car, ORef cdr, ORef maybeLoc);
 
 Method* tryAllocBytecodeMethod(
-    RT* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
+    RT* state, HRef<ByteArrayMut> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
     Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs);
 
 Method* allocBytecodeMethodOrDie(
-    RT* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
+    RT* state, HRef<ByteArrayMut> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
     Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs);
 
 HRef<Method> allocBytecodeMethod(
-    RT* state, HRef<ByteArray> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
+    RT* state, HRef<ByteArrayMut> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
     Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs);
 
 HRef<Closure> allocClosure(RT* state, HRef<Method> method, Fixnum cloverCount);

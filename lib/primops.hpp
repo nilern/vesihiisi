@@ -138,9 +138,11 @@ struct Primop {
         auto const checkRes = checkDomain<CRTPSub::hasVararg, Domain...>(state);
         switch (checkRes) {
         case PrimopRes::CONTINUE: break;
+
         case PrimopRes::MISSPECULATION: case PrimopRes::ERROR: return checkRes;
-        case PrimopRes::INTERPRET: case PrimopRes::TAILCALL: case PrimopRes::TAILAPPLY:
-        case PrimopRes::ABORT: case PrimopRes::EXIT_VM:
+
+        case PrimopRes::INTERPRET: case PrimopRes::CALL_BYTECODE: case PrimopRes::TAILCALL:
+        case PrimopRes::TAILAPPLY: case PrimopRes::ABORT: case PrimopRes::EXIT_VM:
             PANIC("Unreachable code reached.");
         }
 
@@ -159,6 +161,7 @@ struct VarargsPrimop : public Primop<CRTPSub, Domain...> {
 };
 
 // Pseudo-Operations
+PrimopRes callBytecode(RT* rt);
 PrimopRes interpret(RT* rt);
 PrimopRes exitVMOnReturn(RT* rt);
 

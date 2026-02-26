@@ -211,7 +211,7 @@ HRef<Method> createSpecialization(
     auto const genericRefG = state->pushRoot(&generic);
     auto const typesRefG = state->pushRoot(&typesRef);
     HRef<Method> const specialization =
-        allocBytecodeMethod(state, HRef<ByteArray>::fromUnchecked(generic->code),
+        allocBytecodeMethod(state, HRef<ByteArrayMut>::fromUnchecked(generic->code),
                             HRef<ArrayMut>::fromUnchecked(generic->consts), fxArity,
                             generic->hasVarArg, hash, generic->maybeName, generic->maybeFilenames,
                             generic->maybeSrcByteIdxs);

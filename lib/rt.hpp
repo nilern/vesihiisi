@@ -135,6 +135,43 @@ struct RT {
 
     Object* alloc(HRef<Type> type);
 
+    // Because `offsetof(RT, method)` is UB.
+    size_t methodOffset() const {
+        return size_t(reinterpret_cast<char const*>(&method) - reinterpret_cast<char const*>(this));
+    }
+
+    // Because `offsetof(RT, code)` is UB.
+    size_t codeOffset() const {
+        return size_t(reinterpret_cast<char const*>(&code) - reinterpret_cast<char const*>(this));
+    }
+
+    // Because `offsetof(RT, consts)` is UB.
+    size_t constsOffset() const {
+        return size_t(reinterpret_cast<char const*>(&consts) - reinterpret_cast<char const*>(this));
+    }
+
+    // Because `offsetof(RT, pc)` is UB.
+    size_t pcOffset() const {
+        return size_t(reinterpret_cast<char const*>(&pc) - reinterpret_cast<char const*>(this));
+    }
+
+    // Because `offsetof(RT, domainChecking)` is UB.
+    size_t domainCheckingOffset() const {
+        return size_t(reinterpret_cast<char const*>(&domainChecking)
+                      - reinterpret_cast<char const*>(this));
+    }
+
+    // Because `offsetof(RT, entryRegc)` is UB.
+    size_t entryRegcOffset() const {
+        return size_t(reinterpret_cast<char const*>(&entryRegc)
+                      - reinterpret_cast<char const*>(this));
+    }
+
+    // Because `offsetof(RT, regs)` is UB.
+    size_t regsOffset() const {
+        return size_t(reinterpret_cast<char const*>(&regs) - reinterpret_cast<char const*>(this));
+    }
+
 private:
     RT(Heap heap, NamedTypes types, NamedSingletons singletons, HRef<Namespace> ns,
           HRef<Var> debug, HRef<Var> errorHandler);

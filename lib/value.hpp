@@ -104,6 +104,8 @@ public:
 
     SlotMut<T> operator[](size_t i) { return SlotMut{obj_, slots_[i]}; }
     Slot<T> operator[](size_t i) const { return Slot{slots_[i]}; }
+
+    static constexpr size_t slotsOffset = offsetof(SlotsMut<T>, slots_);
 };
 
 using ORefSpan = std::span<ORef const>;
@@ -121,6 +123,10 @@ public:
     SlotsMut<ORef> data() { return SlotsMut{obj_, span_.data()}; }
 
     SlotMut<ORef> operator[](size_t i) { return SlotMut{obj_, span_[i]}; }
+
+    using iterator = decltype(span_)::iterator;
+    iterator begin() { return span_.begin(); }
+    iterator end() { return span_.end(); }
 };
 
 struct Scalar : public ORef {
@@ -424,6 +430,9 @@ struct FlexHeader {
 FlexHeader const* uncheckedFlexHeader(HRef<Object> v) {
     return std::bit_cast<FlexHeader const*>(&*v) - 1;
 }
+
+constexpr ptrdiff_t flexCountOffset =
+    -ptrdiff_t(sizeof(FlexHeader)) + ptrdiff_t(offsetof(FlexHeader, count));
 
 // TODO: Align result if we go beyond 'either all slots or all bytes':
 void const* uncheckedUntypedFlexPtr(HRef<Object> v) {

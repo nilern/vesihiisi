@@ -512,9 +512,10 @@ VMRes run(RT* rt, HRef<Closure> self) {
         assert(isa<Continuation>(*rt, rt->regs[retContReg]));
         auto const ret = HRef<Continuation>::fromUnchecked(rt->regs[retContReg]);
         HRef<Method> const method = ret->method;
+        auto const retPc = size_t(ret->pc.val());
 
         rt->setMethod(method);
-        rt->pc = (size_t)ret->pc.val();
+        rt->pc = retPc;
         MethodCode const nativeReturnCode = *reinterpret_cast<MethodCode const*>(rt->code + rt->pc);
         rt->pc += sizeof(MethodCode);
 

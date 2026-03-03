@@ -97,9 +97,11 @@ void write(RT const* state, FILE* dest, ORef v) {
 
             fprintf(dest, "#<method");
             ORef const maybeName = method->maybeName;
+            putc(' ', dest);
             if (isHeaped(maybeName)) {
-                putc(' ', dest);
                 write(state, dest, maybeName);
+            } else {
+                fprintf(dest, "%p", &*method);
             }
             putc('>', dest);
         } else if (isa<Closure>(*state, v)) {

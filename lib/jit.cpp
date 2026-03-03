@@ -44,7 +44,23 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
     ) {
         // TODO: JIT-compile the remaining bytecodes:
         switch (static_cast<Opcode>(*it++)) {
-        case OP_MOVE:
+        case OP_MOVE: {
+            uint8_t const destVReg = *it++;
+            uint8_t const srcVReg = *it++;
+
+            x86::Gp const tmpReg = x86::rax;
+            // rt->pc += 3;
+            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 3);` was
+            // storing an incorrect value for some reason :(:
+            as_.mov(tmpReg, 3);
+            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
+            // rt->regs[destReg] = rt->regs[srcReg];
+            size_t const srcOffset = rt_->regsOffset() + sizeof(ORef) * srcVReg;
+            as_.mov(tmpReg, x86::Mem{rtReg, int32_t(srcOffset)});
+            size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
+            as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, tmpReg);
+        }; break;
+
         case OP_SWAP:
         case OP_DEFINE:
         case OP_GLOBAL_SET:
@@ -65,7 +81,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             // Continuation* const ret = &*HRef<Continuation>::fromUnchecked(rt->regs[retContReg]);
             x86::Gp const retReg = x86::r11;
             size_t const retOffset = rt_->regsOffset() + sizeof(ORef) * retContReg;
-            as_.mov(retReg, payloadMask);
+            as_.movabs(retReg, payloadMask);
             as_.and_(retReg, x86::Mem{rtReg, int32_t(retOffset)});
 
             // HRef<Method> const method = ret->method;
@@ -73,9 +89,9 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             as_.mov(methodReg, x86::Mem{retReg, offsetof(Continuation, method)});
 
             // auto retPc = size_t(ret->pc.val());
-            x86::Gp const pcReg = x86::r10;
-            as_.mov(pcReg, payloadMask);
-            as_.mov(pcReg, x86::Mem{retReg, offsetof(Continuation, pc)});
+            x86::Gp const pcReg = x86::r9;
+            as_.movabs(pcReg, payloadMask);
+            as_.and_(pcReg, x86::Mem{retReg, offsetof(Continuation, pc)});
 
             // rt->method = method;
             as_.mov(x86::Mem{rtReg, int32_t(rt_->methodOffset())}, methodReg);
@@ -88,7 +104,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             as_.and_(codeReg, x86::Mem{methodReg, offsetof(Method, code)});
             as_.mov(x86::Mem{rtReg, int32_t(rt_->codeOffset())}, codeReg);
             // rt->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->itemsMut().data();
-            x86::Gp const constsReg = x86::r9;
+            x86::Gp const constsReg = x86::r8;
             as_.movabs(constsReg, payloadMask);
             as_.and_(constsReg, x86::Mem{methodReg, offsetof(Method, consts)});
             size_t const constsObjOffset = rt_->constsOffset();
@@ -141,7 +157,7 @@ void X64SYSVJIT::jitMethod(Method& method) {
 
         // HRef<Method> const method = rt->regs[calleeReg]->method;
         size_t const calleeOffset = rt_->regsOffset() + sizeof(ORef) * calleeReg;
-        as_.mov(x86::r10, payloadMask);
+        as_.movabs(x86::r10, payloadMask);
         as_.and_(x86::r10, x86::Mem{rtReg, int32_t(calleeOffset)});
         as_.mov(x86::r10, x86::Mem{x86::r10, offsetof(Closure, method)});
 

@@ -64,8 +64,30 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
         case OP_SWAP:
         case OP_DEFINE:
         case OP_GLOBAL_SET:
-        case OP_GLOBAL:
-        case OP_CONST:
+        case OP_GLOBAL: {
+            as_.mov(retReg, PrimopRes::INTERPRET);
+            as_.ret();
+            return;
+        }; break;
+
+        case OP_CONST: {
+            uint8_t const destVReg = *it++;
+            uint8_t const constIdx = *it++;
+
+            x86::Gp const tmpReg = x86::rax;
+            // rt->pc += 3;
+            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 3);` was
+            // storing an incorrect value for some reason :(:
+            as_.mov(tmpReg, 3);
+            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
+            // rt->regs[destReg] = rt->consts[constIdx].get();
+            as_.mov(tmpReg, x86::Mem{rtReg, int32_t(rt_->constsOffset())});
+            size_t const constOffset = sizeof(ORef) * constIdx;
+            as_.mov(tmpReg, x86::Mem{tmpReg, int32_t(constOffset)});
+            size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
+            as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, tmpReg);
+        }; break;
+
         case OP_SPECIALIZE:
         case OP_KNOT:
         case OP_KNOT_INIT:

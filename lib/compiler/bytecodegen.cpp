@@ -461,10 +461,11 @@ void emitStmt(
 
     case IRStmt::UNSPILL: {
         Unspill const& unspill = stmt.unspill;
-        builder.pushCodeByte(unspill.idx);
-        builder.pushReg(unspill.closure);
-        builder.pushReg(unspill.name);
+
         builder.pushOp(state, OP_UNSPILL, stmt.maybeLoc);
+        builder.pushReg(unspill.name);
+        builder.pushReg(unspill.closure);
+        builder.pushCodeByte(unspill.idx);
     }; break;
 
     case IRStmt::MOVE: {

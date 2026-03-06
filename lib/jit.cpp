@@ -4,6 +4,7 @@
 
 #include "asmjit/x86.h"
 
+#include "util/smallmap.hpp"
 #include "bytecode.hpp"
 #include "write.hpp"
 
@@ -14,6 +15,7 @@ class X64SYSVJIT {
     asmjit::FileLogger logger_;
     asmjit::CodeHolder code_;
     asmjit::x86::Assembler as_;
+    SmallMap<size_t, asmjit::Label> labels_;
 
     void naturalize(std::span<uint8_t const> bytecode);
 
@@ -23,7 +25,8 @@ public:
         // HACK: `asmjit::x86::Assembler` cannot be copied or even moved, but we need to
         // `code_.init()` before constructing the assembler so use the comma operator to make that
         // possible in initializer list. Oh the joys of C++ initialization:
-        as_{(code_.init(rt_->jit.environment(), rt_->jit.cpu_features()), &code_)}
+        as_{(code_.init(rt_->jit.environment(), rt_->jit.cpu_features()), &code_)},
+        labels_{}
     {
         if (!eq(rt.debug->val().get(), False)) { code_.set_logger(&logger_); }
     }
@@ -42,6 +45,14 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
         auto it = bytecode.begin() + static_cast<decltype(end)::difference_type>(Method::entryPc());
         it != end;
     ) {
+        { // If this has been a `br(f)` target, bind label here:
+            auto const pc = size_t(std::distance(bytecode.begin(), it));
+            std::optional<Label> const label = labels_.tryGet(pc);
+            if (label) {
+                as_.bind(*label);
+            }
+        }
+
         // TODO: JIT-compile the remaining bytecodes:
         switch (static_cast<Opcode>(*it++)) {
         case OP_MOVE: {
@@ -91,8 +102,44 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
         case OP_SPECIALIZE:
         case OP_KNOT:
         case OP_KNOT_INIT:
-        case OP_KNOT_GET:
-        case OP_BRF:
+        case OP_KNOT_GET: {
+            as_.mov(retReg, PrimopRes::INTERPRET);
+            as_.ret();
+            return;
+        }; break;
+
+        case OP_BRF: {
+            uint8_t const condVReg = *it++;
+            uint16_t displacement = *it++;
+            displacement = (uint16_t)(displacement << UINT8_WIDTH) | *it++;
+
+            auto const dest = asmjit::Label{};
+            size_t const destPc = size_t(std::distance(bytecode.begin(), it)) + displacement;
+            labels_.set(destPc, dest);
+
+            x86::Gp const tmpReg = x86::rax;
+            // rt->pc += 4;
+            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 4);` was
+            // storing an incorrect value for some reason :(:
+            as_.mov(tmpReg, 4);
+            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
+            // if (eq(rt->regs[condReg], False)) {
+            x86::Gp const condReg = x86::rax;
+            size_t const condOffset = rt_->regsOffset() + sizeof(ORef) * condVReg;
+            as_.mov(condReg, x86::Mem{rtReg, int32_t(condOffset)});
+            x86::Gp const falseReg = x86::r11;
+            as_.movabs(falseReg, False.bits);
+            as_.cmp(condReg, falseReg);
+            auto const truthyLabel = asmjit::Label{};
+            as_.jne(truthyLabel);
+            //     rt->pc += displacement;
+            as_.mov(tmpReg, displacement);
+            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
+            as_.jmp(dest);
+            // }
+            as_.bind(truthyLabel);
+        }; break;
+
         case OP_BR: {
             as_.mov(retReg, PrimopRes::INTERPRET);
             as_.ret();

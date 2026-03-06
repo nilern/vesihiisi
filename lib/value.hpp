@@ -338,15 +338,19 @@ struct IndexedMutObject : public AnyIndexedMutObject<CRTPSub, Item> {
 /// GC-heap object with both fixed fields and flex field
 template<typename CRTPSub, typename Item>
 struct FlexObject : public AnyIndexedObject<CRTPSub, Item> {
+    static constexpr size_t flexOffset = sizeof(CRTPSub);
+
     Item const* flexData() const {
-        return std::bit_cast<Item const*>(std::bit_cast<char const*>(this) + sizeof(CRTPSub));
+        return std::bit_cast<Item const*>(std::bit_cast<char const*>(this) + flexOffset);
     }
 };
 
 template<typename CRTPSub, typename Item>
 struct FlexMutObject : public AnyIndexedMutObject<CRTPSub, Item> {
+    static constexpr size_t flexOffset = sizeof(CRTPSub);
+
     Item const* flexData() const {
-        return std::bit_cast<Item const*>(std::bit_cast<char const*>(this) + sizeof(CRTPSub));
+        return std::bit_cast<Item const*>(std::bit_cast<char const*>(this) + flexOffset);
     }
 };
 

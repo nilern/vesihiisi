@@ -310,11 +310,11 @@ VMRes run(RT* rt, HRef<Closure> self) {
 
         VM_CASE(OP_UNSPILL) {
             uint8_t const destReg = rt->code[rt->pc++];
-            uint8_t const closureReg = rt->code[rt->pc++];
+            uint8_t const contReg = rt->code[rt->pc++];
             uint8_t const cloverIdx = rt->code[rt->pc++];
 
-            assert(isa<Continuation>(*rt, rt->regs[closureReg]));
-            auto const cont = HRef<Continuation>::fromUnchecked(rt->regs[closureReg]);
+            assert(isa<Continuation>(*rt, rt->regs[contReg]));
+            auto const cont = HRef<Continuation>::fromUnchecked(rt->regs[contReg]);
             rt->regs[destReg] = cont->saves()[cloverIdx];
         }; VM_CONTINUE;
 

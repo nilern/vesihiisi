@@ -144,9 +144,54 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             as_.jmp(destReg);
         }; break;
 
-        case OP_CLOSURE:
-        case OP_CLOVER:
-        case OP_UNSPILL:
+        case OP_CLOSURE: {
+            as_.mov(retReg, PrimopRes::INTERPRET);
+            as_.ret();
+            return;
+        }; break;
+
+        case OP_CLOVER: {
+            uint8_t const destVReg = *it++;
+            uint8_t const closureVReg = *it++;
+            uint8_t const cloverIdxVReg = *it++;
+
+            x86::Gp const tmpReg = x86::rax;
+            // rt->pc += 4;
+            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 4);` was
+            // storing an incorrect value for some reason :(:
+            as_.mov(tmpReg, 4);
+            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
+            // auto const closure = HRef<Closure>::fromUnchecked(rt->regs[closureReg]);
+            size_t const closureOffset = rt_->regsOffset() + sizeof(ORef) * closureVReg;
+            as_.mov(tmpReg, x86::Mem{rtReg, int32_t(closureOffset)});
+            // rt->regs[destReg] = closure->clovers()[cloverIdx];
+            size_t const cloverOffset = Closure::flexOffset + sizeof(ORef) * cloverIdxVReg;
+            as_.mov(tmpReg, x86::Mem{tmpReg, int32_t(cloverOffset)});
+            size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
+            as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, tmpReg);
+        }; break;
+
+        case OP_UNSPILL: {
+            uint8_t const destVReg = *it++;
+            uint8_t const contVReg = *it++;
+            uint8_t const cloverIdxVReg = *it++;
+
+            x86::Gp const tmpReg = x86::rax;
+            // rt->pc += 4;
+            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 4);` was
+            // storing an incorrect value for some reason :(:
+            as_.mov(tmpReg, 4);
+            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
+            // auto const cont = HRef<Continuation>::fromUnchecked(rt->regs[contReg]);
+            size_t const contOffset = rt_->regsOffset() + sizeof(ORef) * contVReg;
+            as_.mov(tmpReg, x86::Mem{rtReg, int32_t(contOffset)});
+            // rt->regs[destReg] = cont->saves()[cloverIdx];
+            size_t const cloverOffset = Continuation::flexOffset + sizeof(ORef) * cloverIdxVReg;
+            as_.mov(tmpReg, x86::Mem{tmpReg, int32_t(cloverOffset)});
+            size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
+            as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, tmpReg);
+        }; break;
+
         case OP_CALL:
         case OP_TAILCALL:
         case OP_FFICALL: {

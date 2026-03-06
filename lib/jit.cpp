@@ -146,6 +146,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
 
         case OP_CLOSURE:
         case OP_CLOVER:
+        case OP_UNSPILL:
         case OP_CALL:
         case OP_TAILCALL:
         case OP_FFICALL: {

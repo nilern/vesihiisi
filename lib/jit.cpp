@@ -133,17 +133,22 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             auto const truthyLabel = asmjit::Label{};
             as_.jne(truthyLabel);
             //     rt->pc += displacement;
-            as_.mov(tmpReg, displacement);
-            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
+            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, displacement);
             as_.jmp(dest);
             // }
             as_.bind(truthyLabel);
         }; break;
 
         case OP_BR: {
-            as_.mov(retReg, PrimopRes::INTERPRET);
-            as_.ret();
-            return;
+            uint16_t displacement = *it++;
+            displacement = (uint16_t)(displacement << UINT8_WIDTH) | *it++;
+
+            auto const dest = asmjit::Label{};
+            size_t const destPc = size_t(std::distance(bytecode.begin(), it)) + displacement;
+            labels_.set(destPc, dest);
+
+            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, displacement);
+            as_.jmp(dest);
         }; break;
 
         case OP_RET: {

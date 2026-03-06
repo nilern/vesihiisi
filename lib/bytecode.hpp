@@ -36,7 +36,7 @@ typedef enum Opcode : uint8_t {
     OP_RET,         // ret
     OP_CLOSURE,     // rx = closure ry #bi* ; OPTIMIZE: fuse `specialize`(/`const`) into this
     OP_CLOVER,      // rx = clover rx i
-    // TODO: OP_CONT_CLOVER / OP_RESTORE
+    OP_UNSPILL,     // rx = unspill rx i
     OP_CALL,        // call c? n #bi*
     OP_TAILCALL,    // tailcall c? n TODO: Encode as call with 0 closes (nontail call always saves
                     // at least ret cont)?

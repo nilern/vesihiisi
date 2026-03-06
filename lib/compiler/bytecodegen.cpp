@@ -398,6 +398,14 @@ void emitStmt(
         builder.pushOp(state, OP_CLOVER, stmt.maybeLoc);
     }; break;
 
+    case IRStmt::UNSPILL: {
+        Unspill const& unspill = stmt.unspill;
+        builder.pushCodeByte(unspill.idx);
+        builder.pushReg(unspill.closure);
+        builder.pushReg(unspill.name);
+        builder.pushOp(state, OP_UNSPILL, stmt.maybeLoc);
+    }; break;
+
     case IRStmt::MOVE: {
         MoveStmt const& mov = stmt.mov;
         builder.pushReg(mov.src);

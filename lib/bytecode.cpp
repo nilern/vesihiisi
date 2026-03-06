@@ -246,7 +246,7 @@ void Disassembler::skipOperands(uint8_t codeByte) {
         skipInstrBitmap();
     }; break;
 
-    case OP_CLOVER: {
+    case OP_CLOVER: case OP_UNSPILL: {
         next();
         next();
         next();
@@ -423,6 +423,13 @@ void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t co
     case OP_CLOVER: {
         disassembleReg(dest, next().val.codeByte);
         fprintf(dest, " = clover ");
+        disassembleReg(dest, next().val.codeByte);
+        fprintf(dest, " %u", next().val.codeByte);
+    }; break;
+
+    case OP_UNSPILL: {
+        disassembleReg(dest, next().val.codeByte);
+        fprintf(dest, " = unspill ");
         disassembleReg(dest, next().val.codeByte);
         fprintf(dest, " %u", next().val.codeByte);
     }; break;

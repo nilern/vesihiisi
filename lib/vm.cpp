@@ -56,7 +56,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
         &&L_OP_RET,
         &&L_OP_CLOSURE,
         &&L_OP_CLOVER,
-        // TODO: &&L_OP_OP_CONT_CLOVER / &&L_OP_OP_RESTORE
+        &&L_OP_UNSPILL,
         &&L_OP_CALL,
         &&L_OP_TAILCALL,
         &&L_OP_FFICALL
@@ -300,15 +300,19 @@ VMRes run(RT* rt, HRef<Closure> self) {
             uint8_t const closureReg = rt->code[rt->pc++];
             uint8_t const cloverIdx = rt->code[rt->pc++];
 
-            // OPTIMIZE: Separate OP_CONT_CLOVER:
-            ORef const anyClosure = rt->regs[closureReg];
-            if (!isa<Closure>(*rt, anyClosure)) {
-                auto const cont = HRef<Continuation>::fromUnchecked(anyClosure);
-                rt->regs[destReg] = cont->saves()[cloverIdx];
-            } else {
-                auto const closure = HRef<Closure>::fromUnchecked(anyClosure);
-                rt->regs[destReg] = closure->clovers()[cloverIdx];
-            }
+            assert(isa<Closure>(*rt, rt->regs[closureReg]));
+            auto const closure = HRef<Closure>::fromUnchecked(rt->regs[closureReg]);
+            rt->regs[destReg] = closure->clovers()[cloverIdx];
+        }; VM_CONTINUE;
+
+        VM_CASE(OP_UNSPILL) {
+            uint8_t const destReg = rt->code[rt->pc++];
+            uint8_t const closureReg = rt->code[rt->pc++];
+            uint8_t const cloverIdx = rt->code[rt->pc++];
+
+            assert(isa<Continuation>(*rt, rt->regs[closureReg]));
+            auto const cont = HRef<Continuation>::fromUnchecked(rt->regs[closureReg]);
+            rt->regs[destReg] = cont->saves()[cloverIdx];
         }; VM_CONTINUE;
 
         VM_CASE(OP_CALL) {

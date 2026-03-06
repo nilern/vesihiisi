@@ -613,6 +613,20 @@ void regAllocStmt(Compiler& compiler, RegEnv& env, AVec<IRStmt>& outputStmts, IR
         outputStmts.push(std::move(stmt));
     }; break;
 
+    case IRStmt::UNSPILL: { // TODO: DRY wrt. `CLOVER`
+        Unspill& unspill = stmt.unspill;
+
+        IRName const name = unspill.name;
+        unspill.name = IRName{env.deallocVarReg(unspill.name).index};
+        unspill.closure = IRName{env.getVarReg(unspill.closure).index};
+
+        if (name == env.retName) {
+            env.retName = unspill.origName;
+        }
+
+        outputStmts.push(std::move(stmt));
+    }; break;
+
     case IRStmt::METHOD_DEF: {
         ORef const maybeLoc = stmt.maybeLoc;
         MethodDef& methodDef = stmt.methodDef;

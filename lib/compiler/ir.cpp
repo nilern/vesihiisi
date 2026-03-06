@@ -73,7 +73,7 @@ bool markIRStmt(RT* state, IRStmt* stmt) {
         stmt->constDef.v = TRY_NULLOPT_TO_FALSE(state->heap.mark(stmt->constDef.v));
     }; break;
 
-    case IRStmt::CLOVER: break;
+    case IRStmt::CLOVER: case IRStmt::UNSPILL: break;
 
     case IRStmt::METHOD_DEF: {
         if (!markIRFn(state, &stmt->methodDef.fn)) { return false; }
@@ -112,7 +112,7 @@ void assertIRStmtInTospace(RT const* state, IRStmt const* stmt) {
         }
     }; break;
 
-    case IRStmt::CLOVER: break;
+    case IRStmt::CLOVER: case IRStmt::UNSPILL: break;
 
     case IRStmt::METHOD_DEF: assertIRFnInTospace(state, &stmt->methodDef.fn); break;
 
@@ -350,7 +350,7 @@ void printStmt(
     }; break;
 
     case IRStmt::CLOVER: {
-        Clover const clover = stmt->clover;
+        Clover const& clover = stmt->clover;
         fprintf(dest, "(let ");
         printName(state, dest, compiler, clover.name);
         fprintf(dest, " (clover ");
@@ -358,6 +358,17 @@ void printStmt(
         fputc(' ', dest);
         printIRName(state, dest, compiler, clover.origName);
         fprintf(dest, " %u))", clover.idx);
+    }; break;
+
+    case IRStmt::UNSPILL: {
+        Unspill const& unspill = stmt->unspill;
+        fprintf(dest, "(let ");
+        printName(state, dest, compiler, unspill.name);
+        fprintf(dest, " (unspill ");
+        printName(state, dest, compiler, unspill.closure);
+        fputc(' ', dest);
+        printIRName(state, dest, compiler, unspill.origName);
+        fprintf(dest, " %u))", unspill.idx);
     }; break;
 
     case IRStmt::METHOD_DEF: {

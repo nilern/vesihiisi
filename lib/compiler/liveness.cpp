@@ -101,7 +101,7 @@ void enlivenStmt(Compiler& compiler, BitSet& liveOuts, IRStmt& stmt) {
         rangeStart(liveOuts, constDef.name);
     }; break;
 
-    case IRStmt::CLOVER: assert(false); break; // Should not exist yet
+    case IRStmt::CLOVER: case IRStmt::UNSPILL: assert(false); break; // Should not exist yet
 
     case IRStmt::METHOD_DEF: {
         MethodDef& methodDef = stmt.methodDef;

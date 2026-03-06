@@ -38,17 +38,26 @@ public:
     void set(IRName name, IRName reg) { locs_.set(name, CloverLoc{std::optional{reg}}); }
 };
 
+struct PureLoadsClosure {
+    enum Type { CLOSURE, CONTINUATION };
+
+    IRName name;
+    Type type;
+
+    bool operator==(PureLoadsClosure const& that) const { return name == that.name; }
+};
+
 struct PureLoadsEnv {
-    IRName closure;
+    std::optional<PureLoadsClosure> closure;
     CloverLocs locs;
 
 private:
-    PureLoadsEnv(IRName t_closure, CloverLocs&& t_locs) :
+    PureLoadsEnv(std::optional<PureLoadsClosure> t_closure, CloverLocs&& t_locs) :
         closure{t_closure}, locs{std::move(t_locs)}
     {}
 
 public:
-    PureLoadsEnv(Arena* arena, IRName t_closure, BitSet const& t_vars) :
+    PureLoadsEnv(Arena* arena, std::optional<PureLoadsClosure> t_closure, BitSet const& t_vars) :
         closure{t_closure}, locs{arena, t_vars}
     {}
 
@@ -81,16 +90,26 @@ IRName deepLexicalUse(
     CloverLoc const loc = *optLoc;
 
     if (loc.reg) { return *loc.reg; } // Already loaded
+    assert(env.closure); // If `!loc.reg`, we must have a closure to load from
+    PureLoadsClosure const closure = *env.closure;
 
     IRName const newReg = renameIRName(&compiler, use);
-    newStmts.push(IRStmt{Clover{newReg, env.closure, use, 0}, maybeSrcLoc});
+    switch (closure.type) {
+    case PureLoadsClosure::CLOSURE: {
+        newStmts.push(IRStmt{Clover{newReg, closure.name, use, 0}, maybeSrcLoc});
+    }; break;
+
+    case PureLoadsClosure::CONTINUATION: {
+        newStmts.push(IRStmt{Unspill{newReg, closure.name, use, 0}, maybeSrcLoc});
+    }; break;
+    }
     env.locs.set(use, newReg);
     return newReg;
 }
 
 struct LiftingAnalysis {
     BitSet liftees;
-    IRName closure;
+    std::optional<PureLoadsClosure> closure;
 };
 
 LiftingAnalysis joinLambdaLiftees(
@@ -98,17 +117,19 @@ LiftingAnalysis joinLambdaLiftees(
 ) {
     size_t const callerCount = block.callers.count();
 
-    IRName closure = invalidIRName;
+    std::optional<PureLoadsClosure> closure = std::nullopt;
     for (size_t i = 0; i < callerCount; ++i) {
         IRLabel const callerLabel = block.callers[i];
         assert(savedEnvs.get(callerLabel));
-        IRName const callerClosure = savedEnvs.get(callerLabel)->closure;
+        std::optional<PureLoadsClosure> const callerClosure = savedEnvs.get(callerLabel)->closure;
         if (i == 0) {
             closure = callerClosure; // Init to first one
-        } else if (callerClosure != closure) { // Disagreement on `closure`
+        // else `closure.has_value()` because of the above:
+        } else if (callerClosure != closure) {
+            // Disagreement on `closure`
             return LiftingAnalysis{
                 .liftees = bitSetClone(&compiler.arena, &block.liveIns),
-                .closure = invalidIRName
+                .closure = std::nullopt
             };
         }
     }
@@ -180,7 +201,10 @@ PureLoadsEnv blockPureLoadsEnv(
     case 0: { // Escaping block; new env from block live-ins:
         assert(block.params.count() > 0);
         IRName const closure = block.params[0];
-        return PureLoadsEnv{&compiler.arena, closure, block.liveIns};
+        PureLoadsClosure::Type const closureType = block.isCallEntry()
+            ? PureLoadsClosure::CLOSURE
+            : PureLoadsClosure::CONTINUATION;
+        return PureLoadsEnv{&compiler.arena, PureLoadsClosure{closure, closureType}, block.liveIns};
     }
 
     case 1: { // Non-join; env from end of predecessor (live-ins = live-outs of predecessor):
@@ -238,7 +262,7 @@ IRStmt stmtWithPureLoads(
 
     case IRStmt::GLOBAL: case IRStmt::CONST_DEF: break; // These do not contain any uses
 
-    case IRStmt::CLOVER: assert(false); break; // Should not exist yet
+    case IRStmt::CLOVER: case IRStmt::UNSPILL: assert(false); break; // Should not exist yet
 
     case IRStmt::METHOD_DEF: {
         ORef const maybeLoc = stmt.maybeLoc;

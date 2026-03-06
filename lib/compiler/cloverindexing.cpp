@@ -90,6 +90,11 @@ void indexStmtClovers(Compiler& compiler, CloverIdxs const& env, IRStmt& stmt) {
         clover.idx = env.get(clover.origName);
     }; break;
 
+    case IRStmt::UNSPILL: { // TODO: DRY wrt. `CLOVER`
+        Unspill& unspill = stmt.unspill;
+        unspill.idx = env.get(unspill.origName);
+    }; break;
+
     case IRStmt::METHOD_DEF: {
         MethodDef& methodDef = stmt.methodDef;
         IRFn& fn = methodDef.fn;

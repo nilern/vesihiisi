@@ -103,6 +103,13 @@ struct Clover {
     uint8_t idx;
 };
 
+struct Unspill {
+    IRName name;
+    IRName closure;
+    IRName origName;
+    uint8_t idx;
+};
+
 struct MethodDef {
     IRName name;
     IRFn fn;
@@ -164,6 +171,7 @@ struct IRStmt {
         IRGlobal global;
         ConstDef constDef;
         Clover clover;
+        Unspill unspill;
         MethodDef methodDef;
         IRClosure closure;
         MoveStmt mov;
@@ -179,6 +187,7 @@ struct IRStmt {
         GLOBAL,
         CONST_DEF,
         CLOVER,
+        UNSPILL,
         METHOD_DEF,
         CLOSURE,
         MOVE,
@@ -207,6 +216,10 @@ struct IRStmt {
 
     IRStmt(Clover t_clover, ORef t_maybeLoc) :
         maybeLoc{t_maybeLoc}, clover{t_clover}, type{IRStmt::CLOVER}
+    {}
+
+    IRStmt(Unspill t_unspill, ORef t_maybeLoc) :
+        maybeLoc{t_maybeLoc}, unspill{t_unspill}, type{IRStmt::UNSPILL}
     {}
 
     IRStmt(MethodDef&& t_methodDef, ORef t_maybeLoc) :
@@ -309,6 +322,8 @@ struct IRBlock {
     void createGoto(Arena* arena, IRLabel destLabel, IRName arg, ORef maybeLoc);
 
     void createReturn(IRName callee, IRName arg, ORef maybeLoc);
+
+    bool isCallEntry() const { return label.blockIndex == 0; }
 };
 
 IRName renameSymbol(Compiler* compiler, HRef<Symbol> sym);

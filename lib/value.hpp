@@ -268,6 +268,9 @@ struct Object {
     }
 
     void forwardTo(Object* copy);
+
+    static ptrdiff_t headerOffset();
+    static ptrdiff_t typeOffset();
 };
 
 inline ORef tagHeaped(Object* ptr) { return ORef{heapedTag | std::bit_cast<uint64_t>(ptr)}; }
@@ -410,6 +413,9 @@ private:
 };
 
 constexpr size_t objectMinAlign = alignof(Header);
+
+ptrdiff_t Object::headerOffset() { return -ptrdiff_t(sizeof(Header)); }
+ptrdiff_t Object::typeOffset() { return headerOffset(); }
 
 Header const* Object::header() const { return std::bit_cast<Header const*>(this) - 1; }
 Header* Object::header() { return std::bit_cast<Header*>(this) - 1; }

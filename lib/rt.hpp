@@ -172,6 +172,14 @@ struct RT {
         return size_t(reinterpret_cast<char const*>(&regs) - reinterpret_cast<char const*>(this));
     }
 
+    // Because `offsetof(RT, types)` is UB.
+    size_t typesOffset() const {
+        return size_t(reinterpret_cast<char const*>(&types) - reinterpret_cast<char const*>(this));
+    }
+
+    // Intended usage e.g. `rt.typeOffset(offsetof(NamedTypes, type))`.
+    size_t typeOffset(size_t offsetInTypes) const { return typesOffset() + offsetInTypes; }
+
 private:
     RT(Heap heap, NamedTypes types, NamedSingletons singletons, HRef<Namespace> ns,
           HRef<Var> debug, HRef<Var> errorHandler);

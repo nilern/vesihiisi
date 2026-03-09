@@ -17,6 +17,13 @@ class X64SYSVJIT {
     asmjit::x86::Assembler as_;
     SmallMap<size_t, asmjit::Label> labels_;
 
+    void untagging(asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src);
+
+    void constLoad(asmjit::x86::Gp const& cReg, uint8_t constIdx);
+
+    void heapedCheck(
+        asmjit::x86::Gp const& v, asmjit::x86::Gp const& tagReg, asmjit::Label const& onImmediate);
+
     void naturalize(std::span<uint8_t const> bytecode);
 
 public:
@@ -36,6 +43,34 @@ public:
 
     void jitMethod(Method& method);
 };
+
+/// `dest = src & payloadMask;`
+void X64SYSVJIT::untagging(asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src) {
+    as_.movabs(dest, payloadMask);
+    as_.and_(dest, src);
+}
+
+/// `ORef const c = rt->consts[constIdx].get();`
+void X64SYSVJIT::constLoad(asmjit::x86::Gp const& cReg, uint8_t constIdx) {
+    using namespace asmjit;
+
+    as_.mov(cReg, x86::Mem{rtReg, int32_t(rt_->constsOffset())});
+    size_t const constOffset = sizeof(ORef) * constIdx;
+    as_.mov(cReg, x86::Mem{cReg, int32_t(constOffset)});
+}
+
+/// `if (!isHeaped(v)) goto onImmediate;` given `ORef v = ...`
+void X64SYSVJIT::heapedCheck(
+    asmjit::x86::Gp const& v, asmjit::x86::Gp const& tagReg, asmjit::Label const& onImmediate
+) {
+    using namespace asmjit;
+
+    as_.movabs(tagReg, nonFlonumTag);
+    as_.cmp(v, tagReg); // Actual NaN?
+    as_.je(onImmediate);
+    as_.test(v, tagReg); // `(callee.bits & tagMask) == heapedTag`?
+    as_.jne(onImmediate);
+}
 
 void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
     using namespace asmjit;
@@ -74,11 +109,61 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
 
         case OP_SWAP:
         case OP_DEFINE:
-        case OP_GLOBAL_SET:
-        case OP_GLOBAL: {
+        case OP_GLOBAL_SET: {
             as_.mov(retReg, PrimopRes::INTERPRET);
             as_.ret();
             return;
+        }; break;
+
+        case OP_GLOBAL: {
+            uint8_t const destVReg = *it++;
+            uint8_t const constIdx = *it++;
+
+            // ORef const c = rt->consts[constIdx].get();
+            x86::Gp const cReg = x86::rax;
+            constLoad(cReg, constIdx);
+
+            // if (!isHeaped(c)) goto interpret;
+            auto const interpret = Label{};
+            heapedCheck(cReg, x86::r11, interpret);
+            // Object* const obj = &*HRef<Object>::fromUnchecked(c);
+            x86::Gp const objReg = x86::r11;
+            untagging(objReg, cReg);
+            // HRef<Type> const type = obj->header()->type();
+            x86::Gp const typeReg = x86::r10;
+            as_.movabs(typeReg, heapedTag);
+            as_.or_(typeReg, x86::Mem{objReg, int32_t(Object::typeOffset())});
+            // if (!eq(type, rt->types.var)) goto interpret;
+            size_t const varTypeOffset = rt_->typeOffset(offsetof(NamedTypes, var));
+            as_.cmp(typeReg, x86::Mem{rtReg, int32_t(varTypeOffset)});
+            as_.jne(interpret);
+            // auto const var = static_cast<Var*>(obj);
+
+            // ORef const v = var->val().get();
+            x86::Gp const vReg = x86::r11;
+            as_.mov(vReg, x86::Mem{objReg, int32_t(Var::valOffset())});
+            // if (eq(v, rt->singletons.unbound)) goto interpret;
+            size_t const unboundOffset = rt_->singletonOffset(offsetof(NamedSingletons, unbound));
+            as_.cmp(vReg, x86::Mem{rtReg, int32_t(unboundOffset)});
+            as_.je(interpret);
+            // rt->regs[destReg] = v;
+            size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
+            as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, vReg);
+
+            // rt->pc += 3;
+            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 3);` was
+            // storing an incorrect value for some reason :(:
+            x86::Gp const tmpReg = x86::rax;
+            as_.mov(tmpReg, 3);
+            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
+            auto const done = Label{};
+            as_.jmp(done);
+
+            as_.bind(interpret);
+            as_.mov(retReg, PrimopRes::INTERPRET);
+            as_.ret();
+
+            as_.bind(done);
         }; break;
 
         case OP_CONST: {

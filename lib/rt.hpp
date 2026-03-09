@@ -180,6 +180,17 @@ struct RT {
     // Intended usage e.g. `rt.typeOffset(offsetof(NamedTypes, type))`.
     size_t typeOffset(size_t offsetInTypes) const { return typesOffset() + offsetInTypes; }
 
+    // Because `offsetof(RT, singletons)` is UB.
+    size_t singletonsOffset() const {
+        return size_t(reinterpret_cast<char const*>(&singletons)
+                      - reinterpret_cast<char const*>(this));
+    }
+
+    // Intended usage e.g. `rt.singletonOffset(offsetof(NamedSingletons, emptyList))`.
+    size_t singletonOffset(size_t offsetInSingletons) const {
+        return singletonsOffset() + offsetInSingletons;
+    }
+
 private:
     RT(Heap heap, NamedTypes types, NamedSingletons singletons, HRef<Namespace> ns,
           HRef<Var> debug, HRef<Var> errorHandler);

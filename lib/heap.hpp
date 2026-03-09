@@ -170,6 +170,9 @@ public:
     // OPTIMIZE: Do all/some filtering here instead of leaving it all to collection time:
     [[nodiscard]]
     bool writeBarrier(Object* dest) { return nursery.tryToRemember(dest); }
+    [[nodiscard]]
+    static bool writeBarrier(Heap* heap, Object* dest) { return heap->writeBarrier(dest); }
+    using writeBarrier_t = bool (*)(Heap* heap, Object* dest);
 
     [[nodiscard]]
     std::optional<ORef> mark(ORef oref);

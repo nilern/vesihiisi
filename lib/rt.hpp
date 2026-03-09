@@ -172,6 +172,11 @@ struct RT {
         return size_t(reinterpret_cast<char const*>(&regs) - reinterpret_cast<char const*>(this));
     }
 
+    // Because `offsetof(RT, heap)` is UB.
+    size_t heapOffset() const {
+        return size_t(reinterpret_cast<char const*>(&heap) - reinterpret_cast<char const*>(this));
+    }
+
     // Because `offsetof(RT, types)` is UB.
     size_t typesOffset() const {
         return size_t(reinterpret_cast<char const*>(&types) - reinterpret_cast<char const*>(this));

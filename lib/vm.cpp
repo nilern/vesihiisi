@@ -279,7 +279,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
             rt->pc += closesByteCount;
 
             HRef<Method> const method = HRef<Method>::fromUnchecked(rt->regs[methodReg]);
-            HRef<Closure> const closure = allocClosure(rt, method, Fixnum{int64_t(cloverCount)});
+            Closure* const closure = allocClosure(rt, method, Fixnum{int64_t(cloverCount)});
             // TODO: DRY wrt. OP_CALL:
             {
                 ORef* clover = const_cast<ORef*>(closure->clovers().data());
@@ -295,7 +295,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
                 }
             }
 
-            rt->regs[destReg] = closure;
+            rt->regs[destReg] = HRef{closure};
         }; VM_CONTINUE;
 
         VM_CASE(OP_CLOVER) {

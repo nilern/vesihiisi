@@ -17,6 +17,7 @@ class X64SYSVJIT {
     asmjit::x86::Assembler as_;
     SmallMap<size_t, asmjit::Label> labels_;
 
+    void tagging(asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src, uint64_t tag);
     void untagging(asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src);
 
     void constLoad(asmjit::x86::Gp const& cReg, uint8_t constIdx);
@@ -44,8 +45,18 @@ public:
     void jitMethod(Method& method);
 };
 
+/// `dest = tag | src;`
+void X64SYSVJIT::tagging(asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src, uint64_t tag) {
+    assert(dest != src);
+
+    as_.movabs(dest, tag);
+    as_.or_(dest, src);
+}
+
 /// `dest = src & payloadMask;`
 void X64SYSVJIT::untagging(asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src) {
+    assert(dest != src);
+
     as_.movabs(dest, payloadMask);
     as_.and_(dest, src);
 }
@@ -343,9 +354,70 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
         }; break;
 
         case OP_CLOSURE: {
-            as_.mov(retReg, PrimopRes::INTERPRET);
-            as_.ret();
-            return;
+            uint8_t const destVReg = *it++;
+            uint8_t const methodVReg = *it++;
+            uint8_t const closesByteCount = *it++;
+            ptrdiff_t const closesStartIdx = std::distance(bytecode.begin(), it);
+            size_t cloverCount = 0;
+            // OPTIMIZE:
+            for (uint8_t const byte : std::span{bytecode.begin() + closesStartIdx, closesByteCount})
+            {
+                cloverCount += stdc_count_ones(byte);
+            }
+            it += closesByteCount;
+
+            // rt->pc += instrSize;
+            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, instrSize);` was
+            // storing an incorrect value for some reason :(:
+            x86::Gp const tmpReg = x86::rax;
+            size_t const instrSize = 4 + closesByteCount;
+            as_.mov(tmpReg, instrSize);
+            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
+
+            // HRef<Method> const method = HRef<Method>::fromUnchecked(rt->regs[methodReg]);
+            x86::Gp const methodReg = x86::rsi; // ABI arg 2
+            size_t const methodOffset = rt_->regsOffset() + sizeof(ORef) * methodVReg;
+            as_.mov(methodReg, x86::Mem{rtReg, int32_t(methodOffset)});
+            // Closure* const closure = allocClosure(rt, method, Fixnum{int64_t(cloverCount)});
+            x86::Gp const countReg = x86::rdx; // ABI arg 3
+            as_.movabs(countReg, Fixnum{int64_t(cloverCount)}.bits);
+            as_.push(rtReg);
+            as_.call(allocClosure);
+            x86::Gp const closureReg = retReg;
+            as_.pop(rtReg);
+
+            {
+                // ORef* clovers = const_cast<ORef*>(closure->clovers().data());
+                x86::Gp const cloversReg = x86::r11;
+                as_.lea(cloversReg, x86::Mem{closureReg, int32_t(Closure::flexOffset)});
+
+                x86::Gp const vReg = x86::r10;
+                size_t cloverIdx = 0;
+                size_t regIdx = 0;
+                for (uint8_t const byte :
+                     std::span{bytecode.begin() + closesStartIdx, closesByteCount}
+                ) {
+                    for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
+                        if ((byte >> bitIdx) & 1) {
+                            // clovers[cloverIdx] = rt->regs[regIdx];
+                            size_t const regOffset = rt_->regsOffset() + sizeof(ORef) * regIdx;
+                            as_.mov(vReg, x86::Mem{rtReg, int32_t(regOffset)});
+                            size_t const cloverOffset = sizeof(ORef) * cloverIdx;
+                            as_.mov(x86::Mem{cloversReg, int32_t(cloverOffset)}, vReg);
+
+                            ++cloverIdx;
+                        }
+
+                        ++regIdx;
+                    }
+                }
+            }
+
+            // rt->regs[destReg] = HRef{closure};
+            x86::Gp const taggedClosureReg = x86::r11;
+            tagging(taggedClosureReg, closureReg, heapedTag);
+            size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
+            as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, taggedClosureReg);
         }; break;
 
         case OP_CLOVER: {

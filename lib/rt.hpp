@@ -281,7 +281,7 @@ HRef<Method> allocBytecodeMethod(
     RT* state, HRef<ByteArrayMut> code, HRef<ArrayMut> consts, Fixnum arity, Bool hasVarArg,
     Fixnum hash, ORef maybeName, ORef maybeFilenames, ORef maybeSrcByteIdxs);
 
-HRef<Closure> allocClosure(RT* state, HRef<Method> method, Fixnum cloverCount);
+Closure* allocClosure(RT* state, HRef<Method> method, Fixnum cloverCount);
 
 HRef<Continuation> allocContinuation(
     RT* state, HRef<Method> method, Fixnum pc, Fixnum cloverCount);

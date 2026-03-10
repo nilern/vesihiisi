@@ -1304,7 +1304,7 @@ PrimopRes PrimopEval::uncheckedInvoke(RT* state) {
     }
     auto const method = compilationRes.val;
 
-    state->regs[calleeReg] = allocClosure(state, method, Fixnum{0l});
+    state->regs[calleeReg] = HRef{allocClosure(state, method, Fixnum{0l})};
     state->entryRegc = calleeReg + 1;
     return PrimopRes::TAILCALL;
 }

@@ -150,7 +150,7 @@ EvalRes eval(Vshs_RT* extRT, ORef expr, ORef loc, bool debug) {
     }
     auto const method = compilationRes.val;
 
-    HRef<Closure> const closure = allocClosure(state, method, Fixnum(0l));
+    HRef<Closure> const closure = HRef{allocClosure(state, method, Fixnum(0l))};
     VMRes const runRes = run(state, closure);
     return runRes.success
         ? EvalRes{{.val = runRes.val}, true}

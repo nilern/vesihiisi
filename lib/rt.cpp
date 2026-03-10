@@ -263,8 +263,6 @@ HRef<Method> vcreatePrimopMethod(
 HRef<Method> createPrimopMethod(
     RT* state, Str name, MethodCode nativeCode, bool hasVarArg, Fixnum arity, ...);
 
-HRef<Closure> allocClosure(RT* state, HRef<Method> method, Fixnum cloverCount);
-
 HRef<Var> getVar(RT* state, HRef<Namespace> nsRef, HRef<Symbol> name);
 
 void installPrimordial(RT* state, Str name, ORef v) {
@@ -284,7 +282,7 @@ void installPrimop(
     HRef<Method> const method =
         vcreatePrimopMethod(state, name, nativeCode, hasVarArg, arity, domain);
     va_end(domain);
-    HRef<Closure> const closure = allocClosure(state, method, Fixnum{0l});
+    HRef<Closure> const closure = HRef{allocClosure(state, method, Fixnum{0l})};
     installPrimordial(state, name, closure);
 }
 
@@ -534,7 +532,7 @@ RT* RT::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* a
         HRef<Method> const abortMethod = // TODO: `PrimopAbort::install(*dest);`
             createPrimopMethod(dest, strLit("abort"), primopAbort, false, Fixnum{1l},
                                dest->types.any);
-        HRef<Closure> abortClosure = allocClosure(dest, abortMethod, Fixnum{0l});
+        HRef<Closure> abortClosure = HRef{allocClosure(dest, abortMethod, Fixnum{0l})};
 
         Str const errorHandlerName = strLit("*error-handler*");
         installPrimordial(dest, errorHandlerName, abortClosure);
@@ -977,19 +975,19 @@ HRef<Method> createPrimopMethod(
     return method;
 }
 
-HRef<Closure> allocClosure(RT* state, HRef<Method> method, Fixnum cloverCount) {
+Closure* allocClosure(RT* state, HRef<Method> method, Fixnum cloverCount) {
     Closure* ptr =
         static_cast<decltype(ptr)>(state->heap.tryAllocFlex(&*state->types.closure, cloverCount));
     if (mustCollect(ptr)) {
         auto const methodG = state->pushRoot(&method);
         collect(state);
-        ptr =static_cast<decltype(ptr)>(
-            state->heap.allocFlexOrDie(&*state->types.closure,cloverCount));
+        ptr = static_cast<decltype(ptr)>(
+            state->heap.allocFlexOrDie(&*state->types.closure, cloverCount));
     }
 
     const_cast<ORef&>(ptr->method) = method; // Initing so `const_cast` and no write barrier
 
-    return HRef{ptr};
+    return ptr;
 }
 
 HRef<Continuation> allocContinuation(

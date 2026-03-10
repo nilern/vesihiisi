@@ -1,5 +1,6 @@
 #include "vm.hpp"
 
+#include <ranges>
 #include <stdbit.h>
 #include <string.h>
 
@@ -273,21 +274,19 @@ VMRes run(RT* rt, HRef<Closure> self) {
             }
 
             HRef<Method> const method = HRef<Method>::fromUnchecked(rt->regs[methodReg]);
-            HRef<Closure> const closure = allocClosure(rt, method, Fixnum((intptr_t)cloverCount));
+            HRef<Closure> const closure = allocClosure(rt, method, Fixnum{intptr_t(cloverCount)});
             // TODO: DRY wrt. OP_CALL:
-            // OPTIMIZE:
             {
-                size_t const end = rt->pc;
-                size_t const start = end - cloverSetByteCount;
-                for (size_t byteIdx = 0, cloverIdx = 0; byteIdx < cloverSetByteCount; ++byteIdx) {
-                    uint8_t const byte = rt->code[start + byteIdx];
+                size_t const startIdx = rt->pc - cloverSetByteCount;
+                ORef* clover = const_cast<ORef*>(closure->clovers().data());
+                size_t regIdx = 0;
+                for (uint8_t const byte : std::span{rt->code + startIdx, cloverSetByteCount}) {
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
                         if ((byte >> bitIdx) & 1) {
-                            auto const cloverPtr = // `const_cast` for init:
-                                const_cast<ORef*>(closure->clovers().data()) + cloverIdx++;
-                            size_t const regIdx = UINT8_WIDTH * byteIdx + bitIdx;
-                            *cloverPtr = rt->regs[regIdx];
+                            *clover++ = rt->regs[regIdx];
                         }
+
+                        ++regIdx;
                     }
                 }
             }
@@ -330,19 +329,17 @@ VMRes run(RT* rt, HRef<Closure> self) {
                 rt, callerMethod, Fixnum((intptr_t)rt->pc), Fixnum((intptr_t)cloverCount)
             );
             // TODO: DRY wrt. OP_CLOSURE:
-            // OPTIMIZE:
             {
-                size_t const end = rt->pc;
-                size_t const start = end - cloverSetByteCount;
-                for (size_t byteIdx = 0, cloverIdx = 0; byteIdx < cloverSetByteCount; ++byteIdx) {
-                    uint8_t const byte = rt->code[start + byteIdx];
+                size_t const startIdx = rt->pc - cloverSetByteCount;
+                ORef* clover = const_cast<ORef*>(cont->saves().data());
+                size_t regIdx = 0;
+                for (uint8_t const byte : std::span{rt->code + startIdx, cloverSetByteCount}) {
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
                         if ((byte >> bitIdx) & 1) {
-                            auto const cloverPtr = // `const_cast` for init:
-                                const_cast<ORef*>(cont->saves().data()) + cloverIdx++;
-                            size_t const regIdx = UINT8_WIDTH * byteIdx + bitIdx;
-                            *cloverPtr = rt->regs[regIdx];
+                            *clover++ = rt->regs[regIdx];
                         }
+
+                        ++regIdx;
                     }
                 }
             }

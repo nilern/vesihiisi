@@ -1,6 +1,5 @@
 #include "vm.hpp"
 
-#include <ranges>
 #include <stdbit.h>
 #include <string.h>
 
@@ -266,21 +265,22 @@ VMRes run(RT* rt, HRef<Closure> self) {
         VM_CASE(OP_CLOSURE) {
             uint8_t const destReg = rt->code[rt->pc++];
             uint8_t const methodReg = rt->code[rt->pc++];
-            uint8_t const cloverSetByteCount = rt->code[rt->pc++];
+            uint8_t const closesByteCount = rt->code[rt->pc++];
+            size_t const closesStartIdx = rt->pc;
             size_t cloverCount = 0;
             // OPTIMIZE:
-            for (size_t i = 0; i < cloverSetByteCount; ++i) {
-                cloverCount += stdc_count_ones(rt->code[rt->pc++]);
+            for (uint8_t const byte : std::span{rt->code + closesStartIdx, closesByteCount}) {
+                cloverCount += stdc_count_ones(byte);
             }
+            rt->pc += closesByteCount;
 
             HRef<Method> const method = HRef<Method>::fromUnchecked(rt->regs[methodReg]);
-            HRef<Closure> const closure = allocClosure(rt, method, Fixnum{intptr_t(cloverCount)});
+            HRef<Closure> const closure = allocClosure(rt, method, Fixnum{int64_t(cloverCount)});
             // TODO: DRY wrt. OP_CALL:
             {
-                size_t const startIdx = rt->pc - cloverSetByteCount;
                 ORef* clover = const_cast<ORef*>(closure->clovers().data());
                 size_t regIdx = 0;
-                for (uint8_t const byte : std::span{rt->code + startIdx, cloverSetByteCount}) {
+                for (uint8_t const byte : std::span{rt->code + closesStartIdx, closesByteCount}) {
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
                         if ((byte >> bitIdx) & 1) {
                             *clover++ = rt->regs[regIdx];
@@ -317,23 +317,24 @@ VMRes run(RT* rt, HRef<Closure> self) {
         VM_CASE(OP_CALL) {
             inlineCacheIdx = std::optional{rt->code[rt->pc++]};
             uint8_t const regCount  = rt->code[rt->pc++];
-            uint8_t const cloverSetByteCount = rt->code[rt->pc++];
-            size_t cloverCount = 0;
+            uint8_t const saveSetByteCount = rt->code[rt->pc++];
+            size_t const savesStartIdx = rt->pc;
+            size_t saveCount = 0;
             // OPTIMIZE:
-            for (size_t i = 0; i < cloverSetByteCount; ++i) {
-                cloverCount += stdc_count_ones(rt->code[rt->pc++]);
+            for (uint8_t const byte : std::span{rt->code + savesStartIdx, saveSetByteCount}) {
+                saveCount += stdc_count_ones(byte);
             }
+            rt->pc += saveSetByteCount;
 
             HRef<Method> const callerMethod = HRef<Method>::fromUnchecked(rt->method);
             HRef<Continuation> const cont = allocContinuation(
-                rt, callerMethod, Fixnum((intptr_t)rt->pc), Fixnum((intptr_t)cloverCount)
+                rt, callerMethod, Fixnum{int64_t(rt->pc)}, Fixnum{int64_t(saveCount)}
             );
             // TODO: DRY wrt. OP_CLOSURE:
             {
-                size_t const startIdx = rt->pc - cloverSetByteCount;
                 ORef* clover = const_cast<ORef*>(cont->saves().data());
                 size_t regIdx = 0;
-                for (uint8_t const byte : std::span{rt->code + startIdx, cloverSetByteCount}) {
+                for (uint8_t const byte : std::span{rt->code + savesStartIdx, saveSetByteCount}) {
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
                         if ((byte >> bitIdx) & 1) {
                             *clover++ = rt->regs[regIdx];

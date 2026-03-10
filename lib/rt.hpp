@@ -283,8 +283,7 @@ HRef<Method> allocBytecodeMethod(
 
 Closure* allocClosure(RT* state, HRef<Method> method, Fixnum cloverCount);
 
-HRef<Continuation> allocContinuation(
-    RT* state, HRef<Method> method, Fixnum pc, Fixnum cloverCount);
+Continuation* allocContinuation(RT* state, HRef<Method> method, Fixnum pc, Fixnum cloverCount);
 
 HRef<Knot> allocKnot(RT* state);
 

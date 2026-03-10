@@ -25,6 +25,8 @@ class X64SYSVJIT {
     void heapedCheck(
         asmjit::x86::Gp const& v, asmjit::x86::Gp const& tagReg, asmjit::Label const& onImmediate);
 
+    void emitCall(uint8_t inlineCacheIdx, uint8_t regCount);
+
     void naturalize(std::span<uint8_t const> bytecode);
 
 public:
@@ -81,6 +83,63 @@ void X64SYSVJIT::heapedCheck(
     as_.je(onImmediate);
     as_.test(v, tagReg); // `(callee.bits & tagMask) == heapedTag`?
     as_.jne(onImmediate);
+}
+
+void X64SYSVJIT::emitCall(
+    [[maybe_unused]]uint8_t inlineCacheIdx, // TODO: Make use of
+    uint8_t regCount
+) {
+    using namespace asmjit;
+
+    // rt->entryRegc = regCount;
+    as_.mov(x86::Mem{rtReg, int32_t(rt_->entryRegcOffset())}, regCount);
+
+    // ORef const callee = rt->regs[calleeReg];
+    x86::Gp const calleeGp = x86::rax;
+    size_t const calleeOffset = rt_->regsOffset() + sizeof(ORef) * calleeReg;
+    as_.mov(calleeGp, x86::Mem{rtReg, int32_t(calleeOffset)});
+
+    // if (!isHeaped(callee)) { return PrimopRes::CallBytecode; }
+    x86::Gp const tagReg = x86::r11;
+    as_.movabs(tagReg, nonFlonumTag);
+    as_.cmp(calleeGp, tagReg); // Actual NaN?
+    auto const callBytecode = Label{};
+    as_.je(callBytecode);
+    as_.test(calleeGp, tagReg); // `(callee.bits & tagMask) == heapedTag`?
+    auto const callHeaped = Label{};
+    as_.je(callHeaped);
+    as_.bind(callBytecode);
+    as_.mov(retReg, PrimopRes::CALL_BYTECODE);
+    as_.ret();
+
+    as_.bind(callHeaped);
+    // Object* const calleePtr = &*callee;
+    as_.movabs(tagReg, payloadMask);
+    as_.and_(calleeGp, tagReg);
+    // HRef<Type> const type = callee->header()->type();
+    x86::Gp const typeReg = x86::r11;
+    as_.movabs(typeReg, heapedTag);
+    as_.or_(typeReg, x86::Mem{calleeGp, int32_t(Object::typeOffset())});
+
+    // if (eq(type, rt->types.closure)) goto callClosure;
+    x86::Gp const goalTypeReg = x86::r10;
+    size_t const closureTypeOffset = rt_->typeOffset(offsetof(NamedTypes, closure));
+    as_.mov(goalTypeReg, x86::Mem{rtReg, int32_t(closureTypeOffset)});
+    as_.cmp(typeReg, goalTypeReg);
+    auto const callClosure = Label{};
+    as_.je(callClosure);
+
+    // TODO: JIT multimethod cache probe:
+    as_.jmp(callBytecode);
+
+    as_.bind(callClosure);
+    // HRef<Method>::fromUnchecked(calleePtr->method)->nativeCode()(rt);
+    x86::Gp const methodReg = x86::r11;
+    as_.movabs(methodReg, payloadMask);
+    as_.and_(methodReg, x86::Mem{calleeGp, int32_t(offsetof(Closure, method))});
+    as_.movabs(calleeGp, payloadMask);
+    as_.and_(calleeGp, x86::Mem{methodReg, int32_t(offsetof(Method, code))});
+    as_.jmp(x86::Mem{calleeGp, 0});
 }
 
 void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
@@ -359,7 +418,6 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             uint8_t const closesByteCount = *it++;
             ptrdiff_t const closesStartIdx = std::distance(bytecode.begin(), it);
             size_t cloverCount = 0;
-            // OPTIMIZE:
             for (uint8_t const byte : std::span{bytecode.begin() + closesStartIdx, closesByteCount})
             {
                 cloverCount += stdc_count_ones(byte);
@@ -463,64 +521,73 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
         }; break;
 
         case OP_CALL: {
-            as_.mov(retReg, PrimopRes::INTERPRET);
-            as_.ret();
-            return;
+            uint8_t const inlineCacheIdx = *it++;
+            uint8_t const regCount  = *it++;
+            uint8_t const savesByteCount = *it++;
+            ptrdiff_t const savesStartIdx = std::distance(bytecode.begin(), it);
+            size_t saveCount = 0;
+            for (uint8_t const byte : std::span{bytecode.begin() + savesStartIdx, savesByteCount}) {
+                saveCount += stdc_count_ones(byte);
+            }
+            it += savesByteCount;
+
+            // HRef<Method> const callerMethod = HRef<Method>::fromUnchecked(rt->method);
+            x86::Gp const methodReg = x86::rsi; // ABI arg 2
+            as_.mov(methodReg, x86::Mem{rtReg, int32_t(rt_->methodOffset())});
+            // Continuation* const cont = allocContinuation(
+            //    rt, callerMethod, Fixnum{int64_t(rt->pc)}, Fixnum{int64_t(saveCount)}
+            // );
+            x86::Gp const retPcReg = x86::rdx; // ABI arg 3
+            ptrdiff_t const retPc = std::distance(bytecode.begin(), it);
+            as_.movabs(retPcReg, Fixnum{int64_t(retPc)}.bits);
+            x86::Gp const countReg = x86::rcx; // ABI arg 4
+            as_.movabs(countReg, Fixnum{int64_t(saveCount)}.bits);
+            as_.push(rtReg);
+            as_.call(allocContinuation);
+            x86::Gp const contReg = retReg;
+            as_.pop(rtReg);
+
+            { // TODO: DRY wrt. `OP_CLOSURE`:
+                // ORef* spillSlots = const_cast<ORef*>(cont->saves().data());
+                x86::Gp const spillsReg = x86::r11;
+                as_.lea(spillsReg, x86::Mem{spillsReg, int32_t(Continuation::flexOffset)});
+
+                x86::Gp const vReg = x86::r10;
+                size_t spillIdx = 0;
+                size_t regIdx = 0;
+                for (uint8_t const byte :
+                     std::span{bytecode.begin() + savesStartIdx, savesByteCount}
+                ) {
+                    for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
+                        if ((byte >> bitIdx) & 1) {
+                            // spillSlots[spillIdx] = rt->regs[regIdx];
+                            size_t const regOffset = rt_->regsOffset() + sizeof(ORef) * regIdx;
+                            as_.mov(vReg, x86::Mem{rtReg, int32_t(regOffset)});
+                            size_t const cloverOffset = sizeof(ORef) * spillIdx;
+                            as_.mov(x86::Mem{spillsReg, int32_t(cloverOffset)}, vReg);
+
+                            ++spillIdx;
+                        }
+
+                        ++regIdx;
+                    }
+                }
+            }
+
+            // rt->regs[retContReg] = HRef{cont};
+            x86::Gp const taggedContReg = x86::r11;
+            tagging(taggedContReg, contReg, heapedTag);
+            size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * retContReg;
+            as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, taggedContReg);
+
+            emitCall(inlineCacheIdx, regCount);
         }; break;
 
         case OP_TAILCALL: {
-            [[maybe_unused]] uint8_t const inlineCacheIdx = *it++; // TODO: Make use of
+            uint8_t const inlineCacheIdx = *it++;
             uint8_t const regCount = *it++;
 
-            // rt->entryRegc = regCount;
-            as_.mov(x86::Mem{rtReg, int32_t(rt_->entryRegcOffset())}, regCount);
-
-            // ORef const callee = rt->regs[calleeReg];
-            x86::Gp const calleeGp = x86::rax;
-            size_t const calleeOffset = rt_->regsOffset() + sizeof(ORef) * calleeReg;
-            as_.mov(calleeGp, x86::Mem{rtReg, int32_t(calleeOffset)});
-
-            // if (!isHeaped(callee)) { return PrimopRes::CallBytecode; }
-            x86::Gp const tagReg = x86::r11;
-            as_.movabs(tagReg, nonFlonumTag);
-            as_.cmp(calleeGp, tagReg); // Actual NaN?
-            auto const callBytecode = Label{};
-            as_.je(callBytecode);
-            as_.test(calleeGp, tagReg); // `(callee.bits & tagMask) == heapedTag`?
-            auto const callHeaped = Label{};
-            as_.je(callHeaped);
-            as_.bind(callBytecode);
-            as_.mov(retReg, PrimopRes::CALL_BYTECODE);
-            as_.ret();
-
-            as_.bind(callHeaped);
-            // Object* const calleePtr = &*callee;
-            as_.movabs(tagReg, payloadMask);
-            as_.and_(calleeGp, tagReg);
-            // HRef<Type> const type = callee->header()->type();
-            x86::Gp const typeReg = x86::r11;
-            as_.movabs(typeReg, heapedTag);
-            as_.or_(typeReg, x86::Mem{calleeGp, int32_t(Object::typeOffset())});
-
-            // if (eq(type, rt->types.closure)) goto callClosure;
-            x86::Gp const goalTypeReg = x86::r10;
-            size_t const closureTypeOffset = rt_->typeOffset(offsetof(NamedTypes, closure));
-            as_.mov(goalTypeReg, x86::Mem{rtReg, int32_t(closureTypeOffset)});
-            as_.cmp(typeReg, goalTypeReg);
-            auto const callClosure = Label{};
-            as_.je(callClosure);
-
-            // TODO: JIT multimethod cache probe:
-            as_.jmp(callBytecode);
-
-            as_.bind(callClosure);
-            // HRef<Method>::fromUnchecked(calleePtr->method)->nativeCode()(rt);
-            x86::Gp const methodReg = x86::r11;
-            as_.movabs(methodReg, payloadMask);
-            as_.and_(methodReg, x86::Mem{calleeGp, int32_t(offsetof(Closure, method))});
-            as_.movabs(calleeGp, payloadMask);
-            as_.and_(calleeGp, x86::Mem{methodReg, int32_t(offsetof(Method, code))});
-            as_.jmp(x86::Mem{calleeGp, 0});
+            emitCall(inlineCacheIdx, regCount);
         }; break;
 
         case OP_FFICALL: {

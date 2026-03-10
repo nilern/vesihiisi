@@ -331,17 +331,17 @@ VMRes run(RT* rt, HRef<Closure> self) {
             rt->pc += saveSetByteCount;
 
             HRef<Method> const callerMethod = HRef<Method>::fromUnchecked(rt->method);
-            HRef<Continuation> const cont = allocContinuation(
+            Continuation* const cont = allocContinuation(
                 rt, callerMethod, Fixnum{int64_t(rt->pc)}, Fixnum{int64_t(saveCount)}
             );
             // TODO: DRY wrt. OP_CLOSURE:
             {
-                ORef* clover = const_cast<ORef*>(cont->saves().data());
+                ORef* spillSlot = const_cast<ORef*>(cont->saves().data());
                 size_t regIdx = 0;
                 for (uint8_t const byte : std::span{rt->code + savesStartIdx, saveSetByteCount}) {
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
                         if ((byte >> bitIdx) & 1) {
-                            *clover++ = rt->regs[regIdx];
+                            *spillSlot++ = rt->regs[regIdx];
                         }
 
                         ++regIdx;
@@ -349,7 +349,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
                 }
             }
 
-            rt->regs[retContReg] = cont;
+            rt->regs[retContReg] = HRef{cont};
 
             rt->entryRegc = regCount;
             goto apply;

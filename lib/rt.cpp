@@ -503,7 +503,7 @@ RT* RT::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* a
                                                    exitVMOnReturn, false, Fixnum{int64_t(0)});
         *const_cast<ORef*>(&exitMethod->consts) = exitConsts;
         dest->singletons.exit =
-            allocContinuation(dest, exitMethod, Fixnum{int64_t(0)}, Fixnum{int64_t(0)});
+            HRef{allocContinuation(dest, exitMethod, Fixnum{int64_t(0)}, Fixnum{int64_t(0)})};
     }
 
     for (size_t i = 0; i < BOOTSTRAP_TYPE_COUNT; ++i) {
@@ -990,9 +990,7 @@ Closure* allocClosure(RT* state, HRef<Method> method, Fixnum cloverCount) {
     return ptr;
 }
 
-HRef<Continuation> allocContinuation(
-    RT* state, HRef<Method> method, Fixnum pc, Fixnum cloverCount
-) {
+Continuation* allocContinuation(RT* state, HRef<Method> method, Fixnum pc, Fixnum cloverCount) {
     Continuation* ptr = static_cast<decltype(ptr)>(state->heap.tryAllocFlex(
         &*state->types.continuation, cloverCount));
     if (mustCollect(ptr)) {
@@ -1005,7 +1003,7 @@ HRef<Continuation> allocContinuation(
     const_cast<HRef<Method>&>(ptr->method) = method; // Initing so `const_cast` and no write barrier
     const_cast<Fixnum&>(ptr->pc) = pc; // Initing so `const_cast`
 
-    return HRef(ptr);
+    return ptr;
 }
 
 HRef<Knot> allocKnot(RT* state) {

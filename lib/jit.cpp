@@ -325,6 +325,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             // storing an incorrect value for some reason :(:
             as_.mov(tmpReg, 3);
             as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
+
             // rt->regs[destReg] = rt->consts[constIdx].get();
             as_.mov(tmpReg, x86::Mem{rtReg, int32_t(rt_->constsOffset())});
             size_t const constOffset = sizeof(ORef) * constIdx;
@@ -333,8 +334,31 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, tmpReg);
         }; break;
 
-        case OP_SPECIALIZE:
-        case OP_KNOT:
+        case OP_SPECIALIZE: {
+            as_.mov(retReg, PrimopRes::INTERPRET);
+            as_.ret();
+            return;
+        }; break;
+
+        case OP_KNOT: {
+            uint8_t const destVReg = *it++;
+
+            x86::Gp const tmpReg = x86::rax;
+            // rt->pc += 2;
+            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 2);` was
+            // storing an incorrect value for some reason :(:
+            as_.mov(tmpReg, 2);
+            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
+
+            // rt->regs[destReg] = allocKnot(rt);
+            as_.push(rtReg);
+            as_.call(allocKnot);
+            as_.pop(rtReg);
+            x86::Gp const knotReg = retReg;
+            size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
+            as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, knotReg);
+        }; break;
+
         case OP_KNOT_INIT:
         case OP_KNOT_GET: {
             as_.mov(retReg, PrimopRes::INTERPRET);
@@ -357,6 +381,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             // storing an incorrect value for some reason :(:
             as_.mov(tmpReg, 4);
             as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
+
             // if (eq(rt->regs[condReg], False)) {
             x86::Gp const condReg = x86::rax;
             size_t const condOffset = rt_->regsOffset() + sizeof(ORef) * condVReg;

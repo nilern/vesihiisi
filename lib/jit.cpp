@@ -360,9 +360,51 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
         }; break;
 
         case OP_KNOT_INIT: {
+            uint8_t const knotVReg = *it++;
+            uint8_t const srcVReg = *it++;
+
+            // Knot* const knot = &*HRef<Knot>::fromUnchecked(rt->regs[knotReg]);
+            x86::Gp const knotReg = x86::rax;
+            size_t const knotOffset = rt_->regsOffset() + sizeof(ORef) * knotVReg;
+            as_.movabs(knotReg, payloadMask);
+            as_.and_(knotReg, x86::Mem{rtReg, int32_t(knotOffset)});
+
+            // ORef const v = rt->regs[srcReg];
+            x86::Gp const vReg = x86::r11;
+            size_t const srcOffset = rt_->regsOffset() + sizeof(ORef) * srcVReg;
+            as_.mov(vReg, x86::Mem{rtReg, int32_t(srcOffset)});
+            // // knot->val().set(*rt, v);
+            // if (!Heap::writeBarrier(&rt->heap, var)) goto interpret;
+            as_.push(rtReg);
+            as_.push(knotReg);
+            as_.push(vReg);
+            x86::Gp const heapReg = x86::rdi;
+            as_.lea(heapReg, x86::Mem{rtReg, int32_t(rt_->heapOffset())});
+            Heap::writeBarrier_t writeBarrier = &Heap::writeBarrier;
+            as_.call(writeBarrier);
+            as_.pop(vReg);
+            as_.pop(knotReg);
+            as_.pop(rtReg);
+            as_.test(retReg, retReg);
+            auto const interpret = Label{};
+            as_.je(interpret);
+            // knot->val_ = v;
+            as_.mov(x86::Mem{knotReg, int32_t(Knot::valOffset())}, vReg);
+
+            // rt->pc += 3;
+            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 3);` was
+            // storing an incorrect value for some reason :(:
+            x86::Gp const tmpReg = x86::rax;
+            as_.mov(tmpReg, 3);
+            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
+            auto const done = Label{};
+            as_.jmp(done);
+
+            as_.bind(interpret);
             as_.mov(retReg, PrimopRes::INTERPRET);
             as_.ret();
-            return;
+
+            as_.bind(done);
         }; break;
 
         case OP_KNOT_GET: {

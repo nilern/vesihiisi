@@ -235,7 +235,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
 
             assert(isa(rt, rt->types.knot, rt->regs[knotReg]));
             auto const knot = HRef<Knot>::fromUnchecked(rt->regs[knotReg]);
-            knot->val().set(*rt,  rt->regs[srcReg]);
+            knot->val().set(*rt, rt->regs[srcReg]);
         }; VM_CONTINUE;
 
         VM_CASE(OP_KNOT_GET) {

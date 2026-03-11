@@ -170,6 +170,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             // storing an incorrect value for some reason :(:
             as_.mov(tmpReg, 3);
             as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
+
             // rt->regs[destReg] = rt->regs[srcReg];
             size_t const srcOffset = rt_->regsOffset() + sizeof(ORef) * srcVReg;
             as_.mov(tmpReg, x86::Mem{rtReg, int32_t(srcOffset)});
@@ -178,9 +179,26 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
         }; break;
 
         case OP_SWAP: {
-            as_.mov(retReg, PrimopRes::INTERPRET);
-            as_.ret();
-            return;
+            uint8_t const reg1 = *it++;
+            uint8_t const reg2 = *it++;
+
+            x86::Gp const tmpReg = x86::rax;
+            // rt->pc += 3;
+            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 3);` was
+            // storing an incorrect value for some reason :(:
+            as_.mov(tmpReg, 3);
+            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
+
+            // ORef const tmp = rt->regs[reg1];
+            size_t const reg1Offset = rt_->regsOffset() + sizeof(ORef) * reg1;
+            as_.mov(tmpReg, x86::Mem{rtReg, int32_t(reg1Offset)});
+            // rt->regs[reg1] = rt->regs[reg2];
+            x86::Gp const tmpReg2 = x86::r11;
+            size_t const reg2Offset = rt_->regsOffset() + sizeof(ORef) * reg2;
+            as_.mov(tmpReg2, x86::Mem{rtReg, int32_t(reg2Offset)});
+            as_.mov(x86::Mem{rtReg, int32_t(reg1Offset)}, tmpReg2);
+            // rt->regs[reg2] = tmp;
+            as_.mov(x86::Mem{rtReg, int32_t(reg2Offset)}, tmpReg);
         }; break;
 
         // These differ only in the initial linkage, which we do not JIT-compile:

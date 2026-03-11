@@ -655,6 +655,8 @@ public:
 
     [[maybe_unused]]
     static HRef<Type> reify(struct RT const& state);
+
+    static size_t valOffset() { return offsetof(Knot, val_); }
 };
 
 class Namespace : public FixedObject<Namespace> {

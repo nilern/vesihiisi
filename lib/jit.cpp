@@ -359,11 +359,31 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, knotReg);
         }; break;
 
-        case OP_KNOT_INIT:
-        case OP_KNOT_GET: {
+        case OP_KNOT_INIT: {
             as_.mov(retReg, PrimopRes::INTERPRET);
             as_.ret();
             return;
+        }; break;
+
+        case OP_KNOT_GET: {
+            uint8_t const destVReg = *it++;
+            uint8_t const knotVReg = *it++;
+
+            x86::Gp const tmpReg = x86::rax;
+            // rt->pc += 3;
+            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 3);` was
+            // storing an incorrect value for some reason :(:
+            as_.mov(tmpReg, 3);
+            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
+
+            // auto const knot = HRef<Knot>::fromUnchecked(rt->regs[knotReg]);
+            x86::Gp const knotReg = x86::rax;
+            size_t const knotOffset = rt_->regsOffset() + sizeof(ORef) * knotVReg;
+            as_.mov(knotReg, x86::Mem{rtReg, int32_t(knotOffset)});
+            // rt->regs[destReg] = knot->val().get();
+            as_.mov(knotReg, x86::Mem{knotReg, int32_t(Knot::valOffset())});
+            size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
+            as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, knotReg);
         }; break;
 
         case OP_BRF: {

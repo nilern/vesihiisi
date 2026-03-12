@@ -25,6 +25,10 @@ class X64SYSVJIT {
     void heapedCheck(
         asmjit::x86::Gp const& v, asmjit::x86::Gp const& tagReg, asmjit::Label const& onImmediate);
 
+    void checkedHeapedUntagging(
+        asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src, asmjit::x86::Gp const& tmp,
+        size_t typeOffsetInRT, asmjit::Label const& onWrongType);
+
     void emitCall(uint8_t inlineCacheIdx, uint8_t regCount);
 
     void naturalize(std::span<uint8_t const> bytecode);
@@ -83,6 +87,32 @@ void X64SYSVJIT::heapedCheck(
     as_.je(onImmediate);
     as_.test(v, tagReg); // `(callee.bits & tagMask) == heapedTag`?
     as_.jne(onImmediate);
+}
+
+/// if (!isa<T>(*rt, v)) goto onWrongType;
+/// T* dest = &*HRef<T>::fromUnchecked(v);
+void X64SYSVJIT::checkedHeapedUntagging(
+    asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src, asmjit::x86::Gp const& tmp,
+    size_t typeOffsetInRT, asmjit::Label const& onWrongType
+) {
+    assert(dest != src);
+    assert(src != tmp);
+    assert(tmp != dest);
+
+    using namespace asmjit;
+
+    // if (!isHeaped(v)) goto onWrongType;
+    heapedCheck(src, tmp, onWrongType);
+    // Object* const obj = &*HRef<Object>::fromUnchecked(c);
+    untagging(dest, src);
+    // HRef<Type> const type = obj->header()->type();
+    x86::Gp const typeReg = tmp;
+    as_.movabs(typeReg, heapedTag);
+    as_.or_(typeReg, x86::Mem{dest, int32_t(Object::typeOffset())});
+    // if (!eq(type, rt->types.$type)) goto onWrongType;
+    as_.cmp(typeReg, x86::Mem{rtReg, int32_t(typeOffsetInRT)});
+    as_.jne(onWrongType);
+    // auto dest = static_cast<T*>(obj);
 }
 
 void X64SYSVJIT::emitCall(
@@ -335,9 +365,92 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
         }; break;
 
         case OP_SPECIALIZE: {
+            uint8_t const destVReg = *it++;
+            uint8_t const constIdx = *it++;
+            uint8_t const typeSetByteCount = *it++;
+            ptrdiff_t const typeSetStartIdx = std::distance(bytecode.begin(), it);
+            size_t typeCount = 0;
+            for (uint8_t const byte :
+                 std::span{bytecode.begin() + typeSetStartIdx, typeSetByteCount}
+            ) {
+                typeCount += stdc_count_ones(byte);
+            }
+            it += typeSetByteCount;
+
+            // ArrayMut* const types = allocArray(rt, Fixnum{intptr_t(typeCount)});
+            x86::Gp const typeCountReg = x86::rsi; // ABI arg 2
+            as_.movabs(typeCountReg, Fixnum{intptr_t(typeCount)}.bits);
+            as_.push(rtReg);
+            as_.call(allocArray);
+            x86::Gp const typesReg = retReg;
+            as_.pop(rtReg);
+
+            auto const interpret = Label{};
+            {
+                x86::Gp const typeReg = x86::r11;
+                x86::Gp const typeObjReg = x86::r10;
+                x86::Gp const tmpReg = x86::r9;
+                size_t typeIdx = 0;
+                size_t regIdx = 0;
+                for (uint8_t const byte :
+                     std::span{bytecode.begin() + typeSetStartIdx, typeSetByteCount}
+                ) {
+                    for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
+                        if ((byte >> bitIdx) & 1) {
+                            // ORef const maybeType = rt->regs[regIdx];
+                            size_t const regOffset = rt_->regsOffset() + sizeof(ORef) * regIdx;
+                            as_.mov(typeReg, x86::Mem{rtReg, int32_t(regOffset)});
+
+                            // if (!isa<Type>(*rt, maybeType)) goto interpret;
+                            // (Incidentally `Type* const typeObj` but not used here:)
+                            checkedHeapedUntagging(typeObjReg, typeReg, tmpReg,
+                                                   rt_->typeOffset(offsetof(NamedTypes, type)),
+                                                   interpret);
+
+                            // types[typeIdx] = maybeType;
+                            size_t const typeOffset = sizeof(ORef) * typeIdx;
+                            as_.mov(x86::Mem{typesReg, int32_t(typeOffset)}, typeReg);
+
+                            ++typeIdx;
+                        }
+
+                        ++regIdx;
+                    }
+                }
+            }
+
+            // auto const typesRef = HRef{types};
+            x86::Gp const typesRefReg = x86::rdx; // ABI arg 3
+            tagging(typesRefReg, typesReg, heapedTag);
+
+            // HRef<Method> const generic = HRef<Method>::fromUnchecked(rt->consts[constIdx].get());
+            x86::Gp const genericReg = x86::rsi; // ABI arg 2
+            constLoad(genericReg, constIdx);
+            // HRef<Method> const method = specialize(rt, generic, types);
+            as_.push(rtReg);
+            as_.call(specialize);
+            x86::Gp const methodReg = retReg;
+            as_.pop(rtReg);
+
+            // rt->regs[destReg] = method;
+            size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
+            as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, methodReg);
+
+            // rt->pc += instrSize;
+            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, instrSize);` was
+            // storing an incorrect value for some reason :(:
+            x86::Gp const tmpReg = x86::rax;
+            size_t const instrSize = 4 + typeSetByteCount;
+            as_.mov(tmpReg, instrSize);
+            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
+            auto const done = Label{};
+            as_.jmp(done);
+
+            as_.bind(interpret);
             as_.mov(retReg, PrimopRes::INTERPRET);
             as_.ret();
-            return;
+
+            as_.bind(done);
         }; break;
 
         case OP_KNOT: {

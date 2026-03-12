@@ -234,6 +234,8 @@ inline Array* allocArrayOrDie(RT* state, Fixnum count) {
     return (Array*)state->heap.allocFlexOrDie(&*state->types.array, count);
 }
 
+Array* allocArray(RT* state, Fixnum count);
+
 HRef<Array> createArray(RT* state, Fixnum count);
 
 inline ArrayMut* tryAllocArrayMut(RT* state, Fixnum count) {

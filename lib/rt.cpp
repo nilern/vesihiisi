@@ -788,15 +788,17 @@ HRef<String> createString(RT* state, Str str) {
     return HRef{string};
 }
 
-HRef<Array> createArray(RT* state, Fixnum count) {
+Array* allocArray(RT* state, Fixnum count) {
     Array* ptr = tryAllocArray(state, count);
     if (mustCollect(ptr)) {
         collect(state);
         ptr = allocArrayOrDie(state, count);
     }
 
-    return HRef{ptr};
+    return ptr;
 }
+
+HRef<Array> createArray(RT* state, Fixnum count) { return HRef{allocArray(state, count)}; }
 
 HRef<ArrayMut> createArrayMut(RT* state, Fixnum count) {
     ArrayMut* ptr = tryAllocArrayMut(state, count);

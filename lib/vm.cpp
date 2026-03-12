@@ -187,28 +187,31 @@ VMRes run(RT* rt, HRef<Closure> self) {
             uint8_t const destReg = rt->code[rt->pc++];
             uint8_t const constIdx = rt->code[rt->pc++];
             uint8_t const typeSetByteCount = rt->code[rt->pc++];
+            size_t const typesStartIdx = rt->pc;
             size_t typeCount = 0;
             // OPTIMIZE:
-            for (size_t i = 0; i < typeSetByteCount; ++i) {
-                typeCount += stdc_count_ones(rt->code[rt->pc++]);
+            for (uint8_t const byte : std::span{rt->code + typesStartIdx, typeSetByteCount}) {
+                typeCount += stdc_count_ones(byte);
             }
+            rt->pc += typeSetByteCount;
 
-            // OPTIMIZE:
+            // OPTIMIZE: Allocate types to contiguous registers instead of allocating temporary
+            // array:
             HRef<ArrayMut> const types = createArrayMut(rt, Fixnum((intptr_t)typeCount));
             {
-                size_t const end = rt->pc;
-                size_t const start = end - typeSetByteCount;
-                for (size_t byteIdx = 0, typeIdx = 0; byteIdx < typeSetByteCount; ++byteIdx) {
-                    uint8_t const byte = rt->code[start + byteIdx];
+                auto typeSlot = const_cast<ORef*>(types->items().data());
+                size_t regIdx = 0;
+                for (uint8_t const byte : std::span{rt->code + typesStartIdx, typeSetByteCount}) {
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
                         if ((byte >> bitIdx) & 1) {
-                            size_t const regIdx = UINT8_WIDTH * byteIdx + bitIdx;
                             ORef const maybeType = rt->regs[regIdx];
                             if (!isa<Type>(*rt, maybeType)) {
                                 return VMRes{}; // TODO: Signal type error properly
                             }
-                            const_cast<ORef*>(types->items().data())[typeIdx++] = maybeType;
+                            *typeSlot++ = maybeType;
                         }
+
+                        ++regIdx;
                     }
                 }
             }

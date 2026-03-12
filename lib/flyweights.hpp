@@ -117,12 +117,12 @@ public:
         size_t index;
         bool exists;
     };
-    IndexOfRes indexOf(uintptr_t h, HRef<Method> generic, HRef<ArrayMut> types) const;
+    IndexOfRes indexOf(uintptr_t h, HRef<Method> generic, HRef<Array> types) const;
 
     HRef<Method> atIndexUnchecked(size_t i) const;
 
     HRef<Method> createAtUnchecked(
-        RT* state, size_t i, Fixnum fxHash, HRef<Method> generic, HRef<ArrayMut> types);
+        RT* state, size_t i, Fixnum fxHash, HRef<Method> generic, HRef<Array> types);
 
     void prune(RT const& state);
 
@@ -158,6 +158,6 @@ private:
     void rehash();
 };
 
-HRef<Method> specialize(RT* state, HRef<Method> generic, HRef<ArrayMut> types);
+HRef<Method> specialize(RT* state, HRef<Method> generic, HRef<Array> types);
 
 } // namespace

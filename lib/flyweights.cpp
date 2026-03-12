@@ -173,7 +173,7 @@ void Specializations::prune(RT const& state) {
 }
 
 // Is `method` the specialization of `generic` with `types`?
-bool isSpecialized(HRef<Method> method, HRef<Method> generic, HRef<ArrayMut> typesRef) {
+bool isSpecialized(HRef<Method> method, HRef<Method> generic, HRef<Array> typesRef) {
     if (!eq(method->code, generic->code)) { return false; }
 
     ORef const* const types = typesRef->flexData();
@@ -189,7 +189,7 @@ bool isSpecialized(HRef<Method> method, HRef<Method> generic, HRef<ArrayMut> typ
     return true;
 }
 
-Fixnum hashSpecialization(HRef<Method> generic, HRef<ArrayMut> typesRef) {
+Fixnum hashSpecialization(HRef<Method> generic, HRef<Array> typesRef) {
     auto hash = uint64_t(generic->hash.val());
 
     ORefSpan const typesSlice = typesRef->items();
@@ -205,7 +205,7 @@ Fixnum hashSpecialization(HRef<Method> generic, HRef<ArrayMut> typesRef) {
 Fixnum hashSpecialized(HRef<Method> specialization) { return specialization->hash; }
 
 HRef<Method> createSpecialization(
-    RT* state, HRef<Method> generic, HRef<ArrayMut> typesRef, Fixnum hash
+    RT* state, HRef<Method> generic, HRef<Array> typesRef, Fixnum hash
 ) {
     Fixnum const fxArity = generic->flexCount();
     auto const genericRefG = state->pushRoot(&generic);
@@ -228,7 +228,7 @@ HRef<Method> createSpecialization(
 }
 
 Specializations::IndexOfRes Specializations::indexOf(
-    uintptr_t h, HRef<Method> generic, HRef<ArrayMut> types
+    uintptr_t h, HRef<Method> generic, HRef<Array> types
 ) const {
     size_t const maxIndex = cap - 1;
     for (size_t collisions = 0, i = h & maxIndex;; ++collisions, i = (i + collisions) & maxIndex) {
@@ -249,7 +249,7 @@ HRef<Method> Specializations::atIndexUnchecked(size_t i) const {
 }
 
 HRef<Method> Specializations::createAtUnchecked(
-    RT* state, size_t i, Fixnum fxHash, HRef<Method> generic, HRef<ArrayMut> types
+    RT* state, size_t i, Fixnum fxHash, HRef<Method> generic, HRef<Array> types
 ) {
     size_t const newCount = count + 1;
     size_t const capacity = cap;
@@ -296,7 +296,7 @@ void Specializations::rehash() {
     cap = newCap;
 }
 
-HRef<Method> specialize(RT* state, HRef<Method> generic, HRef<ArrayMut> types) {
+HRef<Method> specialize(RT* state, HRef<Method> generic, HRef<Array> types) {
 #ifndef NDEBUG
     assert(isHeaped(generic->code));
 

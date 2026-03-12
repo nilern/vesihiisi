@@ -198,7 +198,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
 
             // OPTIMIZE: Allocate types to contiguous registers instead of allocating temporary
             // array:
-            HRef<ArrayMut> const types = createArrayMut(rt, Fixnum{intptr_t(typeCount)});
+            HRef<Array> const types = createArray(rt, Fixnum{intptr_t(typeCount)});
             {
                 auto typeSlot = const_cast<ORef*>(types->items().data());
                 size_t regIdx = 0;

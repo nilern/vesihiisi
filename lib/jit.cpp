@@ -6,6 +6,7 @@
 
 #include "util/smallmap.hpp"
 #include "bytecode.hpp"
+#include "vm.hpp"
 #include "write.hpp"
 
 namespace {
@@ -809,9 +810,126 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
         }; break;
 
         case OP_FFICALL: {
+            uint8_t const destVReg = *it++;
+            uint8_t const codomainVReg = *it++;
+            uint8_t const argc = *it++;
+            uint8_t const unboxingsByteCount = *it++;
+            bool const boxRet = bool(*it & 0b1);
+            auto const unboxingsStartIdx = size_t(std::distance(bytecode.begin(), it));
+            it += unboxingsByteCount;
+
+            // ORef const anyCodomain = rt->regs[codomainReg];
+            x86::Gp codomainReg = x86::r11;
+            size_t const codomainOffset = rt_->regsOffset() + sizeof(ORef) * codomainVReg;
+            as_.mov(codomainReg, x86::Mem{rtReg, int32_t(codomainOffset)});
+            // if (!isa<Type>(*rt, anyCodomain)) goto interpret;
+            // auto const codomain = HRef<Type>::fromUnchecked(anyCodomain);
+            // Type* const codomainPtr = &*codomain;
+            x86::Gp const codomainPtrReg = x86::r10;
+            auto const interpret = Label{};
+            checkedHeapedUntagging(codomainPtrReg, codomainReg, x86::r9,
+                                   rt_->typeOffset(offsetof(NamedTypes, type)), interpret);
+
+            // bool const fRet = eq(codomain, rt->types.flonum);
+            x86::Gp const fRetReg = x86::rsi; // ABI arg 2
+            size_t const flonumOffset = rt_->typeOffset(offsetof(NamedTypes, flonum));
+            as_.cmp(codomainReg, x86::Mem{rtReg, int32_t(flonumOffset)});
+            as_.sete(x86::al);
+            as_.mov(fRetReg, x86::rax);
+
+            // if (codomainPtr->isFlex.val()) goto interpret;
+            as_.test(x86::Mem{codomainPtrReg, int32_t(offsetof(Type, isFlex))}, 1);
+            as_.je(interpret);
+
+            // if (size_t(codomainPtr->minSize.val()) > sizeof(uint64_t)) goto interpret;
+            x86::Gp const tmpReg = x86::rax;
+            as_.movabs(tmpReg, payloadMask);
+            as_.and_(tmpReg, x86::Mem{codomainPtrReg, int32_t(offsetof(Type, minSize))});
+            as_.cmp(tmpReg, sizeof(uint64_t));
+            as_.jbe(interpret);
+
+            // ORef const anyF = rt->regs[codomainVReg + 1];
+            x86::Gp const fReg = x86::r10;
+            x86::Gp const fPtrReg = x86::rdi; // ABI arg 1
+            size_t const fOffset = rt_->regsOffset() + sizeof(ORef) * (codomainVReg + 1);
+            as_.mov(fReg, x86::Mem{rtReg, int32_t(fOffset)});
+            // if (!isa<Pointer>(*rt, anyF)) goto interpret;
+            // Pointer* const fPtr = &*HRef<Pointer>::fromUnchecked(anyF);
+            checkedHeapedUntagging(fPtrReg, fReg, tmpReg,
+                                   rt_->typeOffset(offsetof(NamedTypes, pointer)), interpret);
+            // void* const f = fPtr->val;
+            as_.mov(fPtrReg, x86::Mem{fPtrReg, int32_t(offsetof(Pointer, val))});
+
+            // uint8_t const* unboxings = rt->code + unboxingsStartIdx;
+            x86::Gp const unboxingsReg = x86::rdx; // ABI arg 3
+            as_.mov(unboxingsReg, x86::Mem{rtReg, int32_t(rt_->codeOffset())});
+            as_.add(unboxingsReg, unboxingsStartIdx);
+            // ORef* const args = &rt->regs[codomainVReg + 2];
+            x86::Gp const argsReg = x86::rcx; // ABI arg 4
+            size_t const argsOffset = rt_->regsOffset() + sizeof(ORef) * (codomainVReg + 2);
+            as_.lea(argsReg, x86::Mem{rtReg, int32_t(argsOffset)});
+            // auto const argc = size_t($argc);
+            x86::Gp const argcReg = x86::r8; // ABI arg 5
+            as_.mov(argcReg, argc);
+
+            // uint64_t const rawRes = callForeign(f, fRet, unboxings, args, argc);
+            as_.push(rtReg);
+            as_.push(codomainReg);
+            as_.push(fRetReg);
+            as_.call(callForeign);
+            x86::Gp resReg = retReg;
+            as_.pop(fRetReg);
+            codomainReg = x86::rsi; // ABI arg 2
+            as_.pop(codomainReg);
+            as_.pop(rtReg);
+
+            // ORef res;
+
+            // if (fRet) { res = Flonum{std::bit_cast<double>(rawRes)}; goto storeRes; }
+            as_.test(fRetReg, fRetReg);
+            auto const storeRes = Label{};
+            as_.jne(storeRes);
+
+            if (!boxRet) {
+                // res = tag(*rt, codomain, rawRes);
+                as_.mov(x86::rdx, retReg); // ABI arg 3
+                as_.push(rtReg);
+                as_.call(tag);
+                as_.pop(rtReg);
+            } else {
+                // Object* const obj = RT::alloc(rt, codomain);
+                as_.push(resReg);
+                as_.push(rtReg);
+                as_.call(static_cast<RT::alloc_t>(RT::alloc));
+                x86::Gp const objReg = retReg;
+                as_.pop(rtReg);
+                resReg = x86::r11;
+                as_.pop(resReg);
+                // *reinterpret_cast<uint64_t*>(obj) = rawRes;
+                as_.mov(x86::Mem{objReg, 0}, resReg);
+                // res = HRef{obj};
+                tagging(resReg, objReg, heapedTag);
+            }
+
+            as_.bind(storeRes);
+            // rt->regs[destReg] = res;
+            size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
+            as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, resReg);
+
+            // rt->pc += instrSize;
+            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, instrSize);` was
+            // storing an incorrect value for some reason :(:
+            size_t const instrSize = 5 + unboxingsByteCount;
+            as_.mov(tmpReg, instrSize);
+            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
+            auto const done = Label{};
+            as_.jmp(done);
+
+            as_.bind(interpret);
             as_.mov(retReg, PrimopRes::INTERPRET);
             as_.ret();
-            return;
+
+            as_.bind(done);
         }; break;
         }
     }

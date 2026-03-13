@@ -12,9 +12,6 @@
 #include "flyweights.hpp"
 #include "jit.hpp"
 
-extern "C" uint64_t callForeign(
-    void* f, bool fRet, uint8_t const* unboxings, ORef const* args, size_t argc);
-
 namespace {
 
 #if !defined(VSHS_COMPUTED_GOTO)

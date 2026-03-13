@@ -134,6 +134,8 @@ struct RT {
     }
 
     Object* alloc(HRef<Type> type);
+    static Object* alloc(RT* rt, HRef<Type> type) { return rt->alloc(type); }
+    using alloc_t = Object* (*)(RT* rt, HRef<Type> type);
 
     // Because `offsetof(RT, method)` is UB.
     size_t methodOffset() const {

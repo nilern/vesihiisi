@@ -30,7 +30,7 @@ class X64SYSVJIT {
         asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src, asmjit::x86::Gp const& tmp,
         size_t typeOffsetInRT, asmjit::Label const& onWrongType);
 
-    void emitCall(uint8_t inlineCacheIdx, uint8_t regCount);
+    void emitCall(uint8_t inlineCacheIdx, uint8_t regCount, asmjit::Label const& interpret);
 
     void naturalize(std::span<uint8_t const> bytecode);
 
@@ -118,7 +118,7 @@ void X64SYSVJIT::checkedHeapedUntagging(
 
 void X64SYSVJIT::emitCall(
     [[maybe_unused]]uint8_t inlineCacheIdx, // TODO: Make use of
-    uint8_t regCount
+    uint8_t regCount, asmjit::Label const& interpret
 ) {
     using namespace asmjit;
 
@@ -130,18 +130,14 @@ void X64SYSVJIT::emitCall(
     size_t const calleeOffset = rt_->regsOffset() + sizeof(ORef) * calleeReg;
     as_.mov(calleeGp, x86::Mem{rtReg, int32_t(calleeOffset)});
 
-    // if (!isHeaped(callee)) { return PrimopRes::CallBytecode; }
+    // if (!isHeaped(callee)) goto interpret;
     x86::Gp const tagReg = x86::r11;
     as_.movabs(tagReg, nonFlonumTag);
     as_.cmp(calleeGp, tagReg); // Actual NaN?
-    auto const callBytecode = Label{};
-    as_.je(callBytecode);
+    as_.je(interpret);
     as_.test(calleeGp, tagReg); // `(callee.bits & tagMask) == heapedTag`?
     auto const callHeaped = Label{};
     as_.je(callHeaped);
-    as_.bind(callBytecode);
-    as_.mov(retReg, PrimopRes::CALL_BYTECODE);
-    as_.ret();
 
     as_.bind(callHeaped);
     // Object* const calleePtr = &*callee;
@@ -161,7 +157,7 @@ void X64SYSVJIT::emitCall(
     as_.je(callClosure);
 
     // TODO: JIT multimethod cache probe:
-    as_.jmp(callBytecode);
+    as_.jmp(interpret);
 
     as_.bind(callClosure);
     // HRef<Method>::fromUnchecked(calleePtr->method)->nativeCode()(rt);
@@ -798,14 +794,47 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * retContReg;
             as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, taggedContReg);
 
-            emitCall(inlineCacheIdx, regCount);
+            auto const interpret = Label{};
+            emitCall(inlineCacheIdx, regCount, interpret);
+
+            // rt->pc += instrSize;
+            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, instrSize);` was
+            // storing an incorrect value for some reason :(:
+            x86::Gp const tmpReg = x86::rax;
+            size_t const instrSize = 4 + savesByteCount;
+            as_.mov(tmpReg, instrSize);
+            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
+            auto const done = Label{};
+            as_.jmp(done);
+
+            as_.bind(interpret);
+            as_.mov(retReg, PrimopRes::INTERPRET);
+            as_.ret();
+
+            as_.bind(done);
         }; break;
 
         case OP_TAILCALL: {
             uint8_t const inlineCacheIdx = *it++;
             uint8_t const regCount = *it++;
 
-            emitCall(inlineCacheIdx, regCount);
+            auto const interpret = Label{};
+            emitCall(inlineCacheIdx, regCount, interpret);
+
+            // rt->pc += 3;
+            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 3);` was
+            // storing an incorrect value for some reason :(:
+            x86::Gp const tmpReg = x86::rax;
+            as_.mov(tmpReg, 3);
+            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
+            auto const done = Label{};
+            as_.jmp(done);
+
+            as_.bind(interpret);
+            as_.mov(retReg, PrimopRes::INTERPRET);
+            as_.ret();
+
+            as_.bind(done);
         }; break;
 
         case OP_FFICALL: {

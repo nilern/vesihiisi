@@ -189,7 +189,6 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             }
         }
 
-        // TODO: JIT-compile the remaining bytecodes:
         switch (static_cast<Opcode>(*it++)) {
         case OP_MOVE: {
             uint8_t const destVReg = *it++;

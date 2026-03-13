@@ -117,8 +117,7 @@ void X64SYSVJIT::checkedHeapedUntagging(
 }
 
 void X64SYSVJIT::emitCall(
-    [[maybe_unused]]uint8_t inlineCacheIdx, // TODO: Make use of
-    uint8_t regCount, asmjit::Label const& interpret
+    uint8_t inlineCacheIdx, uint8_t regCount, asmjit::Label const& interpret
 ) {
     using namespace asmjit;
 
@@ -156,8 +155,26 @@ void X64SYSVJIT::emitCall(
     auto const callClosure = Label{};
     as_.je(callClosure);
 
-    // TODO: JIT multimethod cache probe:
-    as_.jmp(interpret);
+    // if (!eq(type, rt->types.multimethod)) goto interpret;
+    // auto const multiCalleeRef = HRef<Multimethod>::fromUnchecked(callee);
+    size_t const multimethodTypeOffset = rt_->typeOffset(offsetof(NamedTypes, multimethod));
+    as_.mov(goalTypeReg, x86::Mem{rtReg, int32_t(multimethodTypeOffset)});
+    as_.cmp(typeReg, goalTypeReg);
+    as_.jne(interpret);
+    // if (!eq(state->consts[inlineCacheIdx].get(), multiCalleeRef->methods().get()))
+    //     goto interpret;
+    x86::Gp const goalMethodsReg = x86::r11;
+    constLoad(goalMethodsReg, inlineCacheIdx);
+    x86::Gp const methodsReg = x86::r10;
+    as_.mov(methodsReg, x86::Mem{calleeGp, int32_t(Multimethod::methodsOffset())});
+    as_.cmp(goalMethodsReg, methodsReg);
+    as_.jne(interpret);
+    // state->regs[calleeReg] = state->consts[inlineCacheIdx + 1].get();
+    x86::Gp const cachedClosureReg = x86::r11;
+    constLoad(cachedClosureReg, inlineCacheIdx + 1);
+    as_.mov(x86::Mem{rtReg, int32_t(calleeOffset)}, cachedClosureReg);
+    // state->domainChecking = RT::DomainChecking::SPECULATE;
+    as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset())}, RT::DomainChecking::SPECULATE);
 
     as_.bind(callClosure);
     // HRef<Method>::fromUnchecked(calleePtr->method)->nativeCode()(rt);

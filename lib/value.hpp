@@ -616,6 +616,10 @@ public:
     SlotMut<HRef<Array>> methods() { return SlotMut{this, methods_}; }
 
     static HRef<Type> reify(struct RT const& state);
+
+    static size_t methodsOffset() {
+        return (char*)&((Multimethod*)nullptr)->methods_ - (char*)nullptr; // HACK
+    }
 };
 
 struct Continuation : FlexObject<Continuation, ORef> {

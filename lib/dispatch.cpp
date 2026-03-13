@@ -310,7 +310,7 @@ bool calleeClosure(RT* state, ORef callee, std::optional<uint8_t> inlineCacheIdx
         state->regs[calleeReg] = callee;
         return true;
     } else if (isa<Multimethod>(*state, callee)) {
-        HRef<Multimethod> const multiCalleeRef = HRef<Multimethod>::fromUnchecked(callee);
+        auto const multiCalleeRef = HRef<Multimethod>::fromUnchecked(callee);
 
         if (inlineCacheIdx) {
             if (eq(state->consts[*inlineCacheIdx].get(), multiCalleeRef->methods().get())) {

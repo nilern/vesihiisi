@@ -56,10 +56,11 @@ struct ZLoc {
     void print(RT const& state, FILE* dest) const;
 };
 
-void disassemble(RT const* state, FILE* dest, HRef<Method> methodRef);
+void disassemble(RT const* state, bool recursively, FILE* dest, HRef<Method> methodRef);
 
 [[maybe_unused]]
-void disassembleInstrAt(RT const* state, FILE* dest, HRef<Method> methodRef, size_t pc);
+void disassembleInstrAt(
+    RT const* state, bool recursively, FILE* dest, HRef<Method const> methodRef, size_t pc);
 
 [[maybe_unused]]
 Maybe<ZLoc> locatePc(HRef<Method> methodRef, size_t pc);

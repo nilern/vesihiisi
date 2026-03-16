@@ -32,7 +32,7 @@ class X64SYSVJIT {
 
     void emitCall(uint8_t inlineCacheIdx, uint8_t regCount, asmjit::Label const& interpret);
 
-    void naturalize(std::span<uint8_t const> bytecode);
+    void naturalize(Method const& method, std::span<uint8_t const> bytecode);
 
 public:
     X64SYSVJIT(RT& rt) :
@@ -186,7 +186,7 @@ void X64SYSVJIT::emitCall(
     as_.jmp(x86::Mem{calleeGp, 0});
 }
 
-void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
+void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytecode) {
     using namespace asmjit;
 
     auto const end = bytecode.end();
@@ -194,8 +194,15 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
         auto it = bytecode.begin() + static_cast<decltype(end)::difference_type>(Method::entryPc());
         it != end;
     ) {
+        auto const pc = size_t(std::distance(bytecode.begin(), it));
+
+        if (code_.logger()) {
+            FILE* const dest = logger_.file();
+            disassembleInstrAt(rt_, false, dest, HRef{&method}, pc);
+            putc('\n', dest);
+        }
+
         { // If this has been a `br(f)` target, bind label here:
-            auto const pc = size_t(std::distance(bytecode.begin(), it));
             std::optional<Label> const label = labels_.tryGet(pc);
             if (label) {
                 as_.bind(*label);
@@ -1090,7 +1097,7 @@ void X64SYSVJIT::jitMethod(Method& method) {
         as_.mov(pcReg, Method::entryPc());
         as_.mov(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, pcReg);
 
-        naturalize(method.code->items());
+        naturalize(method, method.code->items());
 
         // FIXME: Patch `call` code `MethodCode`s
     }

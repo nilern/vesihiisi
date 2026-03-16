@@ -92,7 +92,7 @@ public:
 
     void disassembleInstrBitmap(FILE* dest);
 
-    void disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t codeByte);
+    void disassembleNestedInstr(bool recursively, FILE* dest, size_t nesting, uint8_t codeByte);
 };
 
 class LocDisassembler : public Disassembler {
@@ -302,9 +302,12 @@ void Disassembler::disassembleInstrBitmap(FILE* dest) {
     }
 }
 
-void disassembleNested(RT const* state, FILE* dest, HRef<Method> methodRef, size_t nesting);
+void disassembleNested(
+    RT const* state, bool recursively, FILE* dest, HRef<Method> methodRef, size_t nesting);
 
-void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t codeByte) {
+void Disassembler::disassembleNestedInstr(
+    bool recursively, FILE* dest, size_t nesting, uint8_t codeByte
+) {
     ORef const* const consts = HRef<ArrayMut>::fromUnchecked(method->consts)->flexData();
 
     for (size_t j = 0; j < nesting; ++j) { fputc('\t', dest); }
@@ -365,7 +368,10 @@ void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t co
             HRef<Method> const innerMethod = HRef<Method>::fromUnchecked(c);
 
             fputc('\n', dest);
-            disassembleNested(state, dest, innerMethod, nesting + 1);
+
+            if (recursively) {
+                disassembleNested(state, recursively, dest, innerMethod, nesting + 1);
+            }
         }
     }; break;
 
@@ -380,9 +386,11 @@ void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t co
 
         fputc('\n', dest);
 
-        assert(isa<Method>(*state, c));
-        HRef<Method> const innerMethod = HRef<Method>::fromUnchecked(c);
-        disassembleNested(state, dest, innerMethod, nesting + 1);
+        if (recursively) {
+            assert(isa<Method>(*state, c));
+            HRef<Method> const innerMethod = HRef<Method>::fromUnchecked(c);
+            disassembleNested(state, recursively, dest, innerMethod, nesting + 1);
+        }
     }; break;
 
     case OP_KNOT: {
@@ -466,7 +474,9 @@ void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t co
 }
 
 // TODO: Print labels for BR(F) and their targets:
-void disassembleNested(RT const* state, FILE* dest, HRef<Method> methodRef, size_t nesting) {
+void disassembleNested(
+    RT const* state, bool recursively, FILE* dest, HRef<Method> methodRef, size_t nesting
+) {
     for (size_t j = 0; j < nesting; ++j) { putc('\t', dest); }
     putc('(', dest);
 
@@ -519,7 +529,7 @@ void disassembleNested(RT const* state, FILE* dest, HRef<Method> methodRef, size
                     }
                 }
 
-                dis->disassembleNestedInstr(dest, nesting, mlocOp.codeByte);
+                dis->disassembleNestedInstr(recursively, dest, nesting, mlocOp.codeByte);
 
                 if (mlocOp.loc.hasVal) {
                     auto const loc = mlocOp.loc.val;
@@ -538,16 +548,18 @@ void disassembleNested(RT const* state, FILE* dest, HRef<Method> methodRef, size
     }
 }
 
-void disassemble(RT const* state, FILE* dest, HRef<Method> methodRef) {
-    disassembleNested(state, dest, methodRef, 0);
+void disassemble(RT const* state, bool recursively, FILE* dest, HRef<Method> methodRef) {
+    disassembleNested(state, recursively, dest, methodRef, 0);
 }
 
-void disassembleInstrAt(RT const* state, FILE* dest, HRef<Method> method, size_t pc) {
+void disassembleInstrAt(
+    RT const* state, bool recursively, FILE* dest, HRef<Method const> method, size_t pc
+) {
     assert(isHeaped(method->code));
 
     auto dis = Disassembler{state, &*method, pc + 1};
     uint8_t const codeByte = HRef<ByteArray>::fromUnchecked(method->code)->items()[pc];
-    dis.disassembleNestedInstr(dest, 0, codeByte);
+    dis.disassembleNestedInstr(recursively, dest, 0, codeByte);
 }
 
 Maybe<ZLoc> locatePc(HRef<Method> method, size_t pc) {

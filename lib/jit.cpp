@@ -1024,16 +1024,14 @@ void X64SYSVJIT::jitMethod(Method& method) {
         x86::Gp const argcReg = x86::rsi;
         as_.mov(argcReg, x86::Mem{rtReg, int32_t(rt_->entryRegcOffset())});
         as_.sub(argcReg, firstArgReg);
-        // auto const arity = size_t(methodPtr->flexCount().val());
-        x86::Gp const arityReg = x86::r8;
-        as_.and_(arityReg, x86::Mem{methodPtrReg, int32_t(flexCountOffset)});
+        auto const arity = size_t(method.flexCount().val());
         if (!method.hasVarArg.val()) {
             // if (argc != arity) goto onDomainError;
-            as_.cmp(argcReg, arityReg);
+            as_.cmp(argcReg, uint8_t(arity));
             as_.jne(onDomainError);
         } else {
             // if (argc == arity) goto checkArgTypes;
-            as_.cmp(argcReg, arityReg);
+            as_.cmp(argcReg, uint8_t(arity));
             as_.je(checkArgTypes);
             // TODO: Generate (non-punting) code for this:
             // rt->domainChecking = checking;

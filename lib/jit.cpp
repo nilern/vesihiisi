@@ -135,7 +135,7 @@ void X64SYSVJIT::emitCall(
     as_.cmp(calleeGp, tagReg); // Actual NaN?
     as_.je(interpret);
     as_.test(calleeGp, tagReg); // `(callee.bits & tagMask) == heapedTag`?
-    auto const callHeaped = Label{};
+    Label const callHeaped = as_.new_anonymous_label("callHeaped");
     as_.je(callHeaped);
 
     as_.bind(callHeaped);
@@ -152,7 +152,7 @@ void X64SYSVJIT::emitCall(
     size_t const closureTypeOffset = rt_->typeOffset(offsetof(NamedTypes, closure));
     as_.mov(goalTypeReg, x86::Mem{rtReg, int32_t(closureTypeOffset)});
     as_.cmp(typeReg, goalTypeReg);
-    auto const callClosure = Label{};
+    Label const callClosure = as_.new_anonymous_label("callClosure");
     as_.je(callClosure);
 
     // if (!eq(type, rt->types.multimethod)) goto interpret;
@@ -255,7 +255,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             constLoad(cReg, constIdx);
 
             // if (!isHeaped(c)) goto interpret;
-            auto const interpret = Label{};
+            Label const interpret = as_.new_anonymous_label("interpret");
             heapedCheck(cReg, x86::r11, interpret);
             // Object* const obj = &*HRef<Object>::fromUnchecked(c);
             x86::Gp const objReg = x86::rsi;
@@ -297,7 +297,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             x86::Gp const tmpReg = x86::rax;
             as_.mov(tmpReg, 3);
             as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
-            auto const done = Label{};
+            Label const done = as_.new_anonymous_label("done");
             as_.jmp(done);
 
             as_.bind(interpret);
@@ -316,7 +316,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             constLoad(cReg, constIdx);
 
             // if (!isHeaped(c)) goto interpret;
-            auto const interpret = Label{};
+            Label const interpret = as_.new_anonymous_label("interpret");
             heapedCheck(cReg, x86::r11, interpret);
             // Object* const obj = &*HRef<Object>::fromUnchecked(c);
             x86::Gp const objReg = x86::rsi; // For consistency with OP_DEFINE & OP_GLOBAL_SET
@@ -348,7 +348,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             x86::Gp const tmpReg = x86::rax;
             as_.mov(tmpReg, 3);
             as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
-            auto const done = Label{};
+            Label const done = as_.new_anonymous_label("done");
             as_.jmp(done);
 
             as_.bind(interpret);
@@ -398,7 +398,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             x86::Gp const typesReg = retReg;
             as_.pop(rtReg);
 
-            auto const interpret = Label{};
+            Label const interpret = as_.new_anonymous_label("interpret");
             {
                 x86::Gp const typeReg = x86::r11;
                 x86::Gp const typeObjReg = x86::r10;
@@ -456,7 +456,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             size_t const instrSize = 4 + typeSetByteCount;
             as_.mov(tmpReg, instrSize);
             as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
-            auto const done = Label{};
+            Label const done = as_.new_anonymous_label("done");
             as_.jmp(done);
 
             as_.bind(interpret);
@@ -512,7 +512,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             as_.pop(knotReg);
             as_.pop(rtReg);
             as_.test(retReg, retReg);
-            auto const interpret = Label{};
+            Label const interpret = as_.new_anonymous_label("interpret");
             as_.je(interpret);
             // knot->val_ = v;
             as_.mov(x86::Mem{knotReg, int32_t(Knot::valOffset())}, vReg);
@@ -523,7 +523,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             x86::Gp const tmpReg = x86::rax;
             as_.mov(tmpReg, 3);
             as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
-            auto const done = Label{};
+            Label const done = as_.new_anonymous_label("done");
             as_.jmp(done);
 
             as_.bind(interpret);
@@ -559,7 +559,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             uint16_t displacement = *it++;
             displacement = (uint16_t)(displacement << UINT8_WIDTH) | *it++;
 
-            auto const dest = asmjit::Label{};
+            Label const dest = as_.new_anonymous_label("dest");
             size_t const destPc = size_t(std::distance(bytecode.begin(), it)) + displacement;
             labels_.set(destPc, dest);
 
@@ -577,7 +577,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             x86::Gp const falseReg = x86::r11;
             as_.movabs(falseReg, False.bits);
             as_.cmp(condReg, falseReg);
-            auto const truthyLabel = asmjit::Label{};
+            Label const truthyLabel = as_.new_anonymous_label("truthyLabel");
             as_.jne(truthyLabel);
             //     rt->pc += displacement;
             as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, displacement);
@@ -590,7 +590,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             uint16_t displacement = *it++;
             displacement = (uint16_t)(displacement << UINT8_WIDTH) | *it++;
 
-            auto const dest = asmjit::Label{};
+            Label const dest = as_.new_anonymous_label("dest");
             size_t const destPc = size_t(std::distance(bytecode.begin(), it)) + displacement;
             labels_.set(destPc, dest);
 
@@ -811,7 +811,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * retContReg;
             as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, taggedContReg);
 
-            auto const interpret = Label{};
+            Label const interpret = as_.new_anonymous_label("interpret");
             emitCall(inlineCacheIdx, regCount, interpret);
 
             // rt->pc += instrSize;
@@ -821,7 +821,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             size_t const instrSize = 4 + savesByteCount;
             as_.mov(tmpReg, instrSize);
             as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
-            auto const done = Label{};
+            Label const done = as_.new_anonymous_label("done");
             as_.jmp(done);
 
             as_.bind(interpret);
@@ -835,7 +835,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             uint8_t const inlineCacheIdx = *it++;
             uint8_t const regCount = *it++;
 
-            auto const interpret = Label{};
+            Label const interpret = as_.new_anonymous_label("interpret");
             emitCall(inlineCacheIdx, regCount, interpret);
 
             // rt->pc += 3;
@@ -844,7 +844,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             x86::Gp const tmpReg = x86::rax;
             as_.mov(tmpReg, 3);
             as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
-            auto const done = Label{};
+            Label const done = as_.new_anonymous_label("done");
             as_.jmp(done);
 
             as_.bind(interpret);
@@ -871,7 +871,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             // auto const codomain = HRef<Type>::fromUnchecked(anyCodomain);
             // Type* const codomainPtr = &*codomain;
             x86::Gp const codomainPtrReg = x86::r10;
-            auto const interpret = Label{};
+            Label const interpret = as_.new_anonymous_label("interpret");
             checkedHeapedUntagging(codomainPtrReg, codomainReg, x86::r9,
                                    rt_->typeOffset(offsetof(NamedTypes, type)), interpret);
 
@@ -932,7 +932,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
 
             // if (fRet) { res = Flonum{std::bit_cast<double>(rawRes)}; goto storeRes; }
             as_.test(fRetReg, fRetReg);
-            auto const storeRes = Label{};
+            Label const storeRes = as_.new_anonymous_label("storeRes");
             as_.jne(storeRes);
 
             if (!boxRet) {
@@ -967,7 +967,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             size_t const instrSize = 5 + unboxingsByteCount;
             as_.mov(tmpReg, instrSize);
             as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
-            auto const done = Label{};
+            Label const done = as_.new_anonymous_label("done");
             as_.jmp(done);
 
             as_.bind(interpret);
@@ -996,9 +996,9 @@ void X64SYSVJIT::jitMethod(Method& method) {
         as_.mov(x86::rax, PrimopRes::CALL_BYTECODE);
         as_.ret();
     } else {
-        Label const checkArgTypes = as_.new_label();
-        Label const onDomainError = as_.new_label();
-        Label const domainChecked = as_.new_label();
+        Label const checkArgTypes = as_.new_anonymous_label("checkArgTypes");
+        Label const onDomainError = as_.new_anonymous_label("onDomainError");
+        Label const domainChecked = as_.new_anonymous_label("domainChecked");
 
         // HRef<Method> const method = rt->regs[calleeReg]->method;
         x86::Gp const methodReg = x86::rax;

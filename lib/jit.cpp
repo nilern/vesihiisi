@@ -996,9 +996,7 @@ void X64SYSVJIT::jitMethod(Method& method) {
         as_.mov(x86::rax, PrimopRes::CALL_BYTECODE);
         as_.ret();
     } else {
-        auto const doCheckDomain = as_.new_label();
-        auto const doCheckSpeculation = as_.new_label();
-        auto const argsChecked = as_.new_label();
+        Label const domainChecked = as_.new_label();
 
         // HRef<Method> const method = rt->regs[calleeReg]->method;
         x86::Gp const methodReg = x86::rax;
@@ -1016,45 +1014,44 @@ void X64SYSVJIT::jitMethod(Method& method) {
         // rt->domainChecking = RT::DomainChecking::CHECK;
         as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset())}, RT::DomainChecking::CHECK);
 
-        // if (checking == RT::DomainChecking::SKIP) goto argsChecked;
+        // if (checking == RT::DomainChecking::SKIP) goto domainChecked;
         as_.cmp(checkingReg, RT::DomainChecking::SKIP);
-        as_.je(argsChecked);
+        as_.je(domainChecked);
 
-        as_.bind(doCheckDomain);
-        // if (domainChecking == RT::DomainChecking::CHECK) {
-        as_.cmp(checkingReg, RT::DomainChecking::CHECK);
-        as_.jne(doCheckSpeculation);
-        //     size_t const argc = state->entryRegc - firstArgReg;
-        x86::Gp const argcReg = x86::rdx;
+        // size_t const argc = state->entryRegc - firstArgReg;
+        x86::Gp const argcReg = x86::rsi;
         as_.mov(argcReg, x86::Mem{rtReg, int32_t(rt_->entryRegcOffset())});
         as_.sub(argcReg, firstArgReg);
-        //     auto const arity = size_t(methodPtr->flexCount().val());
-        x86::Gp const arityReg = x86::rsi;
+        // auto const arity = size_t(methodPtr->flexCount().val());
+        x86::Gp const arityReg = x86::r8;
         as_.and_(arityReg, x86::Mem{methodPtrReg, int32_t(flexCountOffset)});
-        //     if (argc != arity) {
+        // if (argc == arity) goto domainChecked;
         as_.cmp(argcReg, arityReg);
-        as_.je(argsChecked);
+        as_.je(domainChecked);
         if (method.hasVarArg.val()) {
             // TODO: Generate (non-punting) code for this:
+            // rt->domainChecking = checking;
+            as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset())}, checkingReg);
+            // return PrimopRes::CALL_BYTECODE;
             as_.mov(retReg, PrimopRes::CALL_BYTECODE);
             as_.ret();
         }
         // Domain check failed. Fall back to interpreter to face consequences (and do redundant
         // work, but realistically a logic error like this should end the entire process):
-        as_.mov(retReg, PrimopRes::CALL_BYTECODE);
-        as_.ret();
-        //     }
-        // }
-
-        as_.bind(doCheckSpeculation);
-        // TODO: Generate (non-punting) code for this:
+        // rt->domainChecking = checking;
+        as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset())}, checkingReg);
+        // return PrimopRes::CALL_BYTECODE;
         as_.mov(retReg, PrimopRes::CALL_BYTECODE);
         as_.ret();
 
-        as_.bind(argsChecked);
+        as_.bind(domainChecked);
 
         if (method.hasVarArg.val()) {
             // TODO: Generate (non-punting) code for vararg reification:
+            // rt->domainChecking = RT::DomainChecking::SKIP;
+            as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset())},
+                    RT::DomainChecking::SKIP);
+            // return PrimopRes::CALL_BYTECODE;
             as_.mov(retReg, PrimopRes::CALL_BYTECODE);
             as_.ret();
         }

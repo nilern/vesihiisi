@@ -1001,14 +1001,14 @@ void X64SYSVJIT::jitMethod(Method& method) {
         auto const argsChecked = as_.new_label();
 
         // HRef<Method> const method = rt->regs[calleeReg]->method;
-        x86::Gp const methodReg = x86::r10;
+        x86::Gp const methodReg = x86::rax;
         size_t const calleeOffset = rt_->regsOffset() + sizeof(ORef) * calleeReg;
         as_.movabs(methodReg, payloadMask);
         as_.and_(methodReg, x86::Mem{rtReg, int32_t(calleeOffset)});
         as_.mov(methodReg, x86::Mem{methodReg, offsetof(Closure, method)});
 
         // RT::DomainChecking const checking = rt->domainChecking;
-        x86::Gp const checkingReg = x86::rax;
+        x86::Gp const checkingReg = x86::rcx;
         as_.mov(checkingReg, x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset())});
         // rt->domainChecking = RT::DomainChecking::CHECK;
         as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset())}, RT::DomainChecking::CHECK);
@@ -1022,14 +1022,14 @@ void X64SYSVJIT::jitMethod(Method& method) {
         as_.cmp(checkingReg, RT::DomainChecking::CHECK);
         as_.jne(doCheckSpeculation);
         //     size_t const argc = state->entryRegc - firstArgReg;
-        x86::Gp const argcReg = x86::rax;
+        x86::Gp const argcReg = x86::rdx;
         as_.mov(argcReg, x86::Mem{rtReg, int32_t(rt_->entryRegcOffset())});
         as_.sub(argcReg, firstArgReg);
         //     auto const arity = size_t(method->flexCount().val());
-        x86::Gp const tmpArityReg = x86::r9;
+        x86::Gp const tmpArityReg = x86::rsi;
         as_.movabs(tmpArityReg, payloadMask);
         as_.and_(tmpArityReg, methodReg);
-        x86::Gp const arityReg = x86::r11;
+        x86::Gp const arityReg = x86::r8;
         as_.and_(arityReg, x86::Mem{tmpArityReg, int32_t(flexCountOffset)});
         //     if (argc != arity) {
         as_.cmp(argcReg, arityReg);
@@ -1062,13 +1062,13 @@ void X64SYSVJIT::jitMethod(Method& method) {
         // rt->method = method;
         as_.mov(x86::Mem{rtReg, int32_t(rt_->methodOffset())}, methodReg);
         // rt->code = HRef<ByteArray>::fromUnchecked(method->code)->flexData();
-        x86::Gp const codeReg = x86::r11;
+        x86::Gp const codeReg = x86::rcx;
         as_.movabs(codeReg, payloadMask);
         as_.and_(methodReg, codeReg);
         as_.and_(codeReg, x86::Mem{methodReg, offsetof(Method, code)});
         as_.mov(x86::Mem{rtReg, int32_t(rt_->codeOffset())}, codeReg);
         // rt->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->itemsMut().data();
-        x86::Gp const constsReg = x86::r11;
+        x86::Gp const constsReg = x86::rcx;
         as_.movabs(constsReg, payloadMask);
         as_.and_(constsReg, x86::Mem{methodReg, offsetof(Method, consts)});
         size_t const constsObjOffset = rt_->constsOffset();
@@ -1079,7 +1079,7 @@ void X64SYSVJIT::jitMethod(Method& method) {
         // rt->pc = Method::entryPc();
         // `as_.mov(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, Method::entryPc());` was
         // storing an incorrect value for some reason :(:
-        x86::Gp const pcReg = x86::r11;
+        x86::Gp const pcReg = x86::rcx;
         as_.mov(pcReg, Method::entryPc());
         as_.mov(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, pcReg);
 

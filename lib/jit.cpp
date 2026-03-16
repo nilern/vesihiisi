@@ -727,9 +727,10 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             // storing an incorrect value for some reason :(:
             as_.mov(tmpReg, 4);
             as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
-            // auto const closure = HRef<Closure>::fromUnchecked(rt->regs[closureReg]);
+            // Closure const* const closure = &*HRef<Closure>::fromUnchecked(rt->regs[closureReg]);
             size_t const closureOffset = rt_->regsOffset() + sizeof(ORef) * closureVReg;
-            as_.mov(tmpReg, x86::Mem{rtReg, int32_t(closureOffset)});
+            as_.movabs(tmpReg, payloadMask);
+            as_.and_(tmpReg, x86::Mem{rtReg, int32_t(closureOffset)});
             // rt->regs[destReg] = closure->clovers()[cloverIdx];
             size_t const cloverOffset = Closure::flexOffset + sizeof(ORef) * cloverIdxVReg;
             as_.mov(tmpReg, x86::Mem{tmpReg, int32_t(cloverOffset)});

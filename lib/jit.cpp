@@ -996,6 +996,8 @@ void X64SYSVJIT::jitMethod(Method& method) {
         as_.mov(x86::rax, PrimopRes::CALL_BYTECODE);
         as_.ret();
     } else {
+        Label const checkArgTypes = as_.new_label();
+        Label const onDomainError = as_.new_label();
         Label const domainChecked = as_.new_label();
 
         // HRef<Method> const method = rt->regs[calleeReg]->method;
@@ -1025,10 +1027,14 @@ void X64SYSVJIT::jitMethod(Method& method) {
         // auto const arity = size_t(methodPtr->flexCount().val());
         x86::Gp const arityReg = x86::r8;
         as_.and_(arityReg, x86::Mem{methodPtrReg, int32_t(flexCountOffset)});
-        // if (argc == arity) goto domainChecked;
-        as_.cmp(argcReg, arityReg);
-        as_.je(domainChecked);
-        if (method.hasVarArg.val()) {
+        if (!method.hasVarArg.val()) {
+            // if (argc != arity) goto onDomainError;
+            as_.cmp(argcReg, arityReg);
+            as_.jne(onDomainError);
+        } else {
+            // if (argc == arity) goto checkArgTypes;
+            as_.cmp(argcReg, arityReg);
+            as_.je(checkArgTypes);
             // TODO: Generate (non-punting) code for this:
             // rt->domainChecking = checking;
             as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset())}, checkingReg);
@@ -1036,6 +1042,12 @@ void X64SYSVJIT::jitMethod(Method& method) {
             as_.mov(retReg, PrimopRes::CALL_BYTECODE);
             as_.ret();
         }
+
+        as_.bind(checkArgTypes);
+        // TODO
+        as_.jmp(domainChecked);
+
+        as_.bind(onDomainError);
         // Domain check failed. Fall back to interpreter to face consequences (and do redundant
         // work, but realistically a logic error like this should end the entire process):
         // rt->domainChecking = checking;

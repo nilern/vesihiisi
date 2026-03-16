@@ -770,6 +770,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             // );
             x86::Gp const retPcReg = x86::rdx; // ABI arg 3
             ptrdiff_t const retPc = std::distance(bytecode.begin(), it);
+            it += sizeof(MethodCode);
             as_.movabs(retPcReg, Fixnum{int64_t(retPc)}.bits);
             x86::Gp const countReg = x86::rcx; // ABI arg 4
             as_.movabs(countReg, Fixnum{int64_t(saveCount)}.bits);
@@ -818,7 +819,7 @@ void X64SYSVJIT::naturalize(std::span<uint8_t const> bytecode) {
             // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, instrSize);` was
             // storing an incorrect value for some reason :(:
             x86::Gp const tmpReg = x86::rax;
-            size_t const instrSize = 4 + savesByteCount;
+            size_t const instrSize = 4 + savesByteCount + sizeof(MethodCode);
             as_.mov(tmpReg, instrSize);
             as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
             Label const done = as_.new_anonymous_label("done");
@@ -1090,6 +1091,8 @@ void X64SYSVJIT::jitMethod(Method& method) {
         as_.mov(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, pcReg);
 
         naturalize(method.code->items());
+
+        // FIXME: Patch `call` code `MethodCode`s
     }
 
     MethodCode* entryCode = reinterpret_cast<MethodCode*>(method.code->itemsMut().data());

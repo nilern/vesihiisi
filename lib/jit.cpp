@@ -1006,17 +1006,15 @@ void X64SYSVJIT::jitMethod(Method& method) {
         as_.and_(x86::r10, x86::Mem{rtReg, int32_t(calleeOffset)});
         as_.mov(x86::r10, x86::Mem{x86::r10, offsetof(Closure, method)});
 
-        // RT::DomainChecking const domainChecking = rt->domainChecking;
-        // if (domainChecking == RT::DomainChecking::SKIP) {
+        // RT::DomainChecking const checking = rt->domainChecking;
         as_.mov(x86::rax, x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset())});
-        as_.cmp(x86::rax, RT::DomainChecking::SKIP);
-        as_.jne(doCheckDomain);
-        //      domainChecking = RT::DomainChecking::CHECK;
+        // rt->domainChecking = RT::DomainChecking::CHECK;
         as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset())},
                 RT::DomainChecking::CHECK);
-        //      goto argsChecked;
-        as_.jmp(argsChecked);
-        // }
+
+        // if (checking == RT::DomainChecking::SKIP) goto argsChecked;
+        as_.cmp(x86::rax, RT::DomainChecking::SKIP);
+        as_.je(argsChecked);
 
         as_.bind(doCheckDomain);
         // if (domainChecking == RT::DomainChecking::CHECK) {

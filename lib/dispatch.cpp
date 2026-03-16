@@ -6,7 +6,7 @@
 namespace {
 
 [[nodiscard]]
-PrimopRes doCheckDomain(
+PrimopRes doCheckDomainWithPrejudice(
     RT* state, HRef<Closure> callee, ORef const* args, size_t argc
 ) {
     assert(isa<Method>(*state, callee->method));
@@ -149,25 +149,18 @@ bool closureIsApplicableToList(RT const* state, Closure const* callee, ORef args
     return true;
 }
 
-DomainCheckRes checkDomainForArgs(
-    RT* state, HRef<Closure> calleeRef, ORef const* args, size_t argc
-) {
-    if (state->domainChecking == RT::DomainChecking::SKIP) {
-        state->domainChecking = RT::DomainChecking::CHECK;
-        return DomainCheckRes::OK;
-    }
-
-    switch (state->domainChecking) {
+DomainCheckRes doCheckDomain(RT* rt, HRef<Closure> calleeRef, ORef const* args, size_t argc) {
+    switch (rt->domainChecking) {
     case RT::DomainChecking::CHECK: {
-        if (doCheckDomain(state, calleeRef, args, argc) == PrimopRes::ERROR) {
+        if (doCheckDomainWithPrejudice(rt, calleeRef, args, argc) == PrimopRes::ERROR) {
             return DomainCheckRes::ERROR;
         }
     }; break;
 
     case RT::DomainChecking::SPECULATE: {
-        state->domainChecking = RT::DomainChecking::CHECK;
+        rt->domainChecking = RT::DomainChecking::CHECK;
 
-        if (!closureIsApplicable(state, &*calleeRef, args, argc)) {
+        if (!closureIsApplicable(rt, &*calleeRef, args, argc)) {
             return DomainCheckRes::MISSPECULATION;
         }
     }; break;
@@ -178,37 +171,26 @@ DomainCheckRes checkDomainForArgs(
     return DomainCheckRes::OK;
 }
 
-// TODO: DRY wrt. `checkDomainForArgs`:
-DomainCheckRes checkDomain(RT* state) {
-    if (state->domainChecking == RT::DomainChecking::SKIP) {
-        state->domainChecking = RT::DomainChecking::CHECK;
+DomainCheckRes checkDomainForArgs(RT* rt, HRef<Closure> calleeRef, ORef const* args, size_t argc) {
+    if (rt->domainChecking == RT::DomainChecking::SKIP) {
+        rt->domainChecking = RT::DomainChecking::CHECK;
         return DomainCheckRes::OK;
     }
 
-    assert(isa<Closure>(*state, state->regs[calleeReg]));
-    HRef<Closure> const calleeRef = HRef<Closure>::fromUnchecked(state->regs[calleeReg]);
-    ORef const* const args = state->regs + firstArgReg;
-    size_t const argc = state->entryRegc - firstArgReg;
+    return doCheckDomain(rt, calleeRef, args, argc);
+}
 
-    switch (state->domainChecking) {
-    case RT::DomainChecking::CHECK: {
-        if (doCheckDomain(state, calleeRef, args, argc) == PrimopRes::ERROR) {
-            return DomainCheckRes::ERROR;
-        }
-    }; break;
-
-    case RT::DomainChecking::SPECULATE: {
-        state->domainChecking = RT::DomainChecking::CHECK;
-
-        if (!closureIsApplicable(state, &*calleeRef, args, argc)) {
-            return DomainCheckRes::MISSPECULATION;
-        }
-    }; break;
-
-    case RT::DomainChecking::SKIP: PANIC("Unreachable code reached.");
+DomainCheckRes checkDomain(RT* rt) {
+    if (rt->domainChecking == RT::DomainChecking::SKIP) {
+        rt->domainChecking = RT::DomainChecking::CHECK;
+        return DomainCheckRes::OK;
     }
 
-    return DomainCheckRes::OK;
+    assert(isa<Closure>(*rt, rt->regs[calleeReg]));
+    HRef<Closure> const calleeRef = HRef<Closure>::fromUnchecked(rt->regs[calleeReg]);
+    ORef const* const args = rt->regs + firstArgReg;
+    size_t const argc = rt->entryRegc - firstArgReg;
+    return doCheckDomain(rt, calleeRef, args, argc);
 }
 
 /// Returns applicable closure from `callee`, `Default` if none is found.

@@ -790,7 +790,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             { // TODO: DRY wrt. `OP_CLOSURE`:
                 // ORef* spillSlots = const_cast<ORef*>(cont->saves().data());
                 x86::Gp const spillsReg = x86::r11;
-                as_.lea(spillsReg, x86::Mem{spillsReg, int32_t(Continuation::flexOffset)});
+                as_.lea(spillsReg, x86::Mem{contReg, int32_t(Continuation::flexOffset)});
 
                 x86::Gp const vReg = x86::r10;
                 size_t spillIdx = 0;

@@ -1031,13 +1031,20 @@ void X64SYSVJIT::jitMethod(Method& method) {
         untagging(methodPtrReg, methodReg);
 
         // RT::DomainChecking const checking = rt->domainChecking;
-        x86::Gp const checkingReg = x86::rdx;
-        as_.movzx(checkingReg,
-                  x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset()),
-                           sizeof(RT::DomainChecking)});
+        x86::Gp const checkingReg = x86::dl;
+        as_.mov(checkingReg,
+                x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset()), sizeof(RT::DomainChecking)});
         // rt->domainChecking = RT::DomainChecking::CHECK;
         as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset()), sizeof(RT::DomainChecking)},
                 RT::DomainChecking::CHECK);
+
+        // rt->domainChecking = checking;
+        as_.mov(x86::Mem{rtReg,
+                         int32_t(rt_->domainCheckingOffset()), sizeof(RT::DomainChecking)},
+                checkingReg);
+        // return PrimopRes::CALL_BYTECODE;
+        as_.mov(retReg, PrimopRes::CALL_BYTECODE);
+        as_.ret();
 
         // if (checking == RT::DomainChecking::SKIP) goto domainChecked;
         as_.cmp(checkingReg, RT::DomainChecking::SKIP);

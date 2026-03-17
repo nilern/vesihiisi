@@ -235,10 +235,8 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
 
             // rt->regs[destReg] = rt->regs[srcReg];
-            size_t const srcOffset = rt_->regsOffset() + sizeof(ORef) * srcVReg;
-            as_.mov(tmpReg, x86::Mem{rtReg, int32_t(srcOffset)});
-            size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
-            as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, tmpReg);
+            vregLoad(tmpReg, srcVReg);
+            vregStore(destVReg, tmpReg);
         }; break;
 
         case OP_SWAP: {
@@ -253,15 +251,13 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
 
             // ORef const tmp = rt->regs[reg1];
-            size_t const reg1Offset = rt_->regsOffset() + sizeof(ORef) * reg1;
-            as_.mov(tmpReg, x86::Mem{rtReg, int32_t(reg1Offset)});
+            vregLoad(tmpReg, reg1);
             // rt->regs[reg1] = rt->regs[reg2];
-            x86::Gp const tmpReg2 = x86::r11;
-            size_t const reg2Offset = rt_->regsOffset() + sizeof(ORef) * reg2;
-            as_.mov(tmpReg2, x86::Mem{rtReg, int32_t(reg2Offset)});
-            as_.mov(x86::Mem{rtReg, int32_t(reg1Offset)}, tmpReg2);
+            x86::Gp const tmpReg2 = x86::rcx;
+            vregLoad(tmpReg2, reg2);
+            vregStore(reg1, tmpReg2);
             // rt->regs[reg2] = tmp;
-            as_.mov(x86::Mem{rtReg, int32_t(reg2Offset)}, tmpReg);
+            vregStore(reg2, tmpReg);
         }; break;
 
         // These differ only in the initial linkage, which we do not JIT-compile:

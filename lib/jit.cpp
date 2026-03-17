@@ -21,6 +21,9 @@ class X64SYSVJIT {
     void tagging(asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src, uint64_t tag);
     void untagging(asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src);
 
+    void vregLoad(asmjit::x86::Gp const& dest, uint8_t vRegIdx);
+    void vregStore(uint8_t vRegIdx, asmjit::x86::Gp const& src);
+
     void constLoad(asmjit::x86::Gp const& cReg, uint8_t constIdx);
 
     void heapedCheck(
@@ -66,6 +69,21 @@ void X64SYSVJIT::untagging(asmjit::x86::Gp const& dest, asmjit::x86::Gp const& s
 
     as_.movabs(dest, payloadMask);
     as_.and_(dest, src);
+}
+
+/// `ORef const dest = rt->regs[vRegIdx]`
+void X64SYSVJIT::vregLoad(asmjit::x86::Gp const& dest, uint8_t vRegIdx) {
+    using namespace asmjit;
+
+    size_t const vregOffset = rt_->regsOffset() + sizeof(ORef) * vRegIdx;
+    as_.mov(dest, x86::Mem{rtReg, int32_t(vregOffset)});
+}
+
+void X64SYSVJIT::vregStore(uint8_t vRegIdx, asmjit::x86::Gp const& src) {
+    using namespace asmjit;
+
+    size_t const vregOffset = rt_->regsOffset() + sizeof(ORef) * vRegIdx;
+    as_.mov(x86::Mem{rtReg, int32_t(vregOffset)}, src);
 }
 
 /// `ORef const c = rt->consts[constIdx].get();`
@@ -126,19 +144,12 @@ void X64SYSVJIT::emitCall(
 
     // ORef const callee = rt->regs[calleeReg];
     x86::Gp const calleeGp = x86::rax;
-    size_t const calleeOffset = rt_->regsOffset() + sizeof(ORef) * calleeReg;
-    as_.mov(calleeGp, x86::Mem{rtReg, int32_t(calleeOffset)});
+    vregLoad(calleeGp, calleeReg);
 
     // if (!isHeaped(callee)) goto interpret;
     x86::Gp const tagReg = x86::r11;
-    as_.movabs(tagReg, nonFlonumTag);
-    as_.cmp(calleeGp, tagReg); // Actual NaN?
-    as_.je(interpret);
-    as_.test(calleeGp, tagReg); // `(callee.bits & tagMask) == heapedTag`?
-    Label const callHeaped = as_.new_anonymous_label("callHeaped");
-    as_.je(callHeaped);
+    heapedCheck(calleeGp, tagReg, interpret);
 
-    as_.bind(callHeaped);
     // Object* const calleePtr = &*callee;
     as_.movabs(tagReg, payloadMask);
     as_.and_(calleeGp, tagReg);
@@ -172,7 +183,7 @@ void X64SYSVJIT::emitCall(
     // state->regs[calleeReg] = state->consts[inlineCacheIdx + 1].get();
     x86::Gp const cachedClosureReg = x86::r11;
     constLoad(cachedClosureReg, inlineCacheIdx + 1);
-    as_.mov(x86::Mem{rtReg, int32_t(calleeOffset)}, cachedClosureReg);
+    vregStore(calleeReg, cachedClosureReg);
     // state->domainChecking = RT::DomainChecking::SPECULATE;
     as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset())}, RT::DomainChecking::SPECULATE);
 

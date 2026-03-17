@@ -30,6 +30,10 @@ dev: vesihiisi-dev
 run-dev: vesihiisi-dev
 	VSHS_HOME=. rlwrap ./vesihiisi-dev -d
 
+.PHONY: debug-dev
+debug-dev: vesihiisi-dev
+	VSHS_HOME=. gdb --args ./vesihiisi-dev -d
+
 .PHONY: test
 test: test/test_heap.out test/test_arena.out test/test_bitset.out test/test_sparsearray.out
 	./test/test_heap.out

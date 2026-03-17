@@ -79,6 +79,7 @@ void X64SYSVJIT::vregLoad(asmjit::x86::Gp const& dest, uint8_t vRegIdx) {
     as_.mov(dest, x86::Mem{rtReg, int32_t(vregOffset)});
 }
 
+/// `rt->regs[vRegIdx] = src`
 void X64SYSVJIT::vregStore(uint8_t vRegIdx, asmjit::x86::Gp const& src) {
     using namespace asmjit;
 
@@ -140,7 +141,7 @@ void X64SYSVJIT::emitCall(
     using namespace asmjit;
 
     // rt->entryRegc = regCount;
-    as_.mov(x86::Mem{rtReg, int32_t(rt_->entryRegcOffset())}, regCount);
+    as_.mov(x86::Mem{rtReg, int32_t(rt_->entryRegcOffset()), sizeof(RT::entryRegc)}, regCount);
 
     // ORef const callee = rt->regs[calleeReg];
     x86::Gp const calleeGp = x86::rax;
@@ -185,7 +186,8 @@ void X64SYSVJIT::emitCall(
     constLoad(cachedClosureReg, inlineCacheIdx + 1);
     vregStore(calleeReg, cachedClosureReg);
     // state->domainChecking = RT::DomainChecking::SPECULATE;
-    as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset())}, RT::DomainChecking::SPECULATE);
+    as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset()), sizeof(RT::DomainChecking)},
+            RT::DomainChecking::SPECULATE);
 
     as_.bind(callClosure);
     // HRef<Method>::fromUnchecked(calleePtr->method)->nativeCode()(rt);
@@ -1032,9 +1034,12 @@ void X64SYSVJIT::jitMethod(Method& method) {
 
         // RT::DomainChecking const checking = rt->domainChecking;
         x86::Gp const checkingReg = x86::rdx;
-        as_.mov(checkingReg, x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset())});
+        as_.movzx(checkingReg,
+                  x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset()),
+                           sizeof(RT::DomainChecking)});
         // rt->domainChecking = RT::DomainChecking::CHECK;
-        as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset())}, RT::DomainChecking::CHECK);
+        as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset()), sizeof(RT::DomainChecking)},
+                RT::DomainChecking::CHECK);
 
         // if (checking == RT::DomainChecking::SKIP) goto domainChecked;
         as_.cmp(checkingReg, RT::DomainChecking::SKIP);
@@ -1042,7 +1047,7 @@ void X64SYSVJIT::jitMethod(Method& method) {
 
         // size_t const argc = state->entryRegc - firstArgReg;
         x86::Gp const argcReg = x86::rsi;
-        as_.mov(argcReg, x86::Mem{rtReg, int32_t(rt_->entryRegcOffset())});
+        as_.movzx(argcReg, x86::Mem{rtReg, int32_t(rt_->entryRegcOffset()), sizeof(RT::entryRegc)});
         as_.sub(argcReg, firstArgReg);
         auto const arity = size_t(method.flexCount().val());
         if (!method.hasVarArg.val()) {
@@ -1055,7 +1060,9 @@ void X64SYSVJIT::jitMethod(Method& method) {
             as_.je(checkArgTypes);
             // TODO: Generate (non-punting) code for this:
             // rt->domainChecking = checking;
-            as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset())}, checkingReg);
+            as_.mov(x86::Mem{rtReg,
+                             int32_t(rt_->domainCheckingOffset()), sizeof(RT::DomainChecking)},
+                    checkingReg);
             // return PrimopRes::CALL_BYTECODE;
             as_.mov(retReg, PrimopRes::CALL_BYTECODE);
             as_.ret();
@@ -1069,7 +1076,8 @@ void X64SYSVJIT::jitMethod(Method& method) {
         // Domain check failed. Fall back to interpreter to face consequences (and do redundant
         // work, but realistically a logic error like this should end the entire process):
         // rt->domainChecking = checking;
-        as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset())}, checkingReg);
+        as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset()), sizeof(RT::DomainChecking)},
+                checkingReg);
         // return PrimopRes::CALL_BYTECODE;
         as_.mov(retReg, PrimopRes::CALL_BYTECODE);
         as_.ret();
@@ -1079,7 +1087,8 @@ void X64SYSVJIT::jitMethod(Method& method) {
         if (method.hasVarArg.val()) {
             // TODO: Generate (non-punting) code for vararg reification:
             // rt->domainChecking = RT::DomainChecking::SKIP;
-            as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset())},
+            as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset()),
+                             sizeof(RT::DomainChecking)},
                     RT::DomainChecking::SKIP);
             // return PrimopRes::CALL_BYTECODE;
             as_.mov(retReg, PrimopRes::CALL_BYTECODE);

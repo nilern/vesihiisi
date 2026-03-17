@@ -386,11 +386,8 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
 
             // rt->regs[destReg] = rt->consts[constIdx].get();
-            as_.mov(tmpReg, x86::Mem{rtReg, int32_t(rt_->constsOffset())});
-            size_t const constOffset = sizeof(ORef) * constIdx;
-            as_.mov(tmpReg, x86::Mem{tmpReg, int32_t(constOffset)});
-            size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
-            as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, tmpReg);
+            constLoad(tmpReg, constIdx);
+            vregStore(destVReg, tmpReg);
         }; break;
 
         case OP_SPECIALIZE: {

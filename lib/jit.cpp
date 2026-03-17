@@ -33,6 +33,8 @@ class X64SYSVJIT {
         asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src, asmjit::x86::Gp const& tmp,
         size_t typeOffsetInRT, asmjit::Label const& onWrongType);
 
+    void interpreterFallback();
+
     void emitCall(uint8_t inlineCacheIdx, uint8_t regCount, asmjit::Label const& interpret);
 
     void naturalize(Method const& method, std::span<uint8_t const> bytecode);
@@ -133,6 +135,13 @@ void X64SYSVJIT::checkedHeapedUntagging(
     as_.cmp(typeReg, x86::Mem{rtReg, int32_t(typeOffsetInRT)});
     as_.jne(onWrongType);
     // auto dest = static_cast<T*>(obj);
+}
+
+void X64SYSVJIT::interpreterFallback() {
+    using namespace asmjit;
+
+    as_.mov(retReg, PrimopRes::INTERPRET);
+    as_.ret();
 }
 
 void X64SYSVJIT::emitCall(
@@ -317,8 +326,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             as_.jmp(done);
 
             as_.bind(interpret);
-            as_.mov(retReg, PrimopRes::INTERPRET);
-            as_.ret();
+            interpreterFallback();
 
             as_.bind(done);
         }; break;
@@ -368,8 +376,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             as_.jmp(done);
 
             as_.bind(interpret);
-            as_.mov(retReg, PrimopRes::INTERPRET);
-            as_.ret();
+            interpreterFallback();
 
             as_.bind(done);
         }; break;
@@ -473,8 +480,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             as_.jmp(done);
 
             as_.bind(interpret);
-            as_.mov(retReg, PrimopRes::INTERPRET);
-            as_.ret();
+            interpreterFallback();
 
             as_.bind(done);
         }; break;
@@ -540,8 +546,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             as_.jmp(done);
 
             as_.bind(interpret);
-            as_.mov(retReg, PrimopRes::INTERPRET);
-            as_.ret();
+            interpreterFallback();
 
             as_.bind(done);
         }; break;
@@ -843,8 +848,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             as_.jmp(done);
 
             as_.bind(interpret);
-            as_.mov(retReg, PrimopRes::INTERPRET);
-            as_.ret();
+            interpreterFallback();
 
             as_.bind(done);
         }; break;
@@ -866,8 +870,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             as_.jmp(done);
 
             as_.bind(interpret);
-            as_.mov(retReg, PrimopRes::INTERPRET);
-            as_.ret();
+            interpreterFallback();
 
             as_.bind(done);
         }; break;
@@ -989,8 +992,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             as_.jmp(done);
 
             as_.bind(interpret);
-            as_.mov(retReg, PrimopRes::INTERPRET);
-            as_.ret();
+            interpreterFallback();
 
             as_.bind(done);
         }; break;

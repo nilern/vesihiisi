@@ -34,7 +34,7 @@ class X64SYSVJIT {
         asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src, asmjit::x86::Gp const& tmp,
         size_t typeOffsetInRT, asmjit::Label const& onWrongType);
 
-    void interpreterFallback();
+    void interpreterFallback(size_t pc);
 
     void emitCall(uint8_t inlineCacheIdx, uint8_t regCount, asmjit::Label const& interpret);
 
@@ -140,9 +140,12 @@ void X64SYSVJIT::checkedHeapedUntagging(
     // auto dest = static_cast<T*>(obj);
 }
 
-void X64SYSVJIT::interpreterFallback() {
+void X64SYSVJIT::interpreterFallback(size_t pc) {
     using namespace asmjit;
 
+    x86::Gp const tmpReg = x86::rax;
+    as_.movabs(tmpReg, pc);
+    as_.mov(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
     as_.mov(retReg, PrimopRes::INTERPRET);
     as_.ret();
 }
@@ -239,14 +242,8 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             uint8_t const destVReg = *it++;
             uint8_t const srcVReg = *it++;
 
-            x86::Gp const tmpReg = x86::rax;
-            // rt->pc += 3;
-            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 3);` was
-            // storing an incorrect value for some reason :(:
-            as_.mov(tmpReg, 3);
-            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
-
             // rt->regs[destReg] = rt->regs[srcReg];
+            x86::Gp const tmpReg = x86::rax;
             vregLoad(tmpReg, srcVReg);
             vregStore(destVReg, tmpReg);
         }; break;
@@ -256,12 +253,6 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             uint8_t const reg2 = *it++;
 
             x86::Gp const tmpReg = x86::rax;
-            // rt->pc += 3;
-            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 3);` was
-            // storing an incorrect value for some reason :(:
-            as_.mov(tmpReg, 3);
-            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
-
             // ORef const tmp = rt->regs[reg1];
             vregLoad(tmpReg, reg1);
             // rt->regs[reg1] = rt->regs[reg2];
@@ -275,6 +266,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
         // These differ only in the initial linkage, which we do not JIT-compile:
         case OP_DEFINE:
         case OP_GLOBAL_SET: {
+            size_t const startPc = size_t(std::distance(bytecode.begin(), it)) - 1;
             uint8_t const constIdx = *it++;
             uint8_t const srcVReg = *it++;
 
@@ -318,23 +310,17 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             as_.je(interpret);
             // var->val_ = v;
             as_.mov(x86::Mem{objReg, int32_t(Var::valOffset())}, vReg);
-
-            // rt->pc += 3;
-            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 3);` was
-            // storing an incorrect value for some reason :(:
-            x86::Gp const tmpReg = x86::rax;
-            as_.mov(tmpReg, 3);
-            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
             Label const done = as_.new_anonymous_label("done");
             as_.jmp(done);
 
             as_.bind(interpret);
-            interpreterFallback();
+            interpreterFallback(startPc);
 
             as_.bind(done);
         }; break;
 
         case OP_GLOBAL: {
+            size_t const startPc = size_t(std::distance(bytecode.begin(), it)) - 1;
             uint8_t const destVReg = *it++;
             uint8_t const constIdx = *it++;
 
@@ -368,18 +354,11 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             // rt->regs[destReg] = v;
             size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
             as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, vReg);
-
-            // rt->pc += 3;
-            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 3);` was
-            // storing an incorrect value for some reason :(:
-            x86::Gp const tmpReg = x86::rax;
-            as_.mov(tmpReg, 3);
-            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
             Label const done = as_.new_anonymous_label("done");
             as_.jmp(done);
 
             as_.bind(interpret);
-            interpreterFallback();
+            interpreterFallback(startPc);
 
             as_.bind(done);
         }; break;
@@ -388,19 +367,14 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             uint8_t const destVReg = *it++;
             uint8_t const constIdx = *it++;
 
-            x86::Gp const tmpReg = x86::rax;
-            // rt->pc += 3;
-            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 3);` was
-            // storing an incorrect value for some reason :(:
-            as_.mov(tmpReg, 3);
-            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
-
             // rt->regs[destReg] = rt->consts[constIdx].get();
+            x86::Gp const tmpReg = x86::rax;
             constLoad(tmpReg, constIdx);
             vregStore(destVReg, tmpReg);
         }; break;
 
         case OP_SPECIALIZE: {
+            size_t const startPc = size_t(std::distance(bytecode.begin(), it)) - 1;
             uint8_t const destVReg = *it++;
             uint8_t const constIdx = *it++;
             uint8_t const typeSetByteCount = *it++;
@@ -471,32 +445,17 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             // rt->regs[destReg] = method;
             size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
             as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, methodReg);
-
-            // rt->pc += instrSize;
-            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, instrSize);` was
-            // storing an incorrect value for some reason :(:
-            x86::Gp const tmpReg = x86::rax;
-            size_t const instrSize = 4 + typeSetByteCount;
-            as_.mov(tmpReg, instrSize);
-            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
             Label const done = as_.new_anonymous_label("done");
             as_.jmp(done);
 
             as_.bind(interpret);
-            interpreterFallback();
+            interpreterFallback(startPc);
 
             as_.bind(done);
         }; break;
 
         case OP_KNOT: {
             uint8_t const destVReg = *it++;
-
-            x86::Gp const tmpReg = x86::rax;
-            // rt->pc += 2;
-            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 2);` was
-            // storing an incorrect value for some reason :(:
-            as_.mov(tmpReg, 2);
-            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
 
             // rt->regs[destReg] = allocKnot(rt);
             as_.push(rtReg);
@@ -508,6 +467,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
         }; break;
 
         case OP_KNOT_INIT: {
+            size_t const startPc = size_t(std::distance(bytecode.begin(), it)) - 1;
             uint8_t const knotVReg = *it++;
             uint8_t const srcVReg = *it++;
 
@@ -538,18 +498,11 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             as_.je(interpret);
             // knot->val_ = v;
             as_.mov(x86::Mem{knotReg, int32_t(Knot::valOffset())}, vReg);
-
-            // rt->pc += 3;
-            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 3);` was
-            // storing an incorrect value for some reason :(:
-            x86::Gp const tmpReg = x86::rax;
-            as_.mov(tmpReg, 3);
-            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
             Label const done = as_.new_anonymous_label("done");
             as_.jmp(done);
 
             as_.bind(interpret);
-            interpreterFallback();
+            interpreterFallback(startPc);
 
             as_.bind(done);
         }; break;
@@ -557,13 +510,6 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
         case OP_KNOT_GET: {
             uint8_t const destVReg = *it++;
             uint8_t const knotVReg = *it++;
-
-            x86::Gp const tmpReg = x86::rax;
-            // rt->pc += 3;
-            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 3);` was
-            // storing an incorrect value for some reason :(:
-            as_.mov(tmpReg, 3);
-            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
 
             // auto const knot = HRef<Knot>::fromUnchecked(rt->regs[knotReg]);
             x86::Gp const knotReg = x86::rax;
@@ -584,27 +530,14 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             size_t const destPc = size_t(std::distance(bytecode.begin(), it)) + displacement;
             brLabels_.set(destPc, dest);
 
-            x86::Gp const tmpReg = x86::rax;
-            // rt->pc += 4;
-            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 4);` was
-            // storing an incorrect value for some reason :(:
-            as_.mov(tmpReg, 4);
-            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
-
-            // if (eq(rt->regs[condReg], False)) {
+            // if (eq(rt->regs[condReg], False)) goto dest;
             x86::Gp const condReg = x86::rax;
             size_t const condOffset = rt_->regsOffset() + sizeof(ORef) * condVReg;
             as_.mov(condReg, x86::Mem{rtReg, int32_t(condOffset)});
             x86::Gp const falseReg = x86::r11;
             as_.movabs(falseReg, False.bits);
             as_.cmp(condReg, falseReg);
-            Label const truthyLabel = as_.new_anonymous_label("truthyLabel");
-            as_.jne(truthyLabel);
-            //     rt->pc += displacement;
-            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, displacement);
-            as_.jmp(dest);
-            // }
-            as_.bind(truthyLabel);
+            as_.je(dest);
         }; break;
 
         case OP_BR: {
@@ -615,7 +548,6 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             size_t const destPc = size_t(std::distance(bytecode.begin(), it)) + displacement;
             brLabels_.set(destPc, dest);
 
-            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 3 + displacement);
             as_.jmp(dest);
         }; break;
 
@@ -676,14 +608,6 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             }
             it += closesByteCount;
 
-            // rt->pc += instrSize;
-            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, instrSize);` was
-            // storing an incorrect value for some reason :(:
-            x86::Gp const tmpReg = x86::rax;
-            size_t const instrSize = 4 + closesByteCount;
-            as_.mov(tmpReg, instrSize);
-            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
-
             // HRef<Method> const method = HRef<Method>::fromUnchecked(rt->regs[methodReg]);
             x86::Gp const methodReg = x86::rsi; // ABI arg 2
             size_t const methodOffset = rt_->regsOffset() + sizeof(ORef) * methodVReg;
@@ -736,12 +660,6 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             uint8_t const cloverIdxVReg = *it++;
 
             x86::Gp const tmpReg = x86::rax;
-            // rt->pc += 4;
-            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 4);` was
-            // storing an incorrect value for some reason :(:
-            as_.mov(tmpReg, 4);
-            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
-
             // Closure const* const closure = &*HRef<Closure>::fromUnchecked(rt->regs[closureReg]);
             size_t const closureOffset = rt_->regsOffset() + sizeof(ORef) * closureVReg;
             as_.movabs(tmpReg, payloadMask);
@@ -759,12 +677,6 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             uint8_t const cloverIdxVReg = *it++;
 
             x86::Gp const tmpReg = x86::rax;
-            // rt->pc += 4;
-            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 4);` was
-            // storing an incorrect value for some reason :(:
-            as_.mov(tmpReg, 4);
-            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
-
             // Continuation* const cont = &*HRef<Continuation>::fromUnchecked(rt->regs[contReg]);
             size_t const contOffset = rt_->regsOffset() + sizeof(ORef) * contVReg;
             as_.movabs(tmpReg, payloadMask);
@@ -777,6 +689,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
         }; break;
 
         case OP_CALL: {
+            size_t const startPc = size_t(std::distance(bytecode.begin(), it)) - 1;
             uint8_t const inlineCacheIdx = *it++;
             uint8_t const regCount  = *it++;
             uint8_t const savesByteCount = *it++;
@@ -848,12 +761,13 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             as_.jmp(done);
 
             as_.bind(interpret);
-            interpreterFallback();
+            interpreterFallback(startPc);
 
             as_.bind(done);
         }; break;
 
         case OP_TAILCALL: {
+            size_t const startPc = size_t(std::distance(bytecode.begin(), it)) - 1;
             uint8_t const inlineCacheIdx = *it++;
             uint8_t const regCount = *it++;
 
@@ -861,10 +775,11 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             emitCall(inlineCacheIdx, regCount, interpret);
 
             as_.bind(interpret);
-            interpreterFallback();
+            interpreterFallback(startPc);
         }; break;
 
         case OP_FFICALL: {
+            size_t const startPc = size_t(std::distance(bytecode.begin(), it)) - 1;
             uint8_t const destVReg = *it++;
             uint8_t const codomainVReg = *it++;
             uint8_t const argc = *it++;
@@ -970,18 +885,11 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             // rt->regs[destReg] = res;
             size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
             as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, resReg);
-
-            // rt->pc += instrSize;
-            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, instrSize);` was
-            // storing an incorrect value for some reason :(:
-            size_t const instrSize = 5 + unboxingsByteCount;
-            as_.mov(tmpReg, instrSize);
-            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
             Label const done = as_.new_anonymous_label("done");
             as_.jmp(done);
 
             as_.bind(interpret);
-            interpreterFallback();
+            interpreterFallback(startPc);
 
             as_.bind(done);
         }; break;

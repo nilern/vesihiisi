@@ -168,7 +168,7 @@ void X64SYSVJIT::emitCall(
     x86::Gp const tagReg = x86::r11;
     heapedCheck(calleeGp, tagReg, interpret);
 
-    // Object* const calleePtr = &*callee;
+    // Object* calleePtr = &*callee;
     as_.movabs(tagReg, payloadMask);
     as_.and_(calleeGp, tagReg);
     // HRef<Type> const type = callee->header()->type();
@@ -185,7 +185,7 @@ void X64SYSVJIT::emitCall(
     as_.je(callClosure);
 
     // if (!eq(type, rt->types.multimethod)) goto interpret;
-    // auto const multiCalleeRef = HRef<Multimethod>::fromUnchecked(callee);
+    // auto const multiCallee = reinterpret_cast<Multimethod*>(calleePtr);
     size_t const multimethodTypeOffset = rt_->typeOffset(offsetof(NamedTypes, multimethod));
     as_.mov(goalTypeReg, x86::Mem{rtReg, int32_t(multimethodTypeOffset)});
     as_.cmp(typeReg, goalTypeReg);
@@ -198,10 +198,14 @@ void X64SYSVJIT::emitCall(
     as_.mov(methodsReg, x86::Mem{calleeGp, int32_t(Multimethod::methodsOffset())});
     as_.cmp(goalMethodsReg, methodsReg);
     as_.jne(interpret);
-    // state->regs[calleeReg] = state->consts[inlineCacheIdx + 1].get();
+    // auto const cachedClosure =
+    //     HRef<Closure>::fromUnchecked(state->consts[inlineCacheIdx + 1].get());
+    // state->regs[calleeReg] = cachedClosure;
+    // calleePtr = &*cachedClosure;
     x86::Gp const cachedClosureReg = x86::r11;
     constLoad(cachedClosureReg, inlineCacheIdx + 1);
     vregStore(calleeReg, cachedClosureReg);
+    untagging(calleeGp, cachedClosureReg);
     // state->domainChecking = RT::DomainChecking::SPECULATE;
     as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset()), sizeof(RT::DomainChecking)},
             RT::DomainChecking::SPECULATE);

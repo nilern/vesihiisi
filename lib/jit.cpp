@@ -105,6 +105,8 @@ void X64SYSVJIT::constLoad(asmjit::x86::Gp const& cReg, uint8_t constIdx) {
 void X64SYSVJIT::heapedCheck(
     asmjit::x86::Gp const& v, asmjit::x86::Gp const& tagReg, asmjit::Label const& onImmediate
 ) {
+    assert(v != tagReg);
+
     using namespace asmjit;
 
     as_.movabs(tagReg, nonFlonumTag);

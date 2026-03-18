@@ -680,7 +680,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             size_t const contOffset = rt_->regsOffset() + sizeof(ORef) * contVReg;
             as_.movabs(tmpReg, payloadMask);
             as_.and_(tmpReg, x86::Mem{rtReg, int32_t(contOffset)});
-            // rt->regs[destReg] = cont->saves()[cloverIdx];
+            // rt->regs[destReg] = cont->saves()[saveeIdx];
             size_t const saveeOffset = Continuation::flexOffset + sizeof(ORef) * saveeIdxVReg;
             as_.mov(tmpReg, x86::Mem{tmpReg, int32_t(saveeOffset)});
             vregStore(destVReg, tmpReg);

@@ -280,21 +280,12 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             x86::Gp const cReg = x86::rax;
             constLoad(cReg, constIdx);
 
-            // if (!isHeaped(c)) goto interpret;
+            // if (!isa<Var>(rt, c)) goto interpret;
+            x86::Gp const varReg = x86::rsi; // For consistency with OP_DEFINE & OP_GLOBAL_SET
             Label const interpret = as_.new_anonymous_label("interpret");
-            heapedCheck(cReg, x86::r11, interpret);
-            // Object* const obj = &*HRef<Object>::fromUnchecked(c);
-            x86::Gp const objReg = x86::rsi;
-            untagging(objReg, cReg);
-            // HRef<Type> const type = obj->header()->type();
-            x86::Gp const typeReg = x86::r10;
-            as_.movabs(typeReg, heapedTag);
-            as_.or_(typeReg, x86::Mem{objReg, int32_t(Object::typeOffset())});
-            // if (!eq(type, rt->types.var)) goto interpret;
-            size_t const varTypeOffset = rt_->typeOffset(offsetof(NamedTypes, var));
-            as_.cmp(typeReg, x86::Mem{rtReg, int32_t(varTypeOffset)});
-            as_.jne(interpret);
-            // auto const var = static_cast<Var*>(obj);
+            checkedHeapedUntagging(varReg, cReg, x86::r11,
+                                   rt_->typeOffset(offsetof(NamedTypes, var)), interpret);
+            // Var const* const var = &*HRef<Var>::fromUnchecked(v);
 
             // ORef const v = rt->regs[srcReg];
             x86::Gp const vReg = x86::r11;
@@ -302,19 +293,19 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             // // var->val().set(*rt, v);
             // if (!Heap::writeBarrier(&rt->heap, var)) goto interpret;
             as_.push(rtReg);
-            as_.push(objReg);
+            as_.push(varReg);
             as_.push(vReg);
             x86::Gp const heapReg = x86::rdi;
             as_.lea(heapReg, x86::Mem{rtReg, int32_t(rt_->heapOffset())});
             Heap::writeBarrier_t writeBarrier = &Heap::writeBarrier;
             as_.call(writeBarrier);
             as_.pop(vReg);
-            as_.pop(objReg);
+            as_.pop(varReg);
             as_.pop(rtReg);
             as_.test(retReg, retReg);
             as_.je(interpret);
             // var->val_ = v;
-            as_.mov(x86::Mem{objReg, int32_t(Var::valOffset())}, vReg);
+            as_.mov(x86::Mem{varReg, int32_t(Var::valOffset())}, vReg);
             Label const done = as_.new_anonymous_label("done");
             as_.jmp(done);
 
@@ -333,25 +324,16 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             x86::Gp const cReg = x86::rax;
             constLoad(cReg, constIdx);
 
-            // if (!isHeaped(c)) goto interpret;
+            // if (!isa<Var>(rt, c)) goto interpret;
+            x86::Gp const varReg = x86::rsi; // For consistency with OP_DEFINE & OP_GLOBAL_SET
             Label const interpret = as_.new_anonymous_label("interpret");
-            heapedCheck(cReg, x86::r11, interpret);
-            // Object* const obj = &*HRef<Object>::fromUnchecked(c);
-            x86::Gp const objReg = x86::rsi; // For consistency with OP_DEFINE & OP_GLOBAL_SET
-            untagging(objReg, cReg);
-            // HRef<Type> const type = obj->header()->type();
-            x86::Gp const typeReg = x86::r10;
-            as_.movabs(typeReg, heapedTag);
-            as_.or_(typeReg, x86::Mem{objReg, int32_t(Object::typeOffset())});
-            // if (!eq(type, rt->types.var)) goto interpret;
-            size_t const varTypeOffset = rt_->typeOffset(offsetof(NamedTypes, var));
-            as_.cmp(typeReg, x86::Mem{rtReg, int32_t(varTypeOffset)});
-            as_.jne(interpret);
-            // auto const var = static_cast<Var*>(obj);
+            checkedHeapedUntagging(varReg, cReg, x86::r11,
+                                   rt_->typeOffset(offsetof(NamedTypes, var)), interpret);
+            // Var const* const var = &*HRef<Var>::fromUnchecked(v);
 
             // ORef const v = var->val().get();
             x86::Gp const vReg = x86::r11;
-            as_.mov(vReg, x86::Mem{objReg, int32_t(Var::valOffset())});
+            as_.mov(vReg, x86::Mem{varReg, int32_t(Var::valOffset())});
             // if (eq(v, rt->singletons.unbound)) goto interpret;
             size_t const unboundOffset = rt_->singletonOffset(offsetof(NamedSingletons, unbound));
             as_.cmp(vReg, x86::Mem{rtReg, int32_t(unboundOffset)});

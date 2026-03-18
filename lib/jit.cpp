@@ -16,7 +16,8 @@ class X64SYSVJIT {
     asmjit::FileLogger logger_;
     asmjit::CodeHolder code_;
     asmjit::x86::Assembler as_;
-    SmallMap<size_t, asmjit::Label> labels_;
+    SmallMap<size_t, asmjit::Label> brLabels_;
+    SmallMap<size_t, asmjit::Label> retLabels_;
 
     void tagging(asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src, uint64_t tag);
     void untagging(asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src);
@@ -39,6 +40,8 @@ class X64SYSVJIT {
 
     void naturalize(Method const& method, std::span<uint8_t const> bytecode);
 
+    void patchRets(std::span<uint8_t> bytecode, void* moduleBase);
+
 public:
     X64SYSVJIT(RT& rt) :
         rt_{&rt}, logger_{stdout}, code_{},
@@ -46,7 +49,7 @@ public:
         // `code_.init()` before constructing the assembler so use the comma operator to make that
         // possible in initializer list. Oh the joys of C++ initialization:
         as_{(code_.init(rt_->jit.environment(), rt_->jit.cpu_features()), &code_)},
-        labels_{}
+        brLabels_{}, retLabels_{}
     {
         if (!eq(rt.debug->val().get(), False)) { code_.set_logger(&logger_); }
     }
@@ -225,7 +228,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
         }
 
         { // If this has been a `br(f)` target, bind label here:
-            std::optional<Label> const label = labels_.tryGet(pc);
+            std::optional<Label> const label = brLabels_.tryGet(pc);
             if (label) {
                 as_.bind(*label);
             }
@@ -579,7 +582,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
 
             Label const dest = as_.new_anonymous_label("dest");
             size_t const destPc = size_t(std::distance(bytecode.begin(), it)) + displacement;
-            labels_.set(destPc, dest);
+            brLabels_.set(destPc, dest);
 
             x86::Gp const tmpReg = x86::rax;
             // rt->pc += 4;
@@ -610,7 +613,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
 
             Label const dest = as_.new_anonymous_label("dest");
             size_t const destPc = size_t(std::distance(bytecode.begin(), it)) + displacement;
-            labels_.set(destPc, dest);
+            brLabels_.set(destPc, dest);
 
             as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 3 + displacement);
             as_.jmp(dest);
@@ -791,7 +794,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             //    rt, callerMethod, Fixnum{int64_t(rt->pc)}, Fixnum{int64_t(saveCount)}
             // );
             x86::Gp const retPcReg = x86::rdx; // ABI arg 3
-            ptrdiff_t const retPc = std::distance(bytecode.begin(), it);
+            auto const retPc = size_t(std::distance(bytecode.begin(), it));
             it += sizeof(MethodCode);
             as_.movabs(retPcReg, Fixnum{int64_t(retPc)}.bits);
             x86::Gp const countReg = x86::rcx; // ABI arg 4
@@ -836,6 +839,10 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
 
             Label const interpret = as_.new_anonymous_label("interpret");
             emitCall(inlineCacheIdx, regCount, interpret);
+
+            Label const retLabel = as_.new_anonymous_label("ret");
+            as_.bind(retLabel);
+            retLabels_.set(retPc, retLabel);
 
             Label const done = as_.new_anonymous_label("done");
             as_.jmp(done);
@@ -982,6 +989,17 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
     }
 }
 
+void X64SYSVJIT::patchRets(std::span<uint8_t> bytecode, void* moduleBase) {
+    for (auto const& retMapping : retLabels_) {
+        size_t const pc = retMapping.key;
+        size_t const nativeOffset = code_.label_offset_from_base(retMapping.value);
+        auto const codePtr = asmjit::ptr_as_func<MethodCode>(moduleBase, nativeOffset);
+
+        assert(pc % alignof(MethodCode) == 0);
+        *reinterpret_cast<MethodCode*>(bytecode.data() + pc) = codePtr;
+    }
+}
+
 void X64SYSVJIT::jitMethod(Method& method) {
     using namespace asmjit;
 
@@ -1107,17 +1125,20 @@ void X64SYSVJIT::jitMethod(Method& method) {
 
         naturalize(method, method.code->items());
 
-        // FIXME: Patch `call` code `MethodCode`s
-    }
+        MethodCode entryCode;
+        if (asmjit::Error const err = rt_->jit.add(&entryCode, &code_); err != Error::kOk) {
+            PANIC("JIT miscompilation: %s", asmjit::DebugUtils::error_as_string(err));
+        }
+        *reinterpret_cast<MethodCode*>(method.code->itemsMut().data()) = entryCode;
 
-    MethodCode* entryCode = reinterpret_cast<MethodCode*>(method.code->itemsMut().data());
-    if (asmjit::Error const err = rt_->jit.add(entryCode, &code_); err != Error::kOk) {
-        PANIC("JIT miscompilation: %s", asmjit::DebugUtils::error_as_string(err));
+        if (code_.logger()) {
+            fprintf(logger_.file(), ";; Entry point at %p\n", entryCode);
+        }
+
+        patchRets(method.code->itemsMut(), reinterpret_cast<void*>(entryCode));
     }
 }
 
-void jitCompile(RT& rt, Method& method) {
-    X64SYSVJIT{rt}.jitMethod(method);
-}
+void jitCompile(RT& rt, Method& method) { X64SYSVJIT{rt}.jitMethod(method); }
 
 } // namespace

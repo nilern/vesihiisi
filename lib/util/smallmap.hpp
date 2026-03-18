@@ -33,4 +33,8 @@ public:
             entries_.emplace_back(k, v);
         }
     }
+
+    using const_iterator = Entry const*;
+    const_iterator begin() const { return entries_.data(); }
+    const_iterator end() const { return begin() + entries_.size(); }
 };

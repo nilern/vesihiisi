@@ -837,13 +837,6 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             Label const interpret = as_.new_anonymous_label("interpret");
             emitCall(inlineCacheIdx, regCount, interpret);
 
-            // rt->pc += instrSize;
-            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, instrSize);` was
-            // storing an incorrect value for some reason :(:
-            x86::Gp const tmpReg = x86::rax;
-            size_t const instrSize = 4 + savesByteCount + sizeof(MethodCode);
-            as_.mov(tmpReg, instrSize);
-            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
             Label const done = as_.new_anonymous_label("done");
             as_.jmp(done);
 
@@ -860,19 +853,8 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             Label const interpret = as_.new_anonymous_label("interpret");
             emitCall(inlineCacheIdx, regCount, interpret);
 
-            // rt->pc += 3;
-            // `as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, 3);` was
-            // storing an incorrect value for some reason :(:
-            x86::Gp const tmpReg = x86::rax;
-            as_.mov(tmpReg, 3);
-            as_.add(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
-            Label const done = as_.new_anonymous_label("done");
-            as_.jmp(done);
-
             as_.bind(interpret);
             interpreterFallback();
-
-            as_.bind(done);
         }; break;
 
         case OP_FFICALL: {

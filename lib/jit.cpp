@@ -268,7 +268,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
         // These differ only in the initial linkage, which we do not JIT-compile:
         case OP_DEFINE:
         case OP_GLOBAL_SET: {
-            size_t const startPc = size_t(std::distance(bytecode.begin(), it)) - 1;
+            auto const startPc = size_t(std::distance(bytecode.begin(), it) - 1);
             uint8_t const constIdx = *it++;
             uint8_t const srcVReg = *it++;
 
@@ -322,7 +322,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
         }; break;
 
         case OP_GLOBAL: {
-            size_t const startPc = size_t(std::distance(bytecode.begin(), it)) - 1;
+            auto const startPc = size_t(std::distance(bytecode.begin(), it) - 1);
             uint8_t const destVReg = *it++;
             uint8_t const constIdx = *it++;
 
@@ -376,7 +376,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
         }; break;
 
         case OP_SPECIALIZE: {
-            size_t const startPc = size_t(std::distance(bytecode.begin(), it)) - 1;
+            auto const startPc = size_t(std::distance(bytecode.begin(), it) - 1);
             uint8_t const destVReg = *it++;
             uint8_t const constIdx = *it++;
             uint8_t const typeSetByteCount = *it++;
@@ -469,7 +469,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
         }; break;
 
         case OP_KNOT_INIT: {
-            size_t const startPc = size_t(std::distance(bytecode.begin(), it)) - 1;
+            auto const startPc = size_t(std::distance(bytecode.begin(), it) - 1);
             uint8_t const knotVReg = *it++;
             uint8_t const srcVReg = *it++;
 
@@ -689,7 +689,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
         }; break;
 
         case OP_CALL: {
-            size_t const startPc = size_t(std::distance(bytecode.begin(), it)) - 1;
+            auto const startPc = size_t(std::distance(bytecode.begin(), it) - 1);
             uint8_t const inlineCacheIdx = *it++;
             uint8_t const regCount  = *it++;
             uint8_t const savesByteCount = *it++;
@@ -767,7 +767,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
         }; break;
 
         case OP_TAILCALL: {
-            size_t const startPc = size_t(std::distance(bytecode.begin(), it)) - 1;
+            auto const startPc = size_t(std::distance(bytecode.begin(), it) - 1);
             uint8_t const inlineCacheIdx = *it++;
             uint8_t const regCount = *it++;
 
@@ -779,7 +779,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
         }; break;
 
         case OP_FFICALL: {
-            size_t const startPc = size_t(std::distance(bytecode.begin(), it)) - 1;
+            auto const startPc = size_t(std::distance(bytecode.begin(), it) - 1);
             uint8_t const destVReg = *it++;
             uint8_t const codomainVReg = *it++;
             uint8_t const argc = *it++;

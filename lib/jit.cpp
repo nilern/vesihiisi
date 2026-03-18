@@ -294,8 +294,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
 
             // ORef const v = rt->regs[srcReg];
             x86::Gp const vReg = x86::r11;
-            size_t const srcOffset = rt_->regsOffset() + sizeof(ORef) * srcVReg;
-            as_.mov(vReg, x86::Mem{rtReg, int32_t(srcOffset)});
+            vregLoad(vReg, srcVReg);
             // // var->val().set(*rt, v);
             // if (!Heap::writeBarrier(&rt->heap, var)) goto interpret;
             as_.push(rtReg);
@@ -354,8 +353,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             as_.cmp(vReg, x86::Mem{rtReg, int32_t(unboundOffset)});
             as_.je(interpret);
             // rt->regs[destReg] = v;
-            size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
-            as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, vReg);
+            vregStore(destVReg, vReg);
             Label const done = as_.new_anonymous_label("done");
             as_.jmp(done);
 
@@ -410,8 +408,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
                         if ((byte >> bitIdx) & 1) {
                             // ORef const maybeType = rt->regs[regIdx];
-                            size_t const regOffset = rt_->regsOffset() + sizeof(ORef) * regIdx;
-                            as_.mov(typeReg, x86::Mem{rtReg, int32_t(regOffset)});
+                            vregLoad(typeReg, uint8_t(regIdx));
 
                             // if (!isa<Type>(*rt, maybeType)) goto interpret;
                             // (Incidentally `Type* const typeObj` but not used here:)
@@ -445,8 +442,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             as_.pop(rtReg);
 
             // rt->regs[destReg] = method;
-            size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
-            as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, methodReg);
+            vregStore(destVReg, methodReg);
             Label const done = as_.new_anonymous_label("done");
             as_.jmp(done);
 
@@ -464,8 +460,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             as_.call(allocKnot);
             as_.pop(rtReg);
             x86::Gp const knotReg = retReg;
-            size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
-            as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, knotReg);
+            vregStore(destVReg, knotReg);
         }; break;
 
         case OP_KNOT_INIT: {
@@ -481,8 +476,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
 
             // ORef const v = rt->regs[srcReg];
             x86::Gp const vReg = x86::r11;
-            size_t const srcOffset = rt_->regsOffset() + sizeof(ORef) * srcVReg;
-            as_.mov(vReg, x86::Mem{rtReg, int32_t(srcOffset)});
+            vregLoad(vReg, srcVReg);
             // // knot->val().set(*rt, v);
             // if (!Heap::writeBarrier(&rt->heap, var)) goto interpret;
             as_.push(rtReg);
@@ -515,12 +509,10 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
 
             // auto const knot = HRef<Knot>::fromUnchecked(rt->regs[knotReg]);
             x86::Gp const knotReg = x86::rax;
-            size_t const knotOffset = rt_->regsOffset() + sizeof(ORef) * knotVReg;
-            as_.mov(knotReg, x86::Mem{rtReg, int32_t(knotOffset)});
+            vregLoad(knotReg, knotVReg);
             // rt->regs[destReg] = knot->val().get();
             as_.mov(knotReg, x86::Mem{knotReg, int32_t(Knot::valOffset())});
-            size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
-            as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, knotReg);
+            vregStore(destVReg, knotReg);
         }; break;
 
         case OP_BRF: {
@@ -534,8 +526,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
 
             // if (eq(rt->regs[condReg], False)) goto dest;
             x86::Gp const condReg = x86::rax;
-            size_t const condOffset = rt_->regsOffset() + sizeof(ORef) * condVReg;
-            as_.mov(condReg, x86::Mem{rtReg, int32_t(condOffset)});
+            vregLoad(condReg, condVReg);
             x86::Gp const falseReg = x86::r11;
             as_.movabs(falseReg, False.bits);
             as_.cmp(condReg, falseReg);
@@ -612,8 +603,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
 
             // HRef<Method> const method = HRef<Method>::fromUnchecked(rt->regs[methodReg]);
             x86::Gp const methodReg = x86::rsi; // ABI arg 2
-            size_t const methodOffset = rt_->regsOffset() + sizeof(ORef) * methodVReg;
-            as_.mov(methodReg, x86::Mem{rtReg, int32_t(methodOffset)});
+            vregLoad(methodReg, methodVReg);
             // Closure* const closure = allocClosure(rt, method, Fixnum{int64_t(cloverCount)});
             x86::Gp const countReg = x86::rdx; // ABI arg 3
             as_.movabs(countReg, Fixnum{int64_t(cloverCount)}.bits);
@@ -636,8 +626,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
                         if ((byte >> bitIdx) & 1) {
                             // clovers[cloverIdx] = rt->regs[regIdx];
-                            size_t const regOffset = rt_->regsOffset() + sizeof(ORef) * regIdx;
-                            as_.mov(vReg, x86::Mem{rtReg, int32_t(regOffset)});
+                            vregLoad(vReg, uint8_t(regIdx));
                             size_t const cloverOffset = sizeof(ORef) * cloverIdx;
                             as_.mov(x86::Mem{cloversReg, int32_t(cloverOffset)}, vReg);
 
@@ -652,8 +641,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             // rt->regs[destReg] = HRef{closure};
             x86::Gp const taggedClosureReg = x86::r11;
             tagging(taggedClosureReg, closureReg, heapedTag);
-            size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
-            as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, taggedClosureReg);
+            vregStore(destVReg, taggedClosureReg);
         }; break;
 
         case OP_CLOVER: {
@@ -731,8 +719,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
                     for (size_t bitIdx = 0; bitIdx < UINT8_WIDTH; ++bitIdx) {
                         if ((byte >> bitIdx) & 1) {
                             // spillSlots[spillIdx] = rt->regs[regIdx];
-                            size_t const regOffset = rt_->regsOffset() + sizeof(ORef) * regIdx;
-                            as_.mov(vReg, x86::Mem{rtReg, int32_t(regOffset)});
+                            vregLoad(vReg, uint8_t(regIdx));
                             size_t const cloverOffset = sizeof(ORef) * spillIdx;
                             as_.mov(x86::Mem{spillsReg, int32_t(cloverOffset)}, vReg);
 
@@ -747,8 +734,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             // rt->regs[retContReg] = HRef{cont};
             x86::Gp const taggedContReg = x86::r11;
             tagging(taggedContReg, contReg, heapedTag);
-            size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * retContReg;
-            as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, taggedContReg);
+            vregStore(retContReg, taggedContReg);
 
             Label const interpret = as_.new_anonymous_label("interpret");
             emitCall(inlineCacheIdx, regCount, interpret);
@@ -790,8 +776,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
 
             // ORef const anyCodomain = rt->regs[codomainReg];
             x86::Gp codomainReg = x86::r11;
-            size_t const codomainOffset = rt_->regsOffset() + sizeof(ORef) * codomainVReg;
-            as_.mov(codomainReg, x86::Mem{rtReg, int32_t(codomainOffset)});
+            vregLoad(codomainReg, codomainVReg);
             // if (!isa<Type>(*rt, anyCodomain)) goto interpret;
             // auto const codomain = HRef<Type>::fromUnchecked(anyCodomain);
             // Type* const codomainPtr = &*codomain;
@@ -821,8 +806,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             // ORef const anyF = rt->regs[codomainVReg + 1];
             x86::Gp const fReg = x86::r10;
             x86::Gp const fPtrReg = x86::rdi; // ABI arg 1
-            size_t const fOffset = rt_->regsOffset() + sizeof(ORef) * (codomainVReg + 1);
-            as_.mov(fReg, x86::Mem{rtReg, int32_t(fOffset)});
+            vregLoad(fReg, codomainVReg + 1);
             // if (!isa<Pointer>(*rt, anyF)) goto interpret;
             // Pointer* const fPtr = &*HRef<Pointer>::fromUnchecked(anyF);
             checkedHeapedUntagging(fPtrReg, fReg, tmpReg,
@@ -883,8 +867,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
 
             as_.bind(storeRes);
             // rt->regs[destReg] = res;
-            size_t const destOffset = rt_->regsOffset() + sizeof(ORef) * destVReg;
-            as_.mov(x86::Mem{rtReg, int32_t(destOffset)}, resReg);
+            vregStore(destVReg, resReg);
             Label const done = as_.new_anonymous_label("done");
             as_.jmp(done);
 

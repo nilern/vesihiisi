@@ -921,7 +921,7 @@ void X64SYSVJIT::jitMethod(Method& method) {
                              [&](ORef type) { return eq(type, rt_->types.any); })
         ) {
         // TODO: Generate (non-punting) code for these functions with nontrivial domain.
-        as_.mov(x86::rax, PrimopRes::CALL_BYTECODE);
+        as_.mov(retReg, PrimopRes::CALL_BYTECODE);
         as_.ret();
     } else {
         Label const checkArgTypes = as_.new_anonymous_label("checkArgTypes");

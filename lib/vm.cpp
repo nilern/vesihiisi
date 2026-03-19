@@ -516,12 +516,18 @@ VMRes run(RT* rt, HRef<Closure> self) {
         MethodCode const nativeReturnCode = *reinterpret_cast<MethodCode const*>(rt->code + rt->pc);
         rt->pc += sizeof(MethodCode);
 
-        switch (nativeReturnCode(rt)) {
+        PrimopRes const res = nativeReturnCode(rt);
+        switch (res) {
         case PrimopRes::INTERPRET: VM_CONTINUE;
+
+        case PrimopRes::CALL_BYTECODE: goto apply;
+
+        case PrimopRes::CONTINUE: // Returned:
+            goto kontinue;
 
         case PrimopRes::EXIT_VM: return VMRes{.val = rt->regs[retReg], .success = true};
 
-        default: PANIC("Unreachable code reached");
+        default: PANIC("Unreachable code reached: %lu", uintptr_t(res));
         }
     }
     }

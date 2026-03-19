@@ -28,11 +28,12 @@ class X64SYSVJIT {
     void constLoad(asmjit::x86::Gp const& cReg, uint8_t constIdx);
 
     void heapedCheck(
-        asmjit::x86::Gp const& v, asmjit::x86::Gp const& tagReg, asmjit::Label const& onImmediate);
+        asmjit::x86::Gp const& v, asmjit::x86::Gp const& tmp1, asmjit::x86::Gp const& tmp2,
+        asmjit::Label const& onImmediate);
 
     void checkedHeapedUntagging(
-        asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src, asmjit::x86::Gp const& tmp,
-        size_t typeOffsetInRT, asmjit::Label const& onWrongType);
+        asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src, asmjit::x86::Gp const& tmp1,
+        asmjit::x86::Gp const& tmp2, size_t typeOffsetInRT, asmjit::Label const& onWrongType);
 
     void interpreterFallback(size_t pc);
 
@@ -103,37 +104,42 @@ void X64SYSVJIT::constLoad(asmjit::x86::Gp const& cReg, uint8_t constIdx) {
 
 /// `if (!isHeaped(v)) goto onImmediate;` given `ORef v = ...`
 void X64SYSVJIT::heapedCheck(
-    asmjit::x86::Gp const& v, asmjit::x86::Gp const& tagReg, asmjit::Label const& onImmediate
+    asmjit::x86::Gp const& v, asmjit::x86::Gp const& tmp1, asmjit::x86::Gp const& tmp2,
+    asmjit::Label const& onImmediate
 ) {
-    assert(v != tagReg);
+    assert(v != tmp1);
+    assert(v != tmp2);
+    assert(tmp1 != tmp2);
 
     using namespace asmjit;
 
-    as_.movabs(tagReg, nonFlonumTag);
-    as_.cmp(v, tagReg); // Actual NaN?
+    as_.movabs(tmp1, nonFlonumTag);
+    as_.cmp(v, tmp1); // Actual NaN?
     as_.je(onImmediate);
-    as_.test(v, tagReg); // `(callee.bits & tagMask) == heapedTag`?
+    as_.movabs(tmp2, tagMask);
+    as_.and_(tmp2, v);
+    as_.cmp(tmp2, tmp1); // `(callee.bits & tagMask) == heapedTag`?
     as_.jne(onImmediate);
 }
 
 /// if (!isa<T>(*rt, v)) goto onWrongType;
 /// T* dest = &*HRef<T>::fromUnchecked(v);
 void X64SYSVJIT::checkedHeapedUntagging(
-    asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src, asmjit::x86::Gp const& tmp,
-    size_t typeOffsetInRT, asmjit::Label const& onWrongType
+    asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src, asmjit::x86::Gp const& tmp1,
+    asmjit::x86::Gp const& tmp2, size_t typeOffsetInRT, asmjit::Label const& onWrongType
 ) {
     assert(dest != src);
-    assert(src != tmp);
-    assert(tmp != dest);
+    assert(src != tmp1);
+    assert(tmp1 != dest);
 
     using namespace asmjit;
 
     // if (!isHeaped(v)) goto onWrongType;
-    heapedCheck(src, tmp, onWrongType);
+    heapedCheck(src, tmp1, tmp2, onWrongType);
     // Object* const obj = &*HRef<Object>::fromUnchecked(c);
     untagging(dest, src);
     // HRef<Type> const type = obj->header()->type();
-    x86::Gp const typeReg = tmp;
+    x86::Gp const typeReg = tmp1;
     as_.movabs(typeReg, heapedTag);
     as_.or_(typeReg, x86::Mem{dest, int32_t(Object::typeOffset())});
     // if (!eq(type, rt->types.$type)) goto onWrongType;
@@ -166,7 +172,7 @@ void X64SYSVJIT::emitCall(
 
     // if (!isHeaped(callee)) goto interpret;
     x86::Gp const tagReg = x86::r11;
-    heapedCheck(calleeGp, tagReg, interpret);
+    heapedCheck(calleeGp, tagReg, x86::r10, interpret);
 
     // Object* calleePtr = &*callee;
     as_.movabs(tagReg, payloadMask);
@@ -278,7 +284,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             // if (!isa<Var>(rt, c)) goto interpret;
             x86::Gp const varReg = x86::rsi; // For consistency with OP_DEFINE & OP_GLOBAL_SET
             Label const interpret = as_.new_anonymous_label("interpret");
-            checkedHeapedUntagging(varReg, cReg, x86::r11,
+            checkedHeapedUntagging(varReg, cReg, x86::r11, x86::r10,
                                    rt_->typeOffset(offsetof(NamedTypes, var)), interpret);
             // Var const* const var = &*HRef<Var>::fromUnchecked(v);
 
@@ -322,7 +328,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             // if (!isa<Var>(rt, c)) goto interpret;
             x86::Gp const varReg = x86::rsi; // For consistency with OP_DEFINE & OP_GLOBAL_SET
             Label const interpret = as_.new_anonymous_label("interpret");
-            checkedHeapedUntagging(varReg, cReg, x86::r11,
+            checkedHeapedUntagging(varReg, cReg, x86::r11, x86::r10,
                                    rt_->typeOffset(offsetof(NamedTypes, var)), interpret);
             // Var const* const var = &*HRef<Var>::fromUnchecked(v);
 
@@ -380,7 +386,6 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             {
                 x86::Gp const typeReg = x86::r11;
                 x86::Gp const typeObjReg = x86::r10;
-                x86::Gp const tmpReg = x86::r9;
                 size_t typeIdx = 0;
                 size_t regIdx = 0;
                 for (uint8_t const byte :
@@ -393,7 +398,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
 
                             // if (!isa<Type>(*rt, maybeType)) goto interpret;
                             // (Incidentally `Type* const typeObj` but not used here:)
-                            checkedHeapedUntagging(typeObjReg, typeReg, tmpReg,
+                            checkedHeapedUntagging(typeObjReg, typeReg, x86::r9, x86::r8,
                                                    rt_->typeOffset(offsetof(NamedTypes, type)),
                                                    interpret);
 
@@ -766,7 +771,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             // Type* const codomainPtr = &*codomain;
             x86::Gp const codomainPtrReg = x86::r10;
             Label const interpret = as_.new_anonymous_label("interpret");
-            checkedHeapedUntagging(codomainPtrReg, codomainReg, x86::r9,
+            checkedHeapedUntagging(codomainPtrReg, codomainReg, x86::r9, x86::r8,
                                    rt_->typeOffset(offsetof(NamedTypes, type)), interpret);
 
             // bool const fRet = eq(codomain, rt->types.flonum);
@@ -793,7 +798,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             vregLoad(fReg, codomainVReg + 1);
             // if (!isa<Pointer>(*rt, anyF)) goto interpret;
             // Pointer* const fPtr = &*HRef<Pointer>::fromUnchecked(anyF);
-            checkedHeapedUntagging(fPtrReg, fReg, tmpReg,
+            checkedHeapedUntagging(fPtrReg, fReg, tmpReg, x86::r9,
                                    rt_->typeOffset(offsetof(NamedTypes, pointer)), interpret);
             // void* const f = fPtr->val;
             as_.mov(fPtrReg, x86::Mem{fPtrReg, int32_t(offsetof(Pointer, val))});

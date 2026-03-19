@@ -161,7 +161,7 @@ void X64SYSVJIT::emitCall(
     as_.mov(x86::Mem{rtReg, int32_t(rt_->entryRegcOffset()), sizeof(RT::entryRegc)}, regCount);
 
     // ORef const callee = rt->regs[calleeReg];
-    x86::Gp const calleeGp = x86::rax;
+    x86::Gp const calleeGp = x86::rcx;
     vregLoad(calleeGp, calleeReg);
 
     // if (!isHeaped(callee)) goto interpret;
@@ -733,6 +733,9 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             as_.jmp(done);
 
             as_.bind(interpret);
+            size_t const linkOffset = Continuation::flexOffset + sizeof(ORef) * 0;
+            as_.mov(contReg, x86::Mem{contReg, linkOffset});
+            vregStore(retContReg, contReg);
             interpreterFallback(startPc);
 
             as_.bind(done);

@@ -21,6 +21,7 @@ class X64SYSVJIT {
 
     void tagging(asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src, uint64_t tag);
     void untagging(asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src);
+    void untagging(asmjit::x86::Gp const& dest, asmjit::x86::Mem const& src);
 
     void vregLoad(asmjit::x86::Gp const& dest, uint8_t vRegIdx);
     void vregStore(uint8_t vRegIdx, asmjit::x86::Gp const& src);
@@ -73,6 +74,12 @@ void X64SYSVJIT::tagging(asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src
 void X64SYSVJIT::untagging(asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src) {
     assert(dest != src);
 
+    as_.movabs(dest, payloadMask);
+    as_.and_(dest, src);
+}
+
+/// `dest = *src & payloadMask;`
+void X64SYSVJIT::untagging(asmjit::x86::Gp const& dest, asmjit::x86::Mem const& src) {
     as_.movabs(dest, payloadMask);
     as_.and_(dest, src);
 }
@@ -214,10 +221,8 @@ void X64SYSVJIT::emitCall(
     as_.bind(callClosure);
     // HRef<Method>::fromUnchecked(calleePtr->method)->nativeCode()(rt);
     x86::Gp const methodReg = x86::r11;
-    as_.movabs(methodReg, payloadMask);
-    as_.and_(methodReg, x86::Mem{calleeGp, int32_t(offsetof(Closure, method))});
-    as_.movabs(calleeGp, payloadMask);
-    as_.and_(calleeGp, x86::Mem{methodReg, int32_t(offsetof(Method, code))});
+    untagging(methodReg, x86::Mem{calleeGp, int32_t(offsetof(Closure, method))});
+    untagging(calleeGp, x86::Mem{methodReg, int32_t(offsetof(Method, code))});
     as_.jmp(x86::Mem{calleeGp, 0});
 }
 
@@ -457,8 +462,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             // Knot* const knot = &*HRef<Knot>::fromUnchecked(rt->regs[knotReg]);
             x86::Gp const knotReg = x86::rax;
             size_t const knotOffset = rt_->regsOffset() + sizeof(ORef) * knotVReg;
-            as_.movabs(knotReg, payloadMask);
-            as_.and_(knotReg, x86::Mem{rtReg, int32_t(knotOffset)});
+            untagging(knotReg, x86::Mem{rtReg, int32_t(knotOffset)});
 
             // ORef const v = rt->regs[srcReg];
             x86::Gp const vReg = x86::r11;
@@ -534,8 +538,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             // Continuation* const ret = &*HRef<Continuation>::fromUnchecked(rt->regs[retContReg]);
             x86::Gp const retReg = x86::r11;
             size_t const retOffset = rt_->regsOffset() + sizeof(ORef) * retContReg;
-            as_.movabs(retReg, payloadMask);
-            as_.and_(retReg, x86::Mem{rtReg, int32_t(retOffset)});
+            untagging(retReg, x86::Mem{rtReg, int32_t(retOffset)});
 
             // HRef<Method> const method = ret->method;
             x86::Gp const methodReg = x86::r10;
@@ -543,8 +546,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
 
             // auto retPc = size_t(ret->pc.val());
             x86::Gp const pcReg = x86::r9;
-            as_.movabs(pcReg, payloadMask);
-            as_.and_(pcReg, x86::Mem{retReg, offsetof(Continuation, pc)});
+            untagging(pcReg, x86::Mem{retReg, offsetof(Continuation, pc)});
 
             // rt->method = method;
             as_.mov(x86::Mem{rtReg, int32_t(rt_->methodOffset())}, methodReg);
@@ -558,8 +560,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             as_.mov(x86::Mem{rtReg, int32_t(rt_->codeOffset())}, codeReg);
             // rt->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->itemsMut().data();
             x86::Gp const constsReg = x86::r8;
-            as_.movabs(constsReg, payloadMask);
-            as_.and_(constsReg, x86::Mem{methodReg, offsetof(Method, consts)});
+            untagging(constsReg, x86::Mem{methodReg, offsetof(Method, consts)});
             size_t const constsObjOffset = rt_->constsOffset();
             as_.mov(x86::Mem{rtReg, int32_t(constsObjOffset)}, constsReg);
             // OPTIMIZE: `SlotsMut<ORef>::slots_` seems redundant for `RT::consts`:
@@ -638,8 +639,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             x86::Gp const tmpReg = x86::rax;
             // Closure const* const closure = &*HRef<Closure>::fromUnchecked(rt->regs[closureReg]);
             size_t const closureOffset = rt_->regsOffset() + sizeof(ORef) * closureVReg;
-            as_.movabs(tmpReg, payloadMask);
-            as_.and_(tmpReg, x86::Mem{rtReg, int32_t(closureOffset)});
+            untagging(tmpReg, x86::Mem{rtReg, int32_t(closureOffset)});
             // rt->regs[destReg] = closure->clovers()[cloverIdx];
             size_t const cloverOffset = Closure::flexOffset + sizeof(ORef) * cloverIdxVReg;
             as_.mov(tmpReg, x86::Mem{tmpReg, int32_t(cloverOffset)});
@@ -654,8 +654,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             x86::Gp const tmpReg = x86::rax;
             // Continuation* const cont = &*HRef<Continuation>::fromUnchecked(rt->regs[contReg]);
             size_t const contOffset = rt_->regsOffset() + sizeof(ORef) * contVReg;
-            as_.movabs(tmpReg, payloadMask);
-            as_.and_(tmpReg, x86::Mem{rtReg, int32_t(contOffset)});
+            untagging(tmpReg, x86::Mem{rtReg, int32_t(contOffset)});
             // rt->regs[destReg] = cont->saves()[saveeIdx];
             size_t const saveeOffset = Continuation::flexOffset + sizeof(ORef) * saveeIdxVReg;
             as_.mov(tmpReg, x86::Mem{tmpReg, int32_t(saveeOffset)});
@@ -787,8 +786,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
 
             // if (size_t(codomainPtr->minSize.val()) > sizeof(uint64_t)) goto interpret;
             x86::Gp const tmpReg = x86::rax;
-            as_.movabs(tmpReg, payloadMask);
-            as_.and_(tmpReg, x86::Mem{codomainPtrReg, int32_t(offsetof(Type, minSize))});
+            untagging(tmpReg, x86::Mem{codomainPtrReg, int32_t(offsetof(Type, minSize))});
             as_.cmp(tmpReg, sizeof(uint64_t));
             as_.jbe(interpret);
 
@@ -903,8 +901,7 @@ void X64SYSVJIT::jitMethod(Method& method) {
         // HRef<Method> const method = rt->regs[calleeReg]->method;
         x86::Gp const methodReg = x86::rax;
         size_t const calleeOffset = rt_->regsOffset() + sizeof(ORef) * calleeReg;
-        as_.movabs(methodReg, payloadMask);
-        as_.and_(methodReg, x86::Mem{rtReg, int32_t(calleeOffset)});
+        untagging(methodReg, x86::Mem{rtReg, int32_t(calleeOffset)});
         as_.mov(methodReg, x86::Mem{methodReg, offsetof(Closure, method)});
         // Method* const methodPtr = &*method;
         x86::Gp const methodPtrReg = x86::rcx;
@@ -984,13 +981,11 @@ void X64SYSVJIT::jitMethod(Method& method) {
         as_.mov(x86::Mem{rtReg, int32_t(rt_->methodOffset())}, methodReg);
         // rt->code = HRef<ByteArray>::fromUnchecked(method->code)->flexData();
         x86::Gp const codeReg = x86::rdx;
-        as_.movabs(codeReg, payloadMask);
-        as_.and_(codeReg, x86::Mem{methodPtrReg, offsetof(Method, code)});
+        untagging(codeReg, x86::Mem{methodPtrReg, offsetof(Method, code)});
         as_.mov(x86::Mem{rtReg, int32_t(rt_->codeOffset())}, codeReg);
         // rt->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->itemsMut().data();
         x86::Gp const constsReg = x86::rdx;
-        as_.movabs(constsReg, payloadMask);
-        as_.and_(constsReg, x86::Mem{methodPtrReg, offsetof(Method, consts)});
+        untagging(constsReg, x86::Mem{methodPtrReg, offsetof(Method, consts)});
         size_t const constsObjOffset = rt_->constsOffset();
         as_.mov(x86::Mem{rtReg, int32_t(constsObjOffset)}, constsReg);
         // OPTIMIZE: `SlotsMut<ORef>::slots_` seems redundant for `RT::consts`:

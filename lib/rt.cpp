@@ -341,6 +341,7 @@ RT::RT(
     regs{},
     consts{nullptr, nullptr},
     ns{ns},
+    inlineCacheIdx{},
     entryRegc{0}, // Intentionally invalid
     domainChecking{DomainChecking::CHECK},
 

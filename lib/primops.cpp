@@ -29,6 +29,7 @@ ORef getErrorHandler(RT const* state) {
 PrimopRes primopError(RT* state, ORef err) {
     state->regs[calleeReg] = getErrorHandler(state);
     state->regs[firstArgReg] = err;
+    state->inlineCacheIdx = std::nullopt;
     state->entryRegc = firstArgReg + 1;
     return PrimopRes::ERROR;
 }
@@ -129,6 +130,7 @@ PrimopRes PrimopApplyArray::uncheckedInvoke(RT* state) {
         argc = arity;
     }
 
+    state->inlineCacheIdx = std::nullopt;
     state->entryRegc = (uint8_t)(firstArgReg + argc);
     state->domainChecking = RT::DomainChecking::SKIP;
     return PrimopRes::TAILAPPLY;
@@ -379,6 +381,7 @@ PrimopRes PrimopApplyList::uncheckedInvoke(RT* state) {
         }
     }
 
+    state->inlineCacheIdx = std::nullopt;
     state->entryRegc = (uint8_t)(firstArgReg + argc);
     state->originalCallee = Default;
     state->domainChecking = RT::DomainChecking::SKIP;
@@ -388,6 +391,7 @@ PrimopRes PrimopApplyList::uncheckedInvoke(RT* state) {
 PrimopRes PrimopCallCC::uncheckedInvoke(RT* state) {
     state->regs[calleeReg] = state->regs[firstArgReg];
     state->regs[firstArgReg] = state->regs[retContReg];
+    state->inlineCacheIdx = std::nullopt;
     state->entryRegc = firstArgReg + 1;
     return PrimopRes::TAILCALL;
 }
@@ -1306,6 +1310,7 @@ PrimopRes PrimopEval::uncheckedInvoke(RT* state) {
     auto const method = compilationRes.val;
 
     state->regs[calleeReg] = HRef{allocClosure(state, method, Fixnum{0l})};
+    state->inlineCacheIdx = std::nullopt;
     state->entryRegc = calleeReg + 1;
     return PrimopRes::TAILCALL;
 }

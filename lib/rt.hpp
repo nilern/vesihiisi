@@ -91,6 +91,7 @@ struct RT {
     ORef regs[REG_COUNT];
     SlotsMut<ORef> consts;
     HRef<Namespace> ns;
+    std::optional<uint8_t> inlineCacheIdx;
     uint8_t entryRegc;
     DomainChecking domainChecking;
 
@@ -167,6 +168,12 @@ struct RT {
     // Because `offsetof(RT, domainChecking)` is UB.
     size_t domainCheckingOffset() const {
         return size_t(reinterpret_cast<char const*>(&domainChecking)
+                      - reinterpret_cast<char const*>(this));
+    }
+
+    // Because `offsetof(RT, inlineCacheIdx)` is UB.
+    size_t inlineCacheIdxOffset() const {
+        return size_t(reinterpret_cast<char const*>(&inlineCacheIdx)
                       - reinterpret_cast<char const*>(this));
     }
 

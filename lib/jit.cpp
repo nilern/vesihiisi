@@ -170,6 +170,9 @@ void X64SYSVJIT::emitCall(
 ) {
     using namespace asmjit;
 
+    // rt->inlineCacheIdx = std::optional<uint8_t>{inlineCacheIdx};
+    as_.mov(x86::Mem{rtReg, int32_t(rt_->inlineCacheIdxOffset()), sizeof(RT::inlineCacheIdx)},
+            std::bit_cast<uint16_t>(std::optional{inlineCacheIdx}));
     // rt->entryRegc = regCount;
     as_.mov(x86::Mem{rtReg, int32_t(rt_->entryRegcOffset()), sizeof(RT::entryRegc)}, regCount);
 

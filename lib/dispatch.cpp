@@ -252,6 +252,7 @@ bool calleeClosureForArgs(RT* state, ORef callee, ORef const* args, size_t argc)
         } else {
             state->regs[calleeReg] = getErrorHandler(state);
             state->regs[firstArgReg] = createInapplicableError(state, multiCalleeRef);
+            state->inlineCacheIdx = std::nullopt;
             state->entryRegc = firstArgReg + 1;
 
             assert(isa<Closure>(*state, state->regs[calleeReg]));
@@ -261,6 +262,7 @@ bool calleeClosureForArgs(RT* state, ORef callee, ORef const* args, size_t argc)
         state->regs[calleeReg] = getErrorHandler(state);
         // TODO: `UncallableError` as closure is no longer the only callable type:
         state->regs[firstArgReg] = createTypeError(state, state->types.closure, callee);
+        state->inlineCacheIdx = std::nullopt;
         state->entryRegc = firstArgReg + 1;
 
         assert(isa<Closure>(*state, state->regs[calleeReg]));
@@ -287,6 +289,7 @@ bool calleeClosureForArglist(RT* state, ORef callee, ORef args) {
         } else {
             state->regs[calleeReg] = getErrorHandler(state);
             state->regs[firstArgReg] = createInapplicableError(state, multiCalleeRef);
+            state->inlineCacheIdx = std::nullopt;
             state->entryRegc = firstArgReg + 1;
 
             assert(isa<Closure>(*state, state->regs[calleeReg]));
@@ -296,6 +299,7 @@ bool calleeClosureForArglist(RT* state, ORef callee, ORef args) {
         state->regs[calleeReg] = getErrorHandler(state);
         // TODO: `UncallableError` as closure is no longer the only callable type:
         state->regs[firstArgReg] = createTypeError(state, state->types.closure, callee);
+        state->inlineCacheIdx = std::nullopt;
         state->entryRegc = firstArgReg + 1;
 
         assert(isa<Closure>(*state, state->regs[calleeReg]));
@@ -345,6 +349,7 @@ bool calleeClosure(RT* state, ORef callee, std::optional<uint8_t> inlineCacheIdx
         } else {
             state->regs[calleeReg] = getErrorHandler(state);
             state->regs[firstArgReg] = createInapplicableError(state, multiCalleeRef);
+            state->inlineCacheIdx = std::nullopt;
             state->entryRegc = firstArgReg + 1;
 
             assert(isa<Closure>(*state, state->regs[calleeReg]));
@@ -354,6 +359,7 @@ bool calleeClosure(RT* state, ORef callee, std::optional<uint8_t> inlineCacheIdx
         state->regs[calleeReg] = getErrorHandler(state);
         // TODO: `UncallableError` as closure is no longer the only callable type:
         state->regs[firstArgReg] = createTypeError(state, state->types.closure, callee);
+        state->inlineCacheIdx = std::nullopt;
         state->entryRegc = firstArgReg + 1;
 
         assert(isa<Closure>(*state, state->regs[calleeReg]));

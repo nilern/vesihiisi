@@ -33,6 +33,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
         rt->pc = Method::entryPc();
         rt->regs[calleeReg] = self;
         rt->regs[retContReg] = rt->singletons.exit; // Return continuation
+        rt->inlineCacheIdx = std::nullopt;
         rt->entryRegc = 2;
     }
 
@@ -69,7 +70,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
 #define VM_CONTINUE goto eval
 #endif
 
-    for (auto inlineCacheIdx = std::optional<uint8_t>{}; /*ever*/;) {
+    for (; /*ever*/;) {
 #if !VSHS_COMPUTED_GOTO
     eval:
 #endif
@@ -124,8 +125,8 @@ VMRes run(RT* rt, HRef<Closure> self) {
                     // correct current continuation.
                     rt->regs[calleeReg] = getErrorHandler(rt);
                     rt->regs[firstArgReg] = createUnboundError(rt, name);
+                    rt->inlineCacheIdx = std::nullopt;
                     rt->entryRegc = firstArgReg + 1;
-                    inlineCacheIdx = std::nullopt;
                     goto apply;
                 }
                 c = findRes.var;
@@ -156,8 +157,8 @@ VMRes run(RT* rt, HRef<Closure> self) {
                     // correct current continuation.
                     rt->regs[calleeReg] = getErrorHandler(rt);
                     rt->regs[firstArgReg] = createUnboundError(rt, name);
+                    rt->inlineCacheIdx = std::nullopt;
                     rt->entryRegc = firstArgReg + 1;
-                    inlineCacheIdx = std::nullopt;
                     goto apply;
                 }
                 c = findRes.var;
@@ -316,7 +317,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
         }; VM_CONTINUE;
 
         VM_CASE(OP_CALL) {
-            inlineCacheIdx = std::optional{rt->code[rt->pc++]};
+            uint8_t const inlineCacheIdx = rt->code[rt->pc++];
             uint8_t const regCount  = rt->code[rt->pc++];
             uint8_t const saveSetByteCount = rt->code[rt->pc++];
             size_t const savesStartIdx = rt->pc;
@@ -348,14 +349,16 @@ VMRes run(RT* rt, HRef<Closure> self) {
 
             rt->regs[retContReg] = HRef{cont};
 
+            rt->inlineCacheIdx = inlineCacheIdx;
             rt->entryRegc = regCount;
             goto apply;
         }; VM_CONTINUE;
 
         VM_CASE(OP_TAILCALL) {
-            inlineCacheIdx = std::optional{rt->code[rt->pc++]};
+            uint8_t const inlineCacheIdx = rt->code[rt->pc++];
             uint8_t const regCount = rt->code[rt->pc++];
 
+            rt->inlineCacheIdx = inlineCacheIdx;
             rt->entryRegc = regCount;
             goto apply;
         }; VM_CONTINUE;
@@ -374,8 +377,8 @@ VMRes run(RT* rt, HRef<Closure> self) {
             if (!isa<Type>(*rt, anyCodomain)) { // TODO: DRY type checks like this
                 rt->regs[calleeReg] = getErrorHandler(rt);
                 rt->regs[firstArgReg] = createTypeError(rt, Type::reify(*rt), anyCodomain);
+                rt->inlineCacheIdx = std::nullopt;
                 rt->entryRegc = firstArgReg + 1;
-                inlineCacheIdx = std::nullopt;
                 goto apply;
             }
             auto const codomain = HRef<Type>::fromUnchecked(anyCodomain);
@@ -390,8 +393,8 @@ VMRes run(RT* rt, HRef<Closure> self) {
             if (!isa<Pointer>(*rt, anyF)) { // TODO: DRY type checks like this
                 rt->regs[calleeReg] = getErrorHandler(rt);
                 rt->regs[firstArgReg] = createTypeError(rt, Pointer::reify(*rt), anyF);
+                rt->inlineCacheIdx = std::nullopt;
                 rt->entryRegc = firstArgReg + 1;
-                inlineCacheIdx = std::nullopt;
                 goto apply;
             }
             auto const f = HRef<Pointer>::fromUnchecked(anyF);
@@ -416,7 +419,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
 
     apply: for (;/*ever*/;) {
         // Do not need return value here as a call is set up even in case of error:
-        calleeClosure(rt, rt->regs[calleeReg], inlineCacheIdx);
+        calleeClosure(rt, rt->regs[calleeReg], rt->inlineCacheIdx);
 
         applyClosure:
         auto method = [&](){
@@ -446,14 +449,14 @@ VMRes run(RT* rt, HRef<Closure> self) {
             case DomainCheckRes::MISSPECULATION: {
                 rt->regs[calleeReg] = rt->originalCallee;
                 rt->originalCallee = Default;
-                rt->consts[*inlineCacheIdx].set(*rt, Default);
-                rt->consts[*inlineCacheIdx + 1].set(*rt, Default);
-                inlineCacheIdx = std::nullopt;
+                rt->consts[*rt->inlineCacheIdx].set(*rt, Default);
+                rt->consts[*rt->inlineCacheIdx + 1].set(*rt, Default);
+                rt->inlineCacheIdx = std::nullopt;
             }; continue;
 
             case DomainCheckRes::ERROR: {
                 rt->originalCallee = Default;
-                inlineCacheIdx = std::nullopt;
+                rt->inlineCacheIdx = std::nullopt;
             }; continue;
             }
 
@@ -480,7 +483,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
             goto kontinue;
 
         case PrimopRes::TAILCALL: { // Set up another call in its place:
-            inlineCacheIdx = std::nullopt;
+            rt->inlineCacheIdx = std::nullopt;
         }; break; // All is in place, just keep trampolining
 
         case PrimopRes::TAILAPPLY: goto applyClosure;
@@ -488,14 +491,14 @@ VMRes run(RT* rt, HRef<Closure> self) {
         case PrimopRes::MISSPECULATION: {
             rt->regs[calleeReg] = rt->originalCallee;
             rt->originalCallee = Default;
-            rt->consts[*inlineCacheIdx].set(*rt, Default);
-            rt->consts[*inlineCacheIdx + 1].set(*rt, Default);
-            inlineCacheIdx = std::nullopt;
+            rt->consts[*rt->inlineCacheIdx].set(*rt, Default);
+            rt->consts[*rt->inlineCacheIdx + 1].set(*rt, Default);
+            rt->inlineCacheIdx = std::nullopt;
         }; break;
 
         case PrimopRes::ERROR: { // Set up an error call in its place:
             rt->originalCallee = Default;
-            inlineCacheIdx = std::nullopt;
+            rt->inlineCacheIdx = std::nullopt;
         }; break; // All is in place, just keep trampolining
 
         case PrimopRes::ABORT: return VMRes{};

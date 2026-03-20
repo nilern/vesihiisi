@@ -200,21 +200,20 @@ void X64SYSVJIT::emitCall(
     size_t const multimethodTypeOffset = rt_->typeOffset(offsetof(NamedTypes, multimethod));
     as_.cmp(typeReg, x86::Mem{rtReg, int32_t(multimethodTypeOffset)});
     as_.jne(interpret);
-    // if (!eq(state->consts[inlineCacheIdx].get(), multiCalleeRef->methods().get()))
-    //     goto interpret;
+    // if (!eq(rt->consts[inlineCacheIdx].get(), multiCalleeRef->methods().get())) goto interpret;
     x86::Gp const goalMethodsReg = x86::r11;
     constLoad(goalMethodsReg, inlineCacheIdx);
     as_.cmp(goalMethodsReg, x86::Mem{calleeGp, int32_t(Multimethod::methodsOffset())});
     as_.jne(interpret);
     // auto const cachedClosure =
-    //     HRef<Closure>::fromUnchecked(state->consts[inlineCacheIdx + 1].get());
-    // state->regs[calleeReg] = cachedClosure;
+    //     HRef<Closure>::fromUnchecked(rt->consts[inlineCacheIdx + 1].get());
+    // rt->regs[calleeReg] = cachedClosure;
     // calleePtr = &*cachedClosure;
     x86::Gp const cachedClosureReg = x86::r11;
     constLoad(cachedClosureReg, inlineCacheIdx + 1);
     vregStore(calleeReg, cachedClosureReg);
     untagging(calleeGp, cachedClosureReg);
-    // state->domainChecking = RT::DomainChecking::SPECULATE;
+    // rt->domainChecking = RT::DomainChecking::SPECULATE;
     as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset()), sizeof(RT::DomainChecking)},
             RT::DomainChecking::SPECULATE);
 

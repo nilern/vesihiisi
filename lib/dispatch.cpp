@@ -312,7 +312,7 @@ bool calleeClosure(RT* state, ORef callee, std::optional<uint8_t> inlineCacheIdx
         state->regs[calleeReg] = callee;
         return true;
     } else if (isa<Multimethod>(*state, callee)) {
-        auto const multiCalleeRef = HRef<Multimethod>::fromUnchecked(callee);
+        auto multiCalleeRef = HRef<Multimethod>::fromUnchecked(callee);
 
         if (inlineCacheIdx) {
             if (eq(state->consts[*inlineCacheIdx].get(), multiCalleeRef->methods().get())) {
@@ -323,6 +323,8 @@ bool calleeClosure(RT* state, ORef callee, std::optional<uint8_t> inlineCacheIdx
                 assert(isa<Closure>(*state, state->regs[calleeReg]));
                 return true;
             } else {
+                // OPTIMIZE: Setting to `Default` does not actually need write barrier...
+                auto const multiG = state->pushRoot(&multiCalleeRef); // ... or this.
                 state->consts[*inlineCacheIdx].set(*state, Default);
                 state->consts[*inlineCacheIdx + 1].set(*state, Default);
             }

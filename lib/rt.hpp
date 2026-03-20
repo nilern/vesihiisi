@@ -87,6 +87,7 @@ struct RT {
     ORef method;
     uint8_t const* code;
     size_t pc;
+    ORef originalCallee;
     ORef regs[REG_COUNT];
     SlotsMut<ORef> consts;
     HRef<Namespace> ns;
@@ -155,6 +156,12 @@ struct RT {
     // Because `offsetof(RT, pc)` is UB.
     size_t pcOffset() const {
         return size_t(reinterpret_cast<char const*>(&pc) - reinterpret_cast<char const*>(this));
+    }
+
+    // Because `offsetof(RT, originalCallee)` is UB.
+    size_t originalCalleeOffset() const {
+        return size_t(reinterpret_cast<char const*>(&originalCallee)
+                      - reinterpret_cast<char const*>(this));
     }
 
     // Because `offsetof(RT, domainChecking)` is UB.

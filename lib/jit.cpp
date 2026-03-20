@@ -205,6 +205,10 @@ void X64SYSVJIT::emitCall(
     constLoad(goalMethodsReg, inlineCacheIdx);
     as_.cmp(goalMethodsReg, x86::Mem{calleeGp, int32_t(Multimethod::methodsOffset())});
     as_.jne(interpret);
+    // rt->originalCallee = rt->regs[calleeReg];
+    x86::Gp const originalCalleeReg = x86::r11;
+    vregLoad(originalCalleeReg, calleeReg);
+    as_.mov(x86::Mem{rtReg, int32_t(rt_->originalCalleeOffset())}, originalCalleeReg);
     // auto const cachedClosure =
     //     HRef<Closure>::fromUnchecked(rt->consts[inlineCacheIdx + 1].get());
     // rt->regs[calleeReg] = cachedClosure;
@@ -964,6 +968,8 @@ void X64SYSVJIT::jitMethod(Method& method) {
         as_.ret();
 
         as_.bind(domainChecked);
+        // rt->originalCallee = Default;
+        as_.mov(x86::Mem{rtReg, int32_t(rt_->originalCalleeOffset())}, Default.bits);
 
         if (method.hasVarArg.val()) {
             // TODO: Generate (non-punting) code for vararg reification:

@@ -49,7 +49,7 @@ PrimopRes exitVMOnReturn(RT* /*rt*/) { return PrimopRes::EXIT_VM; }
 
 PrimopRes primopAbort(RT* state) {
     switch (checkDomain(state)) {
-    case DomainCheckRes::OK: break;
+    case DomainCheckRes::OK: { state->originalCallee = Default; } break;
     case DomainCheckRes::MISSPECULATION: return PrimopRes::MISSPECULATION;
     case DomainCheckRes::ERROR: return PrimopRes::ERROR;
     }
@@ -98,7 +98,7 @@ PrimopRes PrimopApplyArray::uncheckedInvoke(RT* state) {
 
     // Check domain (if not already checked by dispatch):
     switch (checkDomainForArgs(state, closure, args, argc)) {
-    case DomainCheckRes::OK: break;
+    case DomainCheckRes::OK: { state->originalCallee = Default; }; break;
     case DomainCheckRes::MISSPECULATION: return PrimopRes::MISSPECULATION;
     case DomainCheckRes::ERROR: return PrimopRes::ERROR;
     }
@@ -380,6 +380,7 @@ PrimopRes PrimopApplyList::uncheckedInvoke(RT* state) {
     }
 
     state->entryRegc = (uint8_t)(firstArgReg + argc);
+    state->originalCallee = Default;
     state->domainChecking = RT::DomainChecking::SKIP;
     return PrimopRes::TAILAPPLY;
 }

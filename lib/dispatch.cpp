@@ -246,6 +246,7 @@ bool calleeClosureForArgs(RT* state, ORef callee, ORef const* args, size_t argc)
 
         ORef const maybeClosure = applicableClosureForArgs(state, &*multiCalleeRef, args, argc);
         if (isHeaped(maybeClosure)) {
+            state->originalCallee = state->regs[calleeReg];
             state->regs[calleeReg] = maybeClosure;
             return true;
         } else {
@@ -280,6 +281,7 @@ bool calleeClosureForArglist(RT* state, ORef callee, ORef args) {
 
         ORef const maybeClosure = applicableClosureForArglist(state, &*multiCalleeRef, args);
         if (isHeaped(maybeClosure)) {
+            state->originalCallee = state->regs[calleeReg];
             state->regs[calleeReg] = maybeClosure;
             return true;
         } else {
@@ -314,6 +316,7 @@ bool calleeClosure(RT* state, ORef callee, std::optional<uint8_t> inlineCacheIdx
 
         if (inlineCacheIdx) {
             if (eq(state->consts[*inlineCacheIdx].get(), multiCalleeRef->methods().get())) {
+                state->originalCallee = state->regs[calleeReg];
                 state->regs[calleeReg] = state->consts[*inlineCacheIdx + 1].get();
                 state->domainChecking = RT::DomainChecking::SPECULATE;
 

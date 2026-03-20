@@ -137,7 +137,7 @@ struct Primop {
     static PrimopRes invoke(RT* state) {
         auto const checkRes = checkDomain<CRTPSub::hasVararg, Domain...>(state);
         switch (checkRes) {
-        case PrimopRes::CONTINUE: break;
+        case PrimopRes::CONTINUE: { state->originalCallee = Default; }; break;
 
         case PrimopRes::MISSPECULATION: case PrimopRes::ERROR: return checkRes;
 

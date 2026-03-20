@@ -94,6 +94,8 @@ void freeRT(RT* state) { delete(state); }
 bool markRoots(RT* state) {
     state->method = TRY_NULLOPT_TO_FALSE(state->heap.mark(state->method));
 
+    state->originalCallee = TRY_NULLOPT_TO_FALSE(state->heap.mark(state->originalCallee));
+
     // OPTIMIZE: Only mark registers that are actually live (requires emitting liveness bitmaps for
     // safepoints:
     for (size_t i = 0; i < REG_COUNT; ++i) {
@@ -335,6 +337,7 @@ RT::RT(
     method{Default},
     code{nullptr},
     pc{0},
+    originalCallee{Default},
     regs{},
     consts{nullptr, nullptr},
     ns{ns},
@@ -668,6 +671,10 @@ void assertRTInTospace(RT const* state) {
         assert(state->heap.evacuated(&*HRef<Object>::fromUnchecked(state->method)));
         assert(state->heap.evacuated(std::bit_cast<Object const*>(state->code)));
         assert(state->heap.evacuated(std::bit_cast<Object const*>(&state->consts[0].get())));
+    }
+
+    if (isHeaped(state->originalCallee)) {
+        assert(state->heap.evacuated(&*HRef<Object>::fromUnchecked(state->originalCallee)));
     }
 
     // TODO: When we start only marking live regs, this has to only check those as well to avoid

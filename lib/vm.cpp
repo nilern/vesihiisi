@@ -415,9 +415,8 @@ VMRes run(RT* rt, HRef<Closure> self) {
         }
 
     apply: for (;/*ever*/;) {
-        ORef const originalCallee = rt->regs[calleeReg];
         // Do not need return value here as a call is set up even in case of error:
-        calleeClosure(rt, originalCallee, inlineCacheIdx);
+        calleeClosure(rt, rt->regs[calleeReg], inlineCacheIdx);
 
         applyClosure:
         auto method = [&](){
@@ -440,19 +439,20 @@ VMRes run(RT* rt, HRef<Closure> self) {
 
             // Check domain:
             switch (checkDomain(rt)) {
-            case DomainCheckRes::OK: break;
+            case DomainCheckRes::OK: {
+                rt->originalCallee = Default;
+            }; break;
 
             case DomainCheckRes::MISSPECULATION: {
-                // `originalCallee` is valid since speculation does not allocate or do write
-                // barriers:
-                rt->regs[calleeReg] = originalCallee;
-                // These writes do invalidate `originalCallee`:
+                rt->regs[calleeReg] = rt->originalCallee;
+                rt->originalCallee = Default;
                 rt->consts[*inlineCacheIdx].set(*rt, Default);
                 rt->consts[*inlineCacheIdx + 1].set(*rt, Default);
                 inlineCacheIdx = std::nullopt;
             }; continue;
 
             case DomainCheckRes::ERROR: {
+                rt->originalCallee = Default;
                 inlineCacheIdx = std::nullopt;
             }; continue;
             }
@@ -486,16 +486,15 @@ VMRes run(RT* rt, HRef<Closure> self) {
         case PrimopRes::TAILAPPLY: goto applyClosure;
 
         case PrimopRes::MISSPECULATION: {
-            // `originalCallee` is valid since speculation does not allocate or do write
-            // barriers:
-            rt->regs[calleeReg] = originalCallee;
-            // These writes do invalidate `originalCallee`:
+            rt->regs[calleeReg] = rt->originalCallee;
+            rt->originalCallee = Default;
             rt->consts[*inlineCacheIdx].set(*rt, Default);
             rt->consts[*inlineCacheIdx + 1].set(*rt, Default);
             inlineCacheIdx = std::nullopt;
         }; break;
 
         case PrimopRes::ERROR: { // Set up an error call in its place:
+            rt->originalCallee = Default;
             inlineCacheIdx = std::nullopt;
         }; break; // All is in place, just keep trampolining
 

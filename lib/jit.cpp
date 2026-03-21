@@ -989,7 +989,7 @@ void X64SYSVJIT::jitMethod(Method& method) {
         // `as_.mov(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, Method::entryPc());` was
         // storing an incorrect value for some reason :(:
         x86::Gp const pcReg = x86::rdx;
-        as_.mov(pcReg, Method::entryPc());
+        as_.movabs(pcReg, Method::entryPc());
         as_.mov(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, pcReg);
 
         naturalize(method, method.code->items());

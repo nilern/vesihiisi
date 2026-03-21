@@ -38,6 +38,9 @@ class X64SYSVJIT {
 
     void interpreterFallback(size_t pc);
 
+    void methodSetting(asmjit::x86::Gp const& methodReg, asmjit::x86::Gp const& methodPtrReg,
+                       asmjit::x86::Gp const& codeReg, asmjit::x86::Gp const& constsReg);
+
     void emitCall(uint8_t inlineCacheIdx, uint8_t regCount, asmjit::Label const& interpret);
 
     void naturalize(Method const& method, std::span<uint8_t const> bytecode);
@@ -164,6 +167,28 @@ void X64SYSVJIT::interpreterFallback(size_t pc) {
     as_.mov(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, tmpReg);
     as_.mov(retReg, PrimopRes::INTERPRET);
     as_.ret();
+}
+
+void X64SYSVJIT::methodSetting(
+    asmjit::x86::Gp const& methodReg, asmjit::x86::Gp const& methodPtrReg,
+    asmjit::x86::Gp const& codeReg, asmjit::x86::Gp const& constsReg
+) {
+    assert(methodReg != methodPtrReg);
+
+    using namespace asmjit;
+
+    as_.mov(x86::Mem{rtReg, int32_t(rt_->methodOffset())}, methodReg);
+    // uint8_t const* code = HRef<ByteArray>::fromUnchecked(methodPtr->code)->flexData();
+    // rt->code = code;
+    untagging(codeReg, x86::Mem{methodPtrReg, offsetof(Method, code)});
+    as_.mov(x86::Mem{rtReg, int32_t(rt_->codeOffset())}, codeReg);
+    // rt->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->itemsMut().data();
+    untagging(constsReg, x86::Mem{methodPtrReg, offsetof(Method, consts)});
+    size_t const constsObjOffset = rt_->constsOffset();
+    as_.mov(x86::Mem{rtReg, int32_t(constsObjOffset)}, constsReg);
+    // OPTIMIZE: `SlotsMut<ORef>::slots_` seems redundant for `RT::consts`:
+    size_t const constsSlotsOffset = constsObjOffset + SlotsMut<ORef>::slotsOffset;
+    as_.mov(x86::Mem{rtReg, int32_t(constsSlotsOffset)}, constsReg);
 }
 
 void X64SYSVJIT::emitCall(
@@ -542,29 +567,17 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             // HRef<Method> const method = ret->method;
             x86::Gp const methodReg = x86::r10;
             as_.mov(methodReg, x86::Mem{retReg, offsetof(Continuation, method)});
+            // Method* const methodPtr = &*method;
+            x86::Gp const methodPtrReg = x86::rcx;
+            untagging(methodPtrReg, methodReg);
 
             // auto retPc = size_t(ret->pc.val());
             x86::Gp const pcReg = x86::r9;
             untagging(pcReg, x86::Mem{retReg, offsetof(Continuation, pc)});
 
-            // rt->method = method;
-            as_.mov(x86::Mem{rtReg, int32_t(rt_->methodOffset())}, methodReg);
-            // Method* const methodPtr = &*method;
-            // uint8_t const* code = HRef<ByteArray>::fromUnchecked(methodPtr->code)->flexData();
-            // rt->code = code;
-            x86::Gp const codeReg = x86::r11;
-            as_.movabs(codeReg, payloadMask);
-            as_.and_(methodReg, codeReg);
-            as_.and_(codeReg, x86::Mem{methodReg, offsetof(Method, code)});
-            as_.mov(x86::Mem{rtReg, int32_t(rt_->codeOffset())}, codeReg);
-            // rt->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->itemsMut().data();
-            x86::Gp const constsReg = x86::r8;
-            untagging(constsReg, x86::Mem{methodReg, offsetof(Method, consts)});
-            size_t const constsObjOffset = rt_->constsOffset();
-            as_.mov(x86::Mem{rtReg, int32_t(constsObjOffset)}, constsReg);
-            // OPTIMIZE: `SlotsMut<ORef>::slots_` seems redundant for `RT::consts`:
-            size_t const constsSlotsOffset = constsObjOffset + SlotsMut<ORef>::slotsOffset;
-            as_.mov(x86::Mem{rtReg, int32_t(constsSlotsOffset)}, constsReg);
+            // rt->setMethod(method);
+            x86::Gp const codeReg = x86::rdx;
+            methodSetting(methodReg, methodPtrReg, codeReg, x86::rsi);
             // MethodCode const nativeReturnCode = *reinterpret_cast<MethodCode const*>(code + pc);
             x86::Gp const destReg = x86::rax;
             as_.mov(destReg, x86::Mem{codeReg, pcReg, 0, 0});
@@ -970,20 +983,8 @@ void X64SYSVJIT::jitMethod(Method& method) {
             as_.ret();
         }
 
-        // rt->method = method;
-        as_.mov(x86::Mem{rtReg, int32_t(rt_->methodOffset())}, methodReg);
-        // rt->code = HRef<ByteArray>::fromUnchecked(method->code)->flexData();
-        x86::Gp const codeReg = x86::rdx;
-        untagging(codeReg, x86::Mem{methodPtrReg, offsetof(Method, code)});
-        as_.mov(x86::Mem{rtReg, int32_t(rt_->codeOffset())}, codeReg);
-        // rt->consts = HRef<ArrayMut>::fromUnchecked(method->consts)->itemsMut().data();
-        x86::Gp const constsReg = x86::rdx;
-        untagging(constsReg, x86::Mem{methodPtrReg, offsetof(Method, consts)});
-        size_t const constsObjOffset = rt_->constsOffset();
-        as_.mov(x86::Mem{rtReg, int32_t(constsObjOffset)}, constsReg);
-        // OPTIMIZE: `SlotsMut<ORef>::slots_` seems redundant for `RT::consts`:
-        size_t const constsSlotsOffset = constsObjOffset + SlotsMut<ORef>::slotsOffset;
-        as_.mov(x86::Mem{rtReg, int32_t(constsSlotsOffset)}, constsReg);
+        // rt->setMethod(method);
+        methodSetting(methodReg, methodPtrReg, x86::rdx, x86::rdx);
         // rt->pc = Method::entryPc();
         // `as_.mov(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, Method::entryPc());` was
         // storing an incorrect value for some reason :(:

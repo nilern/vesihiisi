@@ -58,6 +58,7 @@ public:
 
     static constexpr asmjit::x86::Gp rtReg = asmjit::x86::rdi;
     static constexpr asmjit::x86::Gp retReg = asmjit::x86::rax;
+    static constexpr asmjit::x86::Gp byteRetReg = asmjit::x86::al;
 
     void jitMethod(Method& method);
 };
@@ -310,7 +311,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             Heap::writeBarrier_t writeBarrier = &Heap::writeBarrier;
             as_.call(writeBarrier);
             as_.pop(rtReg);
-            as_.test(retReg, retReg);
+            as_.test(byteRetReg, byteRetReg);
             as_.je(interpret);
             // var->val_ = v;
             as_.mov(x86::Mem{varReg, int32_t(Var::valOffset())}, vReg);
@@ -477,7 +478,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             Heap::writeBarrier_t writeBarrier = &Heap::writeBarrier;
             as_.call(writeBarrier);
             as_.pop(rtReg);
-            as_.test(retReg, retReg);
+            as_.test(byteRetReg, byteRetReg);
             Label const interpret = as_.new_anonymous_label("interpret");
             as_.je(interpret);
             // knot->val_ = v;

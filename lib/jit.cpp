@@ -293,7 +293,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             constLoad(cReg, constIdx);
 
             // if (!isa<Var>(rt, c)) goto interpret;
-            x86::Gp const varReg = x86::rsi; // For consistency with OP_DEFINE & OP_GLOBAL_SET
+            x86::Gp const varReg = x86::rsi; // ABI arg 2
             Label const interpret = as_.new_anonymous_label("interpret");
             checkedHeapedUntagging(varReg, cReg, x86::r11, x86::r10,
                                    rt_->typeOffset(offsetof(NamedTypes, var)), interpret);

@@ -914,14 +914,6 @@ void X64SYSVJIT::jitMethod(Method& method) {
         as_.mov(x86::Mem{rtReg, int32_t(rt_->domainCheckingOffset()), sizeof(RT::DomainChecking)},
                 RT::DomainChecking::CHECK);
 
-        // rt->domainChecking = checking;
-        as_.mov(x86::Mem{rtReg,
-                         int32_t(rt_->domainCheckingOffset()), sizeof(RT::DomainChecking)},
-                checkingReg);
-        // return PrimopRes::CALL_BYTECODE;
-        as_.mov(retReg, PrimopRes::CALL_BYTECODE);
-        as_.ret();
-
         // if (checking == RT::DomainChecking::SKIP) goto domainChecked;
         as_.cmp(checkingReg, RT::DomainChecking::SKIP);
         as_.je(domainChecked);

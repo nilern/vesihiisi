@@ -293,26 +293,22 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             constLoad(cReg, constIdx);
 
             // if (!isa<Var>(rt, c)) goto interpret;
-            x86::Gp const varReg = x86::rsi; // ABI arg 2
+            x86::Gp const varReg = x86::r12; // callee-save
             Label const interpret = as_.new_anonymous_label("interpret");
             checkedHeapedUntagging(varReg, cReg, x86::r11, x86::r10,
                                    rt_->typeOffset(offsetof(NamedTypes, var)), interpret);
             // Var const* const var = &*HRef<Var>::fromUnchecked(v);
 
             // ORef const v = rt->regs[srcReg];
-            x86::Gp const vReg = x86::r11;
+            x86::Gp const vReg = x86::r13; // callee-save
             vregLoad(vReg, srcVReg);
             // // var->val().set(*rt, v);
             // if (!Heap::writeBarrier(&rt->heap, var)) goto interpret;
             as_.push(rtReg);
-            as_.push(varReg);
-            as_.push(vReg);
-            x86::Gp const heapReg = x86::rdi;
-            as_.lea(heapReg, x86::Mem{rtReg, int32_t(rt_->heapOffset())});
+            as_.lea(x86::rdi, x86::Mem{rtReg, int32_t(rt_->heapOffset())}); // ABI arg 1
+            as_.mov(x86::rsi, varReg); // ABI arg 2
             Heap::writeBarrier_t writeBarrier = &Heap::writeBarrier;
             as_.call(writeBarrier);
-            as_.pop(vReg);
-            as_.pop(varReg);
             as_.pop(rtReg);
             as_.test(retReg, retReg);
             as_.je(interpret);
@@ -337,14 +333,14 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             constLoad(cReg, constIdx);
 
             // if (!isa<Var>(rt, c)) goto interpret;
-            x86::Gp const varReg = x86::rsi; // For consistency with OP_DEFINE & OP_GLOBAL_SET
+            x86::Gp const varReg = x86::r12; // For consistency with OP_DEFINE & OP_GLOBAL_SET
             Label const interpret = as_.new_anonymous_label("interpret");
             checkedHeapedUntagging(varReg, cReg, x86::r11, x86::r10,
                                    rt_->typeOffset(offsetof(NamedTypes, var)), interpret);
             // Var const* const var = &*HRef<Var>::fromUnchecked(v);
 
             // ORef const v = var->val().get();
-            x86::Gp const vReg = x86::r11;
+            x86::Gp const vReg = x86::r13; // For consistency with OP_DEFINE & OP_GLOBAL_SET
             as_.mov(vReg, x86::Mem{varReg, int32_t(Var::valOffset())});
             // if (eq(v, rt->singletons.unbound)) goto interpret;
             size_t const unboundOffset = rt_->singletonOffset(offsetof(NamedSingletons, unbound));
@@ -466,24 +462,20 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             uint8_t const srcVReg = *it++;
 
             // Knot* const knot = &*HRef<Knot>::fromUnchecked(rt->regs[knotReg]);
-            x86::Gp const knotReg = x86::rax;
+            x86::Gp const knotReg = x86::r12; // callee-save
             size_t const knotOffset = rt_->regsOffset() + sizeof(ORef) * knotVReg;
             untagging(knotReg, x86::Mem{rtReg, int32_t(knotOffset)});
 
             // ORef const v = rt->regs[srcReg];
-            x86::Gp const vReg = x86::r11;
+            x86::Gp const vReg = x86::r13; // callee-save
             vregLoad(vReg, srcVReg);
             // // knot->val().set(*rt, v);
-            // if (!Heap::writeBarrier(&rt->heap, var)) goto interpret;
+            // if (!Heap::writeBarrier(&rt->heap, knot)) goto interpret;
             as_.push(rtReg);
-            as_.push(knotReg);
-            as_.push(vReg);
-            x86::Gp const heapReg = x86::rdi;
-            as_.lea(heapReg, x86::Mem{rtReg, int32_t(rt_->heapOffset())});
+            as_.lea(x86::rdi, x86::Mem{rtReg, int32_t(rt_->heapOffset())}); // ABI arg 1
+            as_.mov(x86::rsi, knotReg); // ABI arg 2
             Heap::writeBarrier_t writeBarrier = &Heap::writeBarrier;
             as_.call(writeBarrier);
-            as_.pop(vReg);
-            as_.pop(knotReg);
             as_.pop(rtReg);
             as_.test(retReg, retReg);
             Label const interpret = as_.new_anonymous_label("interpret");

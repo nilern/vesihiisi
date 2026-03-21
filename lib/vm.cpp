@@ -527,6 +527,11 @@ VMRes run(RT* rt, HRef<Closure> self) {
         case PrimopRes::CONTINUE: // Returned:
             goto kontinue;
 
+        case PrimopRes::TAILCALL: // Set up another call in its place:
+            goto apply;
+
+        case PrimopRes::TAILAPPLY: goto applyClosure;
+
         case PrimopRes::EXIT_VM: return VMRes{.val = rt->regs[retReg], .success = true};
 
         default: PANIC("Unreachable code reached: %lu", uintptr_t(res));

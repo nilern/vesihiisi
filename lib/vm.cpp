@@ -433,6 +433,15 @@ VMRes run(RT* rt, HRef<Closure> self) {
         case PrimopRes::INTERPRET: VM_CONTINUE;
 
         case PrimopRes::CALL_BYTECODE: { // Bytecode method:
+            // OPTIMIZE:
+            // Reload in case ran JITed until calling a different, non-JITed, method:
+            auto method = [&](){
+                assert(isa<Closure>(*rt, rt->regs[calleeReg]));
+                auto closure = HRef<Closure>::fromUnchecked(rt->regs[calleeReg]);
+                assert(isa<Method>(*rt, closure->method));
+                return HRef<Method>::fromUnchecked(closure->method);
+            }();
+
             int64_t const callCount = method->callCount.val() + 1;
             method->callCount = Fixnum{callCount};
             if (uint64_t(callCount) == rt->jitThreshold) {

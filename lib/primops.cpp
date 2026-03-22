@@ -14,6 +14,7 @@
 #include "namespace.hpp"
 #include "dispatch.hpp"
 #include "compiler/compiler.hpp"
+#include "jit.hpp"
 
 namespace {
 
@@ -1313,6 +1314,16 @@ PrimopRes PrimopEval::uncheckedInvoke(RT* state) {
     state->inlineCacheIdx = std::nullopt;
     state->entryRegc = calleeReg + 1;
     return PrimopRes::TAILCALL;
+}
+
+PrimopRes PrimopJITCompile::uncheckedInvoke(RT* rt) {
+    auto const closure = HRef<Closure>::fromUnchecked(rt->regs[firstArgReg]);
+
+    assert(isa<Method>(*rt, closure->method));
+    auto const method = HRef<Method>::fromUnchecked(closure->method);
+    jitCompile(*rt, *method);
+
+    return PrimopRes::CONTINUE; // Incidentally returns `f`
 }
 
 PrimopRes PrimopContinuationCallLoc::uncheckedInvoke(RT* state) {

@@ -445,6 +445,10 @@ struct PrimopEval : public FixedArityPrimop<PrimopEval, ORef, Loc, Bool> {
     static constexpr uint8_t name[] = "eval";
     static PrimopRes uncheckedInvoke(RT* state);
 };
+struct PrimopJITCompile : public FixedArityPrimop<PrimopJITCompile, Closure> {
+    static constexpr uint8_t name[] = "jit-compile!";
+    static PrimopRes uncheckedInvoke(RT* state);
+};
 struct PrimopContinuationCallLoc
     : public FixedArityPrimop<PrimopContinuationCallLoc, Continuation>
 {

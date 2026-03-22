@@ -521,9 +521,10 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             uint8_t const destVReg = *it++;
             uint8_t const knotVReg = *it++;
 
-            // auto const knot = HRef<Knot>::fromUnchecked(rt->regs[knotReg]);
+            // Knot* const knot = &*HRef<Knot>::fromUnchecked(rt->regs[knotReg]);
             x86::Gp const knotReg = x86::rax;
-            vregLoad(knotReg, knotVReg);
+            size_t const knotOffset = rt_->regsOffset() + sizeof(ORef) * knotVReg;
+            untagging(knotReg, x86::Mem{rtReg, int32_t(knotOffset)});
             // rt->regs[destReg] = knot->val().get();
             as_.mov(knotReg, x86::Mem{knotReg, int32_t(Knot::valOffset())});
             vregStore(destVReg, knotReg);

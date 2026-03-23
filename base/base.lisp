@@ -6,7 +6,6 @@
           (name (car interface))
           (params (cdr interface))
           (body (cddr form)))
-      ;; TODO: Use the quasiquote reader macros when they become available:
       `(let ()
          (define ,name  (fn ,params ,@body))
          (var-set-macro-category! (resolve (quote ,name)) 'fn-macro)))))
@@ -17,7 +16,6 @@
         (name (car interface))
         (params (cdr interface))
         (body (cddr form)))
-    ;; TODO: Use the quasiquote reader macros when they become available:
     `(let ()
        (define ,name (fn ,params ,@body))
        (var-set-macro-category! (resolve (quote ,name)) 'symbol-macro))))

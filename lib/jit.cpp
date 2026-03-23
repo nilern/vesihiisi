@@ -994,19 +994,19 @@ void X64SYSVJIT::jitMethod(Method& method) {
         as_.mov(x86::Mem{rtReg, int32_t(rt_->pcOffset())}, pcReg);
 
         naturalize(method, method.code->items());
-
-        MethodCode entryCode;
-        if (asmjit::Error const err = rt_->jit.add(&entryCode, &code_); err != Error::kOk) {
-            PANIC("JIT miscompilation: %s", asmjit::DebugUtils::error_as_string(err));
-        }
-        *reinterpret_cast<MethodCode*>(method.code->itemsMut().data()) = entryCode;
-
-        if (code_.logger()) {
-            fprintf(logger_.file(), ";; Entry point at %p\n", entryCode);
-        }
-
-        patchRets(method.code->itemsMut(), reinterpret_cast<void*>(entryCode));
     }
+
+    MethodCode entryCode;
+    if (asmjit::Error const err = rt_->jit.add(&entryCode, &code_); err != Error::kOk) {
+        PANIC("JIT miscompilation: %s", asmjit::DebugUtils::error_as_string(err));
+    }
+    *reinterpret_cast<MethodCode*>(method.code->itemsMut().data()) = entryCode;
+
+    if (code_.logger()) {
+        fprintf(logger_.file(), ";; Entry point at %p\n", entryCode);
+    }
+
+    patchRets(method.code->itemsMut(), reinterpret_cast<void*>(entryCode));
 }
 
 void jitCompile(RT& rt, Method& method) { X64SYSVJIT{rt}.jitMethod(method); }

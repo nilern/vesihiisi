@@ -435,7 +435,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
         case PrimopRes::CALL_BYTECODE: { // Bytecode method:
             // OPTIMIZE:
             // Reload in case ran JITed until calling a different, non-JITed, method:
-            auto method = [&](){
+            method = [&](){
                 assert(isa<Closure>(*rt, rt->regs[calleeReg]));
                 auto closure = HRef<Closure>::fromUnchecked(rt->regs[calleeReg]);
                 assert(isa<Method>(*rt, closure->method));

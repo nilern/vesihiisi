@@ -16,8 +16,11 @@ class X64SYSVJIT {
     asmjit::FileLogger logger_;
     asmjit::CodeHolder code_;
     asmjit::x86::Assembler as_;
-    SmallMap<size_t, asmjit::Label> brLabels_;
+    // OPTIMIZE: Use arena?:
+    SmallMap<size_t, std::vector<asmjit::Label>> brLabels_;
     SmallMap<size_t, asmjit::Label> retLabels_;
+
+    void addBrLabel(size_t pc, asmjit::Label const& label);
 
     void tagging(asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src, uint64_t tag);
     void untagging(asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src);
@@ -65,6 +68,18 @@ public:
 
     void jitMethod(Method& method);
 };
+
+void X64SYSVJIT::addBrLabel(size_t pc, asmjit::Label const& label) {
+    using namespace asmjit;
+
+    std::vector<Label>* pcLabels = brLabels_.tryGet(pc);
+    if (!pcLabels) {
+        brLabels_.set(pc, std::vector<Label>{});
+        pcLabels = brLabels_.tryGet(pc); // OPTIMIZE: Probably `brLabels_.set` should return this
+    }
+
+    pcLabels->push_back(label);
+}
 
 /// `dest = tag | src;`
 void X64SYSVJIT::tagging(asmjit::x86::Gp const& dest, asmjit::x86::Gp const& src, uint64_t tag) {
@@ -274,10 +289,10 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
             putc('\n', dest);
         }
 
-        { // If this has been a `br(f)` target, bind label here:
-            std::optional<Label> const label = brLabels_.tryGet(pc);
-            if (label) {
-                as_.bind(*label);
+        // If this has been a `br(f)` target, bind label here:
+        if (std::vector<Label> const* const labels = brLabels_.tryGet(pc); labels) {
+            for (Label const& label : *labels) {
+                as_.bind(label);
             }
         }
 
@@ -537,7 +552,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
 
             Label const dest = as_.new_anonymous_label("dest");
             size_t const destPc = size_t(std::distance(bytecode.begin(), it)) + displacement;
-            brLabels_.set(destPc, dest);
+            addBrLabel(destPc, dest);
 
             // if (eq(rt->regs[condReg], False)) goto dest;
             x86::Gp const condReg = x86::rax;
@@ -554,7 +569,7 @@ void X64SYSVJIT::naturalize(Method const& method, std::span<uint8_t const> bytec
 
             Label const dest = as_.new_anonymous_label("dest");
             size_t const destPc = size_t(std::distance(bytecode.begin(), it)) + displacement;
-            brLabels_.set(destPc, dest);
+            addBrLabel(destPc, dest);
 
             as_.jmp(dest);
         }; break;

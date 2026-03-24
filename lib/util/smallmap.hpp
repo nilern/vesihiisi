@@ -1,6 +1,5 @@
 #pragma once
 
-#include <optional>
 #include <vector>
 #include <algorithm>
 
@@ -18,10 +17,16 @@ private:
 public:
     SmallMap() : entries_{} {}
 
-    std::optional<V> tryGet(K const& k) const {
+    V const* tryGet(K const& k) const {
         auto const it = std::find_if(entries_.begin(), entries_.end(),
                                      [&](Entry const& entry) { return entry.key == k; });
-        return it != entries_.end() ? std::optional{it->value} : std::nullopt;
+        return it != entries_.end() ? &it->value : nullptr;
+    }
+
+    V* tryGet(K const& k) {
+        auto const it = std::find_if(entries_.begin(), entries_.end(),
+                                     [&](Entry const& entry) { return entry.key == k; });
+        return it != entries_.end() ? &it->value : nullptr;
     }
 
     void set(K const& k, V const& v) {

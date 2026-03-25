@@ -408,7 +408,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
                 if(!boxRet) { return tag(*rt, codomain, rawRes); }
 
                 Object* const obj = rt->alloc(codomain);
-                *reinterpret_cast<uint64_t*>(obj) = rawRes;
+                *std::bit_cast<uint64_t*>(obj) = rawRes;
                 return HRef{obj};
             }();
 

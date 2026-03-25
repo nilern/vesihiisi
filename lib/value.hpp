@@ -71,7 +71,7 @@ class SlotMut {
 public:
     SlotMut(struct Object* obj, T& slot) :
         slot_{&slot}, oref_{obj},
-        offset_{reinterpret_cast<char*>(slot_) - reinterpret_cast<char*>(obj)}
+        offset_{std::bit_cast<char*>(slot_) - std::bit_cast<char*>(obj)}
     {}
 
     /// Get value of slot.

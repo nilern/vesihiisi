@@ -477,7 +477,7 @@ PrimopRes PrimopSlotGet::uncheckedInvoke(RT* state) {
             assert(false); // TODO: Proper bounds error
         }
 
-        auto const slots = reinterpret_cast<ORef const*>(&*obj);
+        auto const slots = std::bit_cast<ORef const*>(&*obj);
         state->regs[retReg] = slots[slotIdx];
     } else {
         assert(false); // TODO
@@ -500,7 +500,7 @@ PrimopRes PrimopSlotSet::uncheckedInvoke(RT* state) {
             assert(false); // TODO: Proper bounds error
         }
 
-        auto slots = SlotsMut{&*obj, reinterpret_cast<ORef*>(&*obj)};
+        auto slots = SlotsMut{&*obj, std::bit_cast<ORef*>(&*obj)};
         slots[slotIdx].set(*state, slotV);
         slotV = state->regs[firstArgReg + 2]; // Reload in case write barrier caused GC
     } else {
@@ -1168,7 +1168,7 @@ PrimopRes PrimopFileExists::uncheckedInvoke(RT* state) {
     auto const filename = HRef<String>::fromUnchecked(state->regs[firstArgReg]);
 
     auto const cppFilename = std::string_view{
-        reinterpret_cast<char const*>(filename->str().data), filename->str().len};
+        std::bit_cast<char const*>(filename->str().data), filename->str().len};
 
     state->regs[retReg] = Bool{std::filesystem::exists(cppFilename)};
     return PrimopRes::CONTINUE;

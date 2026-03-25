@@ -102,7 +102,7 @@ Heap::Nursery::Nursery(size_t size) {
     start = (char*)calloc(size, sizeof *start);
     free = start;
     end = start + size;
-    remembered = reinterpret_cast<Object**>(end);
+    remembered = std::bit_cast<Object**>(end);
 }
 
 // TODO: DRY wrt. `Heap::Semispace::tryAlloc`:
@@ -120,7 +120,7 @@ Object* Heap::Nursery::tryAlloc(Type const* type) {
     // Check bound and commit reservation:
     uintptr_t const size = (uintptr_t)type->minSize.val();
     char* const free = (char*)(void*)(address + size);
-    if (free > reinterpret_cast<char const*>(remembered)) { return nullptr; }
+    if (free > std::bit_cast<char const*>(remembered)) { return nullptr; }
     this->free = free;
 
     Object* const ptr = (Object*)(void*)address;
@@ -153,7 +153,7 @@ Object* Heap::Nursery::tryAllocFlex(Type const* type, Fixnum length) {
     uintptr_t len = (uintptr_t)length.val();
     uintptr_t const size = type->flexSize(len);
     char* const free = (char*)(void*)(address + size);
-    if (free > reinterpret_cast<char const*>(remembered)) { return nullptr; }
+    if (free > std::bit_cast<char const*>(remembered)) { return nullptr; }
     this->free = free;
 
     Object* const ptr = (Object*)(void*)address;
@@ -172,7 +172,7 @@ Object* Heap::Nursery::allocFlexOrDie(Type const* type, Fixnum length) {
 bool Heap::Nursery::tryToRemember([[maybe_unused]] Object* obj) {
 #ifndef GC_ALOT
     Object** const newRemembered = remembered - 1;
-    if (reinterpret_cast<char const*>(newRemembered) < free) {
+    if (std::bit_cast<char const*>(newRemembered) < free) {
         return false;
     }
 
@@ -295,7 +295,7 @@ Object* Heap::Semispace::nextGrey(char* scan) const {
     ++orefScan; // Skip <header>
 
     assert(start <= (char*)orefScan && (char*)orefScan < limit);
-    return reinterpret_cast<Object*>(orefScan);
+    return std::bit_cast<Object*>(orefScan);
 }
 
 char* Heap::scanObj(Object* const obj) {
@@ -341,7 +341,7 @@ char* Heap::scanObj(Object* const obj) {
             *orefScan = *marked;
         }
 
-        return reinterpret_cast<char*>(orefScan);
+        return std::bit_cast<char*>(orefScan);
     }
 }
 

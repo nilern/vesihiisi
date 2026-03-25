@@ -37,7 +37,7 @@ class Heap {
 
         [[nodiscard]]
         bool allocatedIn(Object const* obj) const {
-            auto const data = reinterpret_cast<char const*>(obj);
+            auto const data = std::bit_cast<char const*>(obj);
             return start <= data && data <= free; // `data == free` can hold for zero-sized objs
         }
 
@@ -87,7 +87,7 @@ class Heap {
 
         [[nodiscard]]
         bool allocatedIn(Object const* obj) const {
-            auto const data = reinterpret_cast<char const*>(obj);
+            auto const data = std::bit_cast<char const*>(obj);
             return start <= data && data <= free; // `data == free` can hold for zero-sized objs
         }
 
@@ -104,7 +104,7 @@ class Heap {
         Object* allocFlexOrDie(Type const* type, Fixnum length);
 
         std::span<Object* const> remembereds() const {
-            return std::span{remembered, reinterpret_cast<Object**>(end)};
+            return std::span{remembered, std::bit_cast<Object**>(end)};
         }
 
         [[nodiscard]]
@@ -113,7 +113,7 @@ class Heap {
         void refurbish() {
             memset(start, 0, size());
             free = start;
-            remembered = reinterpret_cast<Object**>(end);
+            remembered = std::bit_cast<Object**>(end);
         }
     };
 

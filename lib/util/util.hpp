@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <stdbit.h>
 #include <utility>
+#include <bit>
 
 #include "../vesihiisi.h"
 
@@ -88,7 +89,7 @@ struct Slice {
 
 // TODO: Enforce string literal `data`, incidentally avoiding `strlen`:
 inline Str strLit(char const* data) {
-    return Str{.data = /*HACK:(?)*/reinterpret_cast<uint8_t const*>(data), .len = strlen(data)};
+    return Str{.data = /*HACK:(?)*/std::bit_cast<uint8_t const*>(data), .len = strlen(data)};
 }
 
 bool strEq(Str s1, Str s2);

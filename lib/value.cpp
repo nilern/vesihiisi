@@ -11,7 +11,7 @@ void SlotMut<T>::set(RT& state, T v) {
         auto const orefG_ = state.pushRoot(&oref_);
         auto const vG = state.pushRoot(&v);
         collect(&state);
-        slot_ = reinterpret_cast<T*>(reinterpret_cast<char*>(&*oref_) + offset_);
+        slot_ = std::bit_cast<T*>(std::bit_cast<char*>(&*oref_) + offset_);
     }
 
     *slot_ = v;

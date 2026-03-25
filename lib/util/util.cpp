@@ -11,7 +11,7 @@ namespace {
 bool strEq(Str s1, Str s2) {
     return s1.len == s2.len
         // HACK:
-        && strncmp(reinterpret_cast<char const*>(s1.data), reinterpret_cast<char const*>(s2.data),
+        && strncmp(std::bit_cast<char const*>(s1.data), std::bit_cast<char const*>(s2.data),
                    s1.len)
            == 0;
 }
@@ -125,7 +125,7 @@ int32_t UTF8InputFile::getc() {
 }
 
 void printFilename(FILE* dest, Str filename) {
-    auto const chars = reinterpret_cast<char const*>(filename.data);
+    auto const chars = std::bit_cast<char const*>(filename.data);
     std::filesystem::path const path{chars, chars + filename.len};
     std::error_code pathErr;
     auto const relative = std::filesystem::relative(path, pathErr);

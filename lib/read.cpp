@@ -164,7 +164,7 @@ ReadExprTailRes readNumber(Parser* parser, int radix) {
     // ('.' <digit radix>*)?
     if (TRY(ReadExprTailRes, parser->peek()) != '.') { // Fixnum
         return ReadExprTailRes{
-            Fixnum{(int64_t)atoll(reinterpret_cast<char const*>(start))} // HACK
+            Fixnum{(int64_t)atoll(std::bit_cast<char const*>(start))} // HACK
         };
     } else { // Flonum
         parser->skipUnchecked(1); // '.'
@@ -172,7 +172,7 @@ ReadExprTailRes readNumber(Parser* parser, int radix) {
         // <digit radix>*
         while (TRY(ReadExprTailRes, parser->match(isDigit[radix]))) {}
 
-        return ReadExprTailRes{Flonum{atof(reinterpret_cast<char const*>(start))}}; // HACK
+        return ReadExprTailRes{Flonum{atof(std::bit_cast<char const*>(start))}}; // HACK
     }
 }
 

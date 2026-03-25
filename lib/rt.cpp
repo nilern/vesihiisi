@@ -325,7 +325,7 @@ HRef<Array> createCommandLine(RT* state, int argc, char const* argv[]) {
     for (size_t i = 0; i < size_t(argc); ++i) {
         char const* const segCStr = argv[i];
         HRef<String> const seg =
-            createString(state, Str{reinterpret_cast<uint8_t const*>(segCStr), strlen(segCStr)});
+            createString(state, Str{std::bit_cast<uint8_t const*>(segCStr), strlen(segCStr)});
         const_cast<ORef*>(commandLine->flexData())[i] = seg; // Initializing store
     }
 
@@ -509,7 +509,7 @@ RT* RT::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* a
         char const* const name = typeNames[i];
         size_t const nameLen = strlen(name);
         if (nameLen > 0) {
-            Str const nameStr = Str{reinterpret_cast<uint8_t const*>(name), nameLen}; // HACK
+            Str const nameStr = Str{std::bit_cast<uint8_t const*>(name), nameLen}; // HACK
             // `ORef const type = dest->types[i];` would not pay off since `nameType` may GC:
             nameType(dest, dest->typesArray[i], nameStr);
             installPrimordial(dest, nameStr, dest->typesArray[i]);
@@ -543,7 +543,7 @@ RT* RT::tryCreate(size_t heapSize, char const* vshsHome, int argc, char const* a
     installPrimordial(dest, strLit("end"), dest->singletons.end);
     installPrimordial(dest, strLit("standard-input"), createInputFile(dest, UTF8InputFile{stdin}));
     installPrimordial(dest, strLit("*vshs-home*"),
-                      createString(dest, Str{reinterpret_cast<uint8_t const*>(vshsHome),
+                      createString(dest, Str{std::bit_cast<uint8_t const*>(vshsHome),
                                              strlen(vshsHome)}));
     installPrimordial(dest, strLit("*command-line*"), createCommandLine(dest, argc, argv));
 
@@ -664,8 +664,8 @@ bool isa(RT const* state, HRef<Type> type, ORef v) {
 void assertRTInTospace(RT const* state) {
     if (isHeaped(state->method)) {
         assert(state->heap.evacuated(&*HRef<Object>::fromUnchecked(state->method)));
-        assert(state->heap.evacuated(reinterpret_cast<Object const*>(state->code)));
-        assert(state->heap.evacuated(reinterpret_cast<Object const*>(&state->consts[0].get())));
+        assert(state->heap.evacuated(std::bit_cast<Object const*>(state->code)));
+        assert(state->heap.evacuated(std::bit_cast<Object const*>(&state->consts[0].get())));
     }
 
     // TODO: When we start only marking live regs, this has to only check those as well to avoid
@@ -861,7 +861,7 @@ Method* tryAllocBytecodeMethod(
     if (!ptr) { return ptr; }
 
     return new (ptr) Method{
-        reinterpret_cast<MethodCode>(callBytecode), code, consts, hasVarArg, hash, maybeName,
+        callBytecode, code, consts, hasVarArg, hash, maybeName,
         maybeFilenames, maybeSrcByteIdxs, ORefSpan{} // leave `domain` to `Default`s
     };
 }
@@ -874,7 +874,7 @@ Method* allocBytecodeMethodOrDie(
         static_cast<Method*>(state->heap.allocFlexOrDie(&*state->types.method, arity));
 
     return new (ptr) Method{
-        reinterpret_cast<MethodCode>(callBytecode), code, consts, hasVarArg, hash, maybeName,
+        callBytecode, code, consts, hasVarArg, hash, maybeName,
         maybeFilenames, maybeSrcByteIdxs, ORefSpan{} // leave `domain` to `Default`s
     };
 }
@@ -896,7 +896,7 @@ HRef<Method> allocBytecodeMethod(
     }
 
     return HRef{new (ptr) Method{
-            reinterpret_cast<MethodCode>(callBytecode), code, consts, hasVarArg, hash, maybeName,
+            callBytecode, code, consts, hasVarArg, hash, maybeName,
             maybeFilenames, maybeSrcByteIdxs, ORefSpan{} // leave `domain` to `Default`s
     }};
 }

@@ -174,7 +174,7 @@ extern "C" void Vshs_freeError(Vshs_Err* err) {
 }
 
 static Vshs_MaybeRes readEval(struct Vshs_RT* state, Parser* parser) {
-    bool const debug = !eq(reinterpret_cast<RT const*>(state)->debug->val().get(), False);
+    bool const debug = !eq(std::bit_cast<RT const*>(state)->debug->val().get(), False);
 
     Vshs_ParseRes const readRes = Vshs_read(state, parser);
     if (!readRes.success) {

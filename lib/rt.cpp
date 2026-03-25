@@ -941,7 +941,7 @@ HRef<Method> vcreatePrimopMethod(
             state->heap.allocFlexOrDie(
                 &*ByteArrayMut::reify(*state), Fixnum{int64_t(sizeof(MethodCode))}));
     }
-    *reinterpret_cast<MethodCode*>(const_cast<uint8_t*>(codePtr->flexData())) = nativeCode;
+    *std::bit_cast<MethodCode*>(const_cast<uint8_t*>(codePtr->flexData())) = nativeCode;
     auto code = HRef{codePtr};
     auto codeG = state->pushRoot(&code);
 

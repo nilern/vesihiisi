@@ -524,7 +524,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
 
         rt->setMethod(method);
         rt->pc = retPc;
-        MethodCode const nativeReturnCode = *reinterpret_cast<MethodCode const*>(rt->code + rt->pc);
+        MethodCode const nativeReturnCode = *std::bit_cast<MethodCode const*>(rt->code + rt->pc);
         rt->pc += sizeof(MethodCode);
 
         PrimopRes const res = nativeReturnCode(rt);

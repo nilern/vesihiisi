@@ -591,7 +591,7 @@ struct Method : public FlexMutObject<Method, ORef> {
 
     static HRef<Type> reify(struct RT const& state);
 
-    MethodCode nativeCode() const { return *reinterpret_cast<MethodCode const*>(code->flexData()); }
+    MethodCode nativeCode() const { return *std::bit_cast<MethodCode const*>(code->flexData()); }
 
     static size_t entryPc() { return sizeof(MethodCode); }
 

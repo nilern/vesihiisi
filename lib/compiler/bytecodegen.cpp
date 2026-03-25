@@ -195,7 +195,7 @@ MethodBuilder::MethodBuilder(RT const& state, Arena* arena, MethodBuilder* paren
     parent_{parent}
 {
     for (size_t i = 0; i < sizeof(MethodCode); ++i) { code_.push(0); } // OPTIMIZE
-    *reinterpret_cast<MethodCode*>(code_.data()) = callBytecode;
+    *std::bit_cast<MethodCode*>(code_.data()) = callBytecode;
 
     assert(fn.blocks.count() >= 1);
     IRBlock const& entryBlock = *fn.blocks[0];
@@ -339,7 +339,7 @@ void MethodBuilder::emitCodePtr(MethodCode nativeCode) {
 
     for (size_t i = 0; i < sizeof(MethodCode); ++i) { code_.push(0); } // OPTIMIZE
 
-    *reinterpret_cast<MethodCode*>(code_.data() + startIdx) = nativeCode;
+    *std::bit_cast<MethodCode*>(code_.data() + startIdx) = nativeCode;
 }
 
 uint8_t MethodBuilder::freshConstIndex(MethodBuilder::Const c) {

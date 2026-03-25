@@ -11,7 +11,7 @@ PrimopRes doCheckDomainWithPrejudice(
 ) {
     assert(isa<Method>(*state, callee->method));
     HRef<Method> const method = HRef<Method>::fromUnchecked(callee->method);
-    size_t const arity = (uint64_t)method->flexCount().val();
+    size_t const arity = uint64_t(method->flexCount().val());
     bool const hasVarArg = method->hasVarArg.val();
 
     if (argc != arity) {
@@ -54,7 +54,7 @@ bool closureIsApplicable(
 ) {
     assert(isa<Method>(*state, callee->method));
     HRef<Method> const method = HRef<Method>::fromUnchecked(callee->method);
-    size_t const arity = (uint64_t)method->flexCount().val();
+    size_t const arity = uint64_t(method->flexCount().val());
     bool const hasVarArg = method->hasVarArg.val();
 
     if (argc != arity) {
@@ -96,7 +96,7 @@ bool closureIsApplicable(
 bool closureIsApplicableToList(RT const* state, Closure const* callee, ORef args) {
     assert(isa<Method>(*state, callee->method));
     HRef<Method> const method = HRef<Method>::fromUnchecked(callee->method);
-    size_t const arity = (uint64_t)method->flexCount().val();
+    size_t const arity = uint64_t(method->flexCount().val());
 
     bool const hasVarArg = method->hasVarArg.val();
     size_t const minArity = !hasVarArg ? arity : arity - 1;
@@ -200,7 +200,7 @@ ORef applicableClosureForArgs(
     HRef<Array> const methodsRef = callee->methods().get();
     ORefSpan const methods = methodsRef->flexItems();
 
-    size_t const methodCount = (uint64_t)methodsRef->flexCount().val();
+    size_t const methodCount = uint64_t(methodsRef->flexCount().val());
     for (size_t i = 0; i < methodCount; ++i) {
         assert(isa(state, state->types.closure, (methods[i])));
         auto const methodRef = HRef<Closure>::fromUnchecked(methods[i]);
@@ -220,7 +220,7 @@ ORef applicableClosureForArglist(RT* state, Multimethod const* callee, ORef args
     HRef<Array> const methodsRef = callee->methods().get();
     ORefSpan const methods = methodsRef->flexItems();
 
-    size_t const methodCount = (uint64_t)methodsRef->flexCount().val();
+    size_t const methodCount = uint64_t(methodsRef->flexCount().val());
     for (size_t i = 0; i < methodCount; ++i) {
         assert(isa(state, state->types.closure, (methods[i])));
         HRef<Closure> const methodRef = HRef<Closure>::fromUnchecked(methods[i]);

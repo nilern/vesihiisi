@@ -264,7 +264,7 @@ struct Object {
     void forwardTo(Object* copy);
 };
 
-inline ORef tagHeaped(Object* ptr) { return ORef{heapedTag | (uint64_t)ptr}; }
+inline ORef tagHeaped(Object* ptr) { return ORef{heapedTag | std::bit_cast<uint64_t>(ptr)}; }
 
 template<typename CRTPSub>
 struct BootstrapObject : public Object {

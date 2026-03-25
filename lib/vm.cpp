@@ -64,7 +64,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
 
 #define VM_DISPATCH(opcode) goto* opcode_handlers[opcode];
 #define VM_CASE(opcode) L_##opcode:
-#define VM_CONTINUE VM_DISPATCH((Opcode)rt->code[rt->pc++])
+#define VM_CONTINUE VM_DISPATCH(static_cast<Opcode>(rt->code[rt->pc++]))
 #else
 #define VM_DISPATCH(opcode) switch (opcode)
 #define VM_CASE(opcode) case opcode:
@@ -75,7 +75,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
 #if !VSHS_COMPUTED_GOTO
     eval:
 #endif
-        VM_DISPATCH((Opcode)rt->code[rt->pc++]) {
+        VM_DISPATCH(static_cast<Opcode>(rt->code[rt->pc++])) {
         VM_CASE(OP_MOVE) {
             uint8_t const destReg = rt->code[rt->pc++];
             uint8_t const srcReg = rt->code[rt->pc++];
@@ -197,7 +197,7 @@ VMRes run(RT* rt, HRef<Closure> self) {
 
             // OPTIMIZE: Allocate types to contiguous registers instead of allocating temporary
             // array:
-            HRef<ArrayMut> const types = createArrayMut(rt, Fixnum((intptr_t)typeCount));
+            HRef<ArrayMut> const types = createArrayMut(rt, Fixnum{intptr_t(typeCount)});
             {
                 auto typeSlot = const_cast<ORef*>(types->items().data());
                 size_t regIdx = 0;
@@ -453,10 +453,10 @@ VMRes run(RT* rt, HRef<Closure> self) {
                 uint8_t const callArgc = rt->entryRegc - firstArgReg;
                 size_t const varargCount = callArgc - minArity;
 
-                HRef<ArrayMut> const varargsRef =
-                    createArrayMut(rt, Fixnum((intptr_t)varargCount));
-                memcpy((void*)varargsRef->flexData(),
-                       rt->regs + firstArgReg + minArity, varargCount * sizeof(ORef));
+                HRef<ArrayMut> const varargsRef = createArrayMut(rt, Fixnum{intptr_t(varargCount)});
+                ORef const* const begin = rt->regs + firstArgReg + minArity;
+                ORef const* const end = begin + varargCount;
+                std::copy(begin, end, const_cast<ORef*>(varargsRef->flexData()));
 
                 rt->regs[firstArgReg + minArity] = varargsRef;
             }

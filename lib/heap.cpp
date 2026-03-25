@@ -11,7 +11,7 @@ namespace {
 // =================================================================================================
 
 Heap::Semispace::Semispace(size_t size) {
-    start = (char*)calloc(size, sizeof *start);
+    start = static_cast<decltype(start)>(calloc(size, sizeof *start));
     free = start;
     scan = start;
     limit = start + size;
@@ -49,21 +49,21 @@ Object* Heap::Semispace::tryAlloc(Type const* type) {
     assert(isValid());
     assert(!type->isFlex.val());
 
-    uintptr_t address = (uintptr_t)(void*)free;
+    auto address = std::bit_cast<uintptr_t>(free);
 
     address += sizeof(Header); // Reserve header
     // Align oref:
-    uintptr_t const align = (uintptr_t)type->align.val();
+    auto const align = uintptr_t(type->align.val());
     address = (address + align - 1) & ~(align - 1);
 
     // Check bound and commit reservation:
-    uintptr_t const size = (uintptr_t)type->minSize.val();
-    char* const free = (char*)(void*)(address + size);
+    auto const size = uintptr_t(type->minSize.val());
+    auto const free = std::bit_cast<char*>(address + size);
     if (free > limit) { return nullptr; }
     this->free = free;
 
-    Object* const ptr = (Object*)(void*)address;
-    *((Header*)(void*)address - 1) = Header{type}; // Init header
+    auto const ptr = std::bit_cast<Object*>(address);
+    *(std::bit_cast<Header*>(address) - 1) = Header{type}; // Init header
 
     assert(allocatedIn(ptr));
     return ptr;
@@ -74,22 +74,22 @@ Object* Heap::Semispace::tryAllocFlex(Type const* type, Fixnum length) {
     assert(type->isFlex.val());
     assert(length.val() >= 0);
 
-    uintptr_t address = (uintptr_t)(void*)free;
+    auto address = std::bit_cast<uintptr_t>(free);
 
     address += sizeof(FlexHeader); // Reserve header
     // Align oref:
-    uintptr_t const align = (uintptr_t)type->align.val();
+    auto const align = uintptr_t(type->align.val());
     address = (address + align - 1) & ~(align - 1);
 
     // Check bound and commit reservation:
-    uintptr_t len = (uintptr_t)length.val();
+    auto const len = uintptr_t(length.val());
     uintptr_t const size = type->flexSize(len);
-    char* const free = (char*)(void*)(address + size);
+    auto const free = std::bit_cast<char*>(address + size);
     if (free > limit) { return nullptr; }
     this->free = free;
 
-    Object* const ptr = (Object*)(void*)address;
-    *((FlexHeader*)(void*)address - 1) = FlexHeader{length, type}; // Init header
+    auto const ptr = std::bit_cast<Object*>(address);
+    *(std::bit_cast<FlexHeader*>(address) - 1) = FlexHeader{length, type}; // Init header
 
     assert(allocatedIn(ptr));
     return ptr;
@@ -99,7 +99,7 @@ Object* Heap::Semispace::tryAllocFlex(Type const* type, Fixnum length) {
 // =================================================================================================
 
 Heap::Nursery::Nursery(size_t size) {
-    start = (char*)calloc(size, sizeof *start);
+    start = static_cast<decltype(start)>(calloc(size, sizeof *start));
     free = start;
     end = start + size;
     remembered = std::bit_cast<Object**>(end);
@@ -110,21 +110,21 @@ Object* Heap::Nursery::tryAlloc(Type const* type) {
     assert(isValid());
     assert(!type->isFlex.val());
 
-    uintptr_t address = (uintptr_t)(void*)free;
+    auto address = std::bit_cast<uintptr_t>(free);
 
     address += sizeof(Header); // Reserve header
     // Align oref:
-    uintptr_t const align = (uintptr_t)type->align.val();
+    auto const align = uintptr_t(type->align.val());
     address = (address + align - 1) & ~(align - 1);
 
     // Check bound and commit reservation:
-    uintptr_t const size = (uintptr_t)type->minSize.val();
-    char* const free = (char*)(void*)(address + size);
+    auto const size = uintptr_t(type->minSize.val());
+    auto const free =  std::bit_cast<char*>(address + size);
     if (free > std::bit_cast<char const*>(remembered)) { return nullptr; }
     this->free = free;
 
-    Object* const ptr = (Object*)(void*)address;
-    *((Header*)(void*)address - 1) = Header{type}; // Init header
+    auto const ptr = std::bit_cast<Object*>(address);
+    *(std::bit_cast<Header*>(address) - 1) = Header{type}; // Init header
 
     assert(allocatedIn(ptr));
     return ptr;
@@ -142,22 +142,22 @@ Object* Heap::Nursery::tryAllocFlex(Type const* type, Fixnum length) {
     assert(type->isFlex.val());
     assert(length.val() >= 0);
 
-    uintptr_t address = (uintptr_t)(void*)free;
+    auto address =  std::bit_cast<uintptr_t>(free);
 
     address += sizeof(FlexHeader); // Reserve header
     // Align oref:
-    uintptr_t const align = (uintptr_t)type->align.val();
+    auto const align = uintptr_t(type->align.val());
     address = (address + align - 1) & ~(align - 1);
 
     // Check bound and commit reservation:
-    uintptr_t len = (uintptr_t)length.val();
+    auto const len = uintptr_t(length.val());
     uintptr_t const size = type->flexSize(len);
-    char* const free = (char*)(void*)(address + size);
+    auto const free = std::bit_cast<char*>(address + size);
     if (free > std::bit_cast<char const*>(remembered)) { return nullptr; }
     this->free = free;
 
-    Object* const ptr = (Object*)(void*)address;
-    *((FlexHeader*)(void*)address - 1) = FlexHeader{length, type}; // Init header
+    auto const ptr = std::bit_cast<Object*>(address);
+    *(std::bit_cast<FlexHeader*>(address) - 1) = FlexHeader{length, type}; // Init header
 
     assert(allocatedIn(ptr));
     return ptr;
@@ -193,26 +193,26 @@ Object* Heap::tryEvacuate(Object* obj) {
            || fromspace.allocatedIn(obj) // Major or expanding GC
            || (insufficientTospace && insufficientTospace->allocatedIn(obj))); // Expanding GC
 
-    Header const header = *((Header*)obj - 1);
+    Header const header = *obj->header();
     Type const* const type = header.typePtr();
 
     Object* copy = nullptr;
-    size_t size = (uintptr_t)type->minSize.val();
+    size_t size = uint64_t(type->minSize.val());
     if (!type->isFlex.val()) {
         copy = tospace.tryAlloc(type);
         if (!copy) { return nullptr; }
 
-        *((Header*)copy - 1) = header;
+        *copy->header() = header;
     } else {
-        FlexHeader const flexHeader = *((FlexHeader*)obj - 1);
+        FlexHeader const flexHeader = *(std::bit_cast<FlexHeader*>(obj) - 1);
 
         Fixnum const fxLen = flexHeader.count;
         copy = tospace.tryAllocFlex(type, fxLen); // OPTIMIZE: This also computes `size` internally
         if (!copy) { return nullptr; }
 
-        *((FlexHeader*)copy - 1) = flexHeader;
+        *(std::bit_cast<FlexHeader*>(copy) - 1) = flexHeader;
 
-        size_t const len = (uintptr_t)fxLen.val();
+        size_t const len = uint64_t(fxLen.val());
         size += type->isBytes.val() ? len : len * sizeof(ORef);
     }
 
@@ -280,13 +280,13 @@ std::optional<Header> Heap::markHeader(Header header) {
 }
 
 Object* Heap::Semispace::nextGrey(char* scan) const {
-    assert(start <= (char*)scan && (char*)scan < limit);
+    assert(start <= scan && scan < limit);
 
-    uintptr_t address = (uintptr_t)scan;
+    auto address = std::bit_cast<uintptr_t>(scan);
     uintptr_t const align = alignof(ORef);
     address = (address + align - 1) & ~(align - 1);
 
-    ORef* orefScan = (ORef*)(void*)address;
+    auto orefScan = std::bit_cast<ORef*>(address);
 
     while (eq(*orefScan, AlignmentHole)) { ++orefScan; } // Skip <alignmentHole>*
 
@@ -294,13 +294,13 @@ Object* Heap::Semispace::nextGrey(char* scan) const {
 
     ++orefScan; // Skip <header>
 
-    assert(start <= (char*)orefScan && (char*)orefScan < limit);
+    assert(start <= std::bit_cast<char*>(orefScan) && std::bit_cast<char*>(orefScan) < limit);
     return std::bit_cast<Object*>(orefScan);
 }
 
 char* Heap::scanObj(Object* const obj) {
-    assert(tospace.start <= (char*)obj && (char*)obj < tospace.limit);
-    assert((uintptr_t)obj % alignof(ORef) == 0);
+    assert(tospace.start <= std::bit_cast<char*>(obj) && std::bit_cast<char*>(obj) < tospace.limit);
+    assert(std::bit_cast<uintptr_t>(obj) % alignof(ORef) == 0);
 
     Header* const header = obj->header();
     auto const markedHeader = markHeader(*header);
@@ -308,22 +308,22 @@ char* Heap::scanObj(Object* const obj) {
     *header = *markedHeader;
     Type* const type = header->typePtr();
 
-    char* byteScan = (char*)obj;
+    auto byteScan = std::bit_cast<char*>(obj);
 
     if (type->isBytes.val()) {
-        byteScan += (uintptr_t)type->minSize.val(); // Skip fixed portion
+        byteScan += uint64_t(type->minSize.val()); // Skip fixed portion
 
         if (type->isFlex.val()) {
-            FlexHeader const flexHeader = *((FlexHeader*)obj - 1);
-            byteScan += (uintptr_t)flexHeader.count.val(); // Skip flex portion
+            FlexHeader const flexHeader = *(std::bit_cast<FlexHeader*>(obj) - 1);
+            byteScan += uint64_t(flexHeader.count.val()); // Skip flex portion
         }
 
         return byteScan;
     } else {
-        size_t slotCount = (uintptr_t)type->minSize.val() / sizeof(ORef); // Fixed slot count
+        size_t slotCount = uint64_t(type->minSize.val()) / sizeof(ORef); // Fixed slot count
         if (type->isFlex.val()) {
-            FlexHeader const flexHeader = *((FlexHeader*)obj - 1);
-            slotCount += (uintptr_t)flexHeader.count.val(); // Add flex slot count
+            FlexHeader const flexHeader = *(std::bit_cast<FlexHeader*>(obj) - 1);
+            slotCount += uint64_t(flexHeader.count.val()); // Add flex slot count
         }
 
         if (type->hasCodePtr.val()) {
@@ -332,7 +332,7 @@ char* Heap::scanObj(Object* const obj) {
             --slotCount; // Assuming that code pointer is ORef-sized...
         }
         // Assuming that we are still at least ORef-aligned even if we skipped a code pointer...:
-        ORef* orefScan = (ORef*)byteScan;
+        ORef* orefScan = std::bit_cast<ORef*>(byteScan);
 
         // Finally, actually scan slots:
         for (size_t i = 0; i < slotCount; ++i, ++orefScan) {

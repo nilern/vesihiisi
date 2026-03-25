@@ -116,7 +116,7 @@ private:
 
         maybeFilename = filenames[filenameIdx++];
         assert(isa(state, state->types.fixnum, filenames[filenameIdx]));
-        bytesToNextMaybeFilename = (uint64_t)Fixnum::fromUnchecked(filenames[filenameIdx++]).val();
+        bytesToNextMaybeFilename = uint64_t(Fixnum::fromUnchecked(filenames[filenameIdx++]).val());
 
         srcByteIdx += decodeVarInt(&srcByteIdxsIdx, srcByteIdxs);
         if (srcByteIdxsIdx < srcByteIdxs.size()) {
@@ -135,7 +135,7 @@ public:
                 maybeFilename = filenames[filenameIdx++];
                 assert(isa(state, state->types.fixnum, filenames[filenameIdx]));
                 bytesToNextMaybeFilename =
-                    (uint64_t)Fixnum::fromUnchecked(filenames[filenameIdx++]).val();
+                    uint64_t(Fixnum::fromUnchecked(filenames[filenameIdx++]).val());
             }
             --bytesToNextMaybeFilename;
 
@@ -178,7 +178,7 @@ void Disassembler::skipInstrBitmap() {
 }
 
 void Disassembler::skipOperands(uint8_t codeByte) {
-    switch ((Opcode)codeByte) { // FIXME: Handle invalid instruction
+    switch (static_cast<Opcode>(codeByte)) { // FIXME: Handle invalid instruction
     case OP_MOVE: {
         next();
         next();
@@ -276,7 +276,7 @@ void Disassembler::disassembleReg(FILE* dest, uint8_t reg) { fprintf(dest, "r%u"
 
 void Disassembler::disassembleDisplacement(FILE* dest) {
     uint16_t displacement = next().val.codeByte;
-    displacement = (uint16_t)(displacement << UINT8_WIDTH) | next().val.codeByte;
+    displacement = uint16_t(displacement << UINT8_WIDTH) | next().val.codeByte;
 
     fprintf(dest, "%u", displacement);
 }
@@ -303,7 +303,7 @@ void Disassembler::disassembleNestedInstr(FILE* dest, size_t nesting, uint8_t co
     for (size_t j = 0; j < nesting; ++j) { fputc('\t', dest); }
     fprintf(dest, "[%lu]:\t", pc - 1);
 
-    switch ((Opcode)codeByte) { // FIXME: Handle invalid instruction
+    switch (static_cast<Opcode>(codeByte)) { // FIXME: Handle invalid instruction
     case OP_MOVE: {
         disassembleReg(dest, next().val.codeByte);
         fprintf(dest, " = mov ");
@@ -469,7 +469,7 @@ void disassembleNested(RT const* state, FILE* dest, HRef<Method> methodRef, size
         putc('_', dest);
     }
 
-    size_t const arity = (uint64_t)methodRef->flexCount().val();
+    size_t const arity = uint64_t(methodRef->flexCount().val());
     for (size_t i = 0; i < arity; ++i) {
         putc(' ', dest);
         if (i == arity - 1 && methodRef->hasVarArg.val()) {

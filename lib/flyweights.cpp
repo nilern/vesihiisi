@@ -10,7 +10,7 @@ namespace {
 // Symbols
 // =================================================================================================
 
-SymbolTable::SymbolTable() { entries = (ORef*)calloc(cap, sizeof *entries); }
+SymbolTable::SymbolTable() { entries = static_cast<ORef*>(calloc(cap, sizeof *entries)); }
 
 SymbolTable::~SymbolTable() { free(entries); }
 
@@ -40,10 +40,10 @@ HRef<Symbol> createUninternedSymbol(RT* state, Fixnum hash, Str nameStr) {
     return createUninternedSymbolFromHeaped(state, hash, name);
 }
 
-Fixnum hashStr(Str s) { return Fixnum((intptr_t)fnv1aHash(s)); }
+Fixnum hashStr(Str s) { return Fixnum{int64_t(fnv1aHash(s))}; }
 
 SymbolTable::IndexOfRes SymbolTable::indexOf(Fixnum hash, Str name) const {
-    uintptr_t const h = (uintptr_t)hash.val();
+    auto const h = uintptr_t(hash.val());
 
     size_t const maxIndex = cap - 1;
     for (size_t collisions = 0, i = h & maxIndex;; ++collisions, i = (i + collisions) & maxIndex) {
@@ -102,13 +102,13 @@ HRef<Symbol> SymbolTable::createFromHeapedAtUnchecked(
 void SymbolTable::rehash() {
     size_t const oldCap = cap;
     size_t const newCap = oldCap * 2;
-    ORef* const newEntries = (ORef*)calloc(newCap, sizeof *newEntries);
+    ORef* const newEntries = static_cast<ORef*>(calloc(newCap, sizeof *newEntries));
     size_t newCount = 0;
 
     for (size_t i = 0; i < oldCap; ++i) {
         ORef const v = entries[i];
         if (isHeaped(v)) {
-            size_t const h = (uintptr_t)HRef<Symbol>::fromUnchecked(v)->hash.val();
+            size_t const h = uint64_t(HRef<Symbol>::fromUnchecked(v)->hash.val());
 
             size_t const maxIndex = newCap - 1;
             for (size_t collisions = 0, j = h & maxIndex;;
@@ -158,7 +158,7 @@ HRef<Symbol> internHeaped(RT* state, HRef<String> name) {
 // Specializations
 // =================================================================================================
 
-Specializations::Specializations() { entries = (ORef*)calloc(cap, sizeof *entries); }
+Specializations::Specializations() { entries = static_cast<ORef*>(calloc(cap, sizeof *entries)); }
 
 Specializations::~Specializations() { free(entries); }
 
@@ -177,7 +177,7 @@ bool isSpecialized(HRef<Method> method, HRef<Method> generic, HRef<ArrayMut> typ
     if (!eq(method->code, generic->code)) { return false; }
 
     ORef const* const types = typesRef->flexData();
-    size_t const arity = (uint64_t)generic->flexCount().val();
+    size_t const arity = uint64_t(generic->flexCount().val());
     for (size_t i = 0, typeIdx = 0; i < arity; ++i) {
         ORef const maybeType = generic->domain()[i].get();
         if (!isHeaped(maybeType)) {
@@ -190,16 +190,16 @@ bool isSpecialized(HRef<Method> method, HRef<Method> generic, HRef<ArrayMut> typ
 }
 
 Fixnum hashSpecialization(HRef<Method> generic, HRef<ArrayMut> typesRef) {
-    uintptr_t hash = (uintptr_t)generic->hash.val();
+    auto hash = uint64_t(generic->hash.val());
 
     ORefSpan const typesSlice = typesRef->items();
     size_t const typeCount = typesSlice.size();
     for (size_t i = 0; i < typeCount; ++i) {
         auto const type = HRef<Type>::fromUnchecked(typesSlice[i]);
-        hash = hashCombine(hash, (uintptr_t)type->hash.val());
+        hash = hashCombine(hash, uint64_t(type->hash.val()));
     }
 
-    return Fixnum((intptr_t)hash);
+    return Fixnum{int64_t(hash)};
 }
 
 Fixnum hashSpecialized(HRef<Method> specialization) { return specialization->hash; }
@@ -217,7 +217,7 @@ HRef<Method> createSpecialization(
                             generic->maybeSrcByteIdxs);
 
     ORef const* const types = typesRef->flexData();
-    size_t const arity = (uintptr_t)fxArity.val();
+    size_t const arity = uint64_t(fxArity.val());
     for (size_t i = 0, typeIdx = 0; i < arity; ++i) {
         ORef const maybeType = generic->domain()[i].get();
         const_cast<ORef*>(specialization->flexData())[i] = // `const_cast` for init
@@ -268,13 +268,13 @@ HRef<Method> Specializations::createAtUnchecked(
 void Specializations::rehash() {
     size_t const oldCap = cap;
     size_t const newCap = oldCap * 2;
-    ORef* const newEntries = (ORef*)calloc(newCap, sizeof *newEntries);
+    ORef* const newEntries = static_cast<ORef*>(calloc(newCap, sizeof *newEntries));
     size_t newCount = 0;
 
     for (size_t i = 0; i < oldCap; ++i) {
         ORef const v = entries[i];
         if (isHeaped(v)) {
-            size_t const h = (uintptr_t)hashSpecialized(HRef<Method>::fromUnchecked(v)).val();
+            size_t const h = uint64_t(hashSpecialized(HRef<Method>::fromUnchecked(v)).val());
 
             size_t const maxIndex = newCap - 1;
             for (size_t collisions = 0, j = h & maxIndex;;
@@ -310,7 +310,7 @@ HRef<Method> specialize(RT* state, HRef<Method> generic, HRef<ArrayMut> types) {
 #endif
 
     Fixnum const fxHash = hashSpecialization(generic, types);
-    uintptr_t const hash = (uint64_t)fxHash.val();
+    uintptr_t const hash = uint64_t(fxHash.val());
 
     Specializations::IndexOfRes ires = state->specializations.indexOf(hash, generic, types);
     if (ires.exists) {

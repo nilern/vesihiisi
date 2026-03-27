@@ -103,6 +103,8 @@ Basically a proof-of-concept for:
 
 ## Trying It Out
 
+First of all, ensure you also [clone the submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules#_cloning_submodules) for dependencies (in `/deps`).
+
 ```sh
 > make dev && VSHS_HOME=. ./vesihiisi-dev
 ```

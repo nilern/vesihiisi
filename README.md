@@ -92,6 +92,8 @@ Basically a proof-of-concept for:
     - Seems like the only thing remaining is not tracing dead roots in VM
       registers
 * Namespace system
+* Bytecode verification
+* Avoid potential stack overflows in compiler
 
 ## Lofty ambitions
 
